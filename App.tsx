@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import LoginView from '@/components/LoginView';
-import DriverDashboard from '@/components/DriverDashboard';
-import AdminDashboard from '@/components/AdminDashboard';
-import { Driver, PaymentTransaction, Car } from '@/types';
-import { calculateMomentum } from '@/utils'; // Import frontend metric calculation
-import { supabase } from '@/supabaseClient';
+import LoginView from './components/LoginView';
+import DriverDashboard from './components/DriverDashboard';
+import AdminDashboard from './components/AdminDashboard';
+import { Driver, PaymentTransaction, Car } from './types';
+import { calculateMomentum } from './utils'; // Import frontend metric calculation
+import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
