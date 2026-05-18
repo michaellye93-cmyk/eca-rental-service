@@ -63,3 +63,14 @@ export interface DriverMetrics {
   progressPercent: number;
   dailyInterest: number;        // Next day's penalty increment
 }
+
+export interface Invoice {
+  id: string;             // driverId_cycleIndex
+  driverId: string;
+  cycleIndex: number;
+  dueDate: string;        // YYYY-MM-DD
+  amount: number;
+  amountPaid: number;
+  remainingBalance: number;
+  status: 'PAID' | 'PARTIAL' | 'UNPAID';
+}

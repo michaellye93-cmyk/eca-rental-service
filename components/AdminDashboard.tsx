@@ -3,6 +3,8 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Driver, DriverStatus, Car } from '../types';
 import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance } from '../utils';
+import DebtCollectionView from './DebtCollectionView';
+import AnalyticsView from './AnalyticsView';
 import { 
   LogOut, 
   TrendingUp, 
@@ -84,7 +86,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefresh
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'INFLOW' | 'CARS'>('ACTIVE');
+  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'INFLOW' | 'CARS' | 'DEBT_COLLECTION' | 'ANALYTICS'>('ACTIVE');
   const [inflowViewMode, setInflowViewMode] = useState<'PERFORMANCE' | 'CASHFLOW'>('PERFORMANCE');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('ALL');
   const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
@@ -997,11 +999,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit overflow-x-auto">
           <button onClick={() => setViewMode('ACTIVE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${viewMode === 'ACTIVE' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}>Active Fleet</button>
           <button onClick={() => setViewMode('DELISTED')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DELISTED' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Archive className="w-4 h-4" /> Delisted / Returned</button>
+          <button onClick={() => setViewMode('DEBT_COLLECTION')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DEBT_COLLECTION' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><DollarSign className="w-4 h-4" /> Debt Collection</button>
           
           {userRole === 'admin' && (
             <>
               <button onClick={() => setViewMode('INFLOW')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'INFLOW' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Activity className="w-4 h-4" /> Weekly Inflow</button>
               <button onClick={() => setViewMode('CARS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'CARS' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CarIcon className="w-4 h-4" /> Fleet Management</button>
+              <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
             </>
           )}
         </div>
@@ -1114,6 +1118,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </tbody>
                     </table>
                 </div>
+             </div>
+          ) : viewMode === 'ANALYTICS' && userRole === 'admin' ? (
+             <div className="p-6 bg-gray-50/50">
+               <AnalyticsView drivers={driverData} />
+             </div>
+          ) : viewMode === 'DEBT_COLLECTION' ? (
+             <div className="p-6 bg-gray-50/50">
+               <DebtCollectionView 
+                 drivers={driverData} 
+                 onLogPayment={(invDriver, amount) => {
+                   setSelectedDriverForPayment(invDriver);
+                   setPaymentAmount(amount.toString());
+                   setIsPaymentModalOpen(true);
+                 }} 
+               />
              </div>
           ) : viewMode === 'INFLOW' ? (
              /* --- INFLOW VIEW --- */
