@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/genai": "^1.39.0",
     "@supabase/supabase-js": "2",
+    "html2pdf.js": "^0.14.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
