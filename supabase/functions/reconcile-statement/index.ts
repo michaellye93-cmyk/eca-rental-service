@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
     // Use Gemini 3.0 Flash model (or fallback to latest stable 1.5 flash if 3.0 not universally routed yet)
     // using the HTTP POST API.
-    const modelName = "gemini-3.0-flash";
+    const modelName = "gemini-2.5-flash";
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(geminiUrl, {

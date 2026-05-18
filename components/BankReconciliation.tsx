@@ -87,6 +87,10 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
       // So let's use a standard fetch to the edge function URL
       
       // Try using native fetch to avoid supabase JS FormData bugs
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error("File is too large. Please upload a file smaller than 2MB.");
+      }
+
       const sessionResponse = await supabase.auth.getSession();
       const token = sessionResponse.data.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -96,6 +100,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
         body: formData,
       });
