@@ -302,3 +302,79 @@ export const calculateMomentum = (driver: Driver) => {
 
     return { avgLateness, lastLateness, velocity, isSlipping, trend, isPerfect };
 };
+
+import { Invoice } from './types';
+
+export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new Date()): Invoice[] => {
+  const invoices: Invoice[] = [];
+  const startDate = new Date(driver.contractStartDate);
+  
+  // Clone payments to consume them (FIFO)
+  // Sort by date ascending AND Filter by referenceDate
+  let availablePayments = (driver.paymentHistory || [])
+    .map(p => ({ ...p, date: new Date(p.date) }))
+    .filter(p => p.date <= referenceDate)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Generate invoices for the whole contract duration
+  for (let i = 0; i < driver.contractDuration; i++) {
+    const invoiceDate = new Date(startDate);
+    if (driver.rentalCycle === 'MONTHLY') {
+      invoiceDate.setMonth(startDate.getMonth() + i);
+    } else {
+      invoiceDate.setDate(startDate.getDate() + (i * 7));
+    }
+
+    // Stop generating if contract effectively ended before this invoice
+    if (driver.contractEndDate) {
+      const cEndDate = new Date(driver.contractEndDate);
+      cEndDate.setMilliseconds(cEndDate.getMilliseconds() - 1);
+      if (invoiceDate > cEndDate) break;
+    }
+    
+    if (driver.isDelisted && driver.delistDate) {
+      const dDate = new Date(driver.delistDate);
+      dDate.setMilliseconds(dDate.getMilliseconds() - 1);
+      if (invoiceDate > dDate) break;
+    }
+
+    let invoicePrincipal = driver.rentalRate;
+    let amountPaidToThisInvoice = 0;
+
+    // Consumption Logic: Pay off this invoice with available payments
+    while (invoicePrincipal > 0.01) {
+        if (availablePayments.length === 0) break;
+        
+        let payment = availablePayments[0];
+        let allocation = Math.min(invoicePrincipal, payment.amount);
+        
+        invoicePrincipal -= allocation;
+        amountPaidToThisInvoice += allocation;
+        payment.amount -= allocation;
+        
+        if (payment.amount <= 0.01) {
+            availablePayments.shift();
+        }
+    }
+
+    let status: 'PAID' | 'PARTIAL' | 'UNPAID' = 'UNPAID';
+    if (invoicePrincipal <= 0.01) {
+      status = 'PAID';
+    } else if (amountPaidToThisInvoice > 0) {
+      status = 'PARTIAL';
+    }
+
+    invoices.push({
+      id: `${driver.id}_${i}`,
+      driverId: driver.id,
+      cycleIndex: i,
+      dueDate: invoiceDate.toISOString().split('T')[0],
+      amount: driver.rentalRate,
+      amountPaid: amountPaidToThisInvoice,
+      remainingBalance: invoicePrincipal > 0.01 ? invoicePrincipal : 0,
+      status
+    });
+  }
+
+  return invoices;
+};
