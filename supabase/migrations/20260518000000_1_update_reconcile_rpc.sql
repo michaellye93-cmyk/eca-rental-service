@@ -28,26 +28,18 @@ BEGIN
 
         IF FOUND THEN
             -- Add to paired
-            paired_json := paired_json || jsonb_build_object(
+            paired_json := paired_json || (current_tx || jsonb_build_object(
                 'status', 'MATCHED',
-                'trans_date', current_tx->>'trans_date',
-                'amount', current_tx->>'amount',
-                'sender_name', current_tx->>'sender_name',
-                'reference', current_tx->>'reference',
                 'driver_id', matched_driver.id,
                 'plate_number', matched_driver.car_plate
-            );
+            ));
             used_driver_ids := used_driver_ids || matched_driver.id;
         ELSE
             -- Add to unpaired
-            unpaired_json := unpaired_json || jsonb_build_object(
+            unpaired_json := unpaired_json || (current_tx || jsonb_build_object(
                 'status', 'UNMATCHED',
-                'trans_date', current_tx->>'trans_date',
-                'amount', current_tx->>'amount',
-                'sender_name', current_tx->>'sender_name',
-                'reference', current_tx->>'reference',
                 'plate_number', 'UNKNOWN'
-            );
+            ));
         END IF;
 
     END LOOP;

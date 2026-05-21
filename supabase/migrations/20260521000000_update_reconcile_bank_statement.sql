@@ -8,16 +8,12 @@ DECLARE
     matched_driver RECORD;
     paired_json JSONB := '[]'::JSONB;
     unpaired_json JSONB := '[]'::JSONB;
-    used_driver_ids UUID[] := '{}'; -- Track matched drivers in this loop
+    used_driver_ids UUID[] := '{}'::UUID[];
     current_tx JSONB;
 BEGIN
     FOR current_tx IN SELECT * FROM jsonb_array_elements(batch_transactions)
     LOOP
-        -- Find a matching driver based on the exact amount
-        -- 1. Match 'amount' to 'rental_rate'
-        -- 2. Prioritize oldest 'contract_start_date'
-        -- 3. Exclude already used drivers in this loop
-        SELECT id, car_plate, contract_start_date
+        SELECT id, car_plate
         INTO matched_driver
         FROM drivers
         WHERE rental_rate = (current_tx->>'amount')::NUMERIC
@@ -27,29 +23,18 @@ BEGIN
         LIMIT 1;
 
         IF FOUND THEN
-            -- Add to paired
-            paired_json := paired_json || jsonb_build_object(
+            paired_json := paired_json || (current_tx || jsonb_build_object(
                 'status', 'MATCHED',
-                'trans_date', current_tx->>'trans_date',
-                'amount', current_tx->>'amount',
-                'sender_name', current_tx->>'sender_name',
-                'reference', current_tx->>'reference',
                 'driver_id', matched_driver.id,
                 'plate_number', matched_driver.car_plate
-            );
+            ));
             used_driver_ids := used_driver_ids || matched_driver.id;
         ELSE
-            -- Add to unpaired
-            unpaired_json := unpaired_json || jsonb_build_object(
+            unpaired_json := unpaired_json || (current_tx || jsonb_build_object(
                 'status', 'UNMATCHED',
-                'trans_date', current_tx->>'trans_date',
-                'amount', current_tx->>'amount',
-                'sender_name', current_tx->>'sender_name',
-                'reference', current_tx->>'reference',
                 'plate_number', 'UNKNOWN'
-            );
+            ));
         END IF;
-
     END LOOP;
 
     RETURN jsonb_build_object(
