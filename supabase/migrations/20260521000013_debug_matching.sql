@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.reconcile_bank_statement(batch_transactions JSONB)
+CREATE OR REPLACE FUNCTION reconcile_bank_statement(batch_transactions JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -70,7 +70,7 @@ BEGIN
             match_reason := 'PLATE';
         END IF;
 
-        -- 2. HIGH: Match by driver name in sender_name
+        -- 2. HIGH: Match by driver name in sender_name or reference
         IF matched_driver IS NULL THEN
             SELECT id, car_plate, name
             INTO matched_driver
@@ -80,6 +80,7 @@ BEGIN
                 AND (
                     (current_tx->>'sender_name') ILIKE '%' || TRIM(name) || '%'
                     OR (current_tx->>'reference') ILIKE '%' || TRIM(name) || '%'
+                    OR TRIM(name) ILIKE '%' || (current_tx->>'sender_name') || '%'
                 )
             ORDER BY is_delisted ASC, LENGTH(name) DESC
             LIMIT 1;

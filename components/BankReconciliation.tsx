@@ -10,7 +10,7 @@ interface ReconcileTransaction {
   amount: number;
   sender_name: string;
   reference: string;
-  plate_number?: string;
+  plate_number?: string; matched_by?: string; matched_driver_name?: string;
   driver_id?: string;
 }
 
@@ -358,7 +358,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                              {tx.status === 'MATCHED' && (
                                 <div className="absolute top-1/2 left-3 transform -translate-y-1/2 opacity-90 pointer-events-none">
                                   <div className="border-2 border-[#16a34a] px-2 py-0.5 rounded-sm font-bold text-[#16a34a] text-[11px] flex items-center justify-center rotate-[-2deg] uppercase tracking-widest bg-white/80 backdrop-blur-sm">
-                                     {tx.plate_number || 'MATCHED'}
+                                     {tx.plate_number || 'MATCHED'} {tx.matched_by ? '(' + tx.matched_by + ')' : ''} {tx.matched_driver_name}
                                   </div>
                                 </div>
                              )}

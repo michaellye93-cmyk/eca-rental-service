@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.reconcile_bank_statement(batch_transactions JSONB)
+CREATE OR REPLACE FUNCTION reconcile_bank_statement(batch_transactions JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -13,7 +13,6 @@ DECLARE
     max_date DATE;
     sys_pay RECORD;
     bank_found BOOLEAN;
-    match_reason TEXT;
 BEGIN
     SELECT MIN((tx->>'trans_date')::DATE), MAX((tx->>'trans_date')::DATE)
     INTO min_date, max_date
@@ -21,8 +20,8 @@ BEGIN
 
     FOR sys_pay IN 
         SELECT p.id, p.amount, p.date as trans_date, d.name as driver_name, d.car_plate as plate_number 
-        FROM public.payments p
-        JOIN public.drivers d ON p.driver_id = d.id
+        FROM payments p
+        JOIN drivers d ON p.driver_id = d.id
         WHERE p.date >= min_date AND p.date <= max_date
     LOOP
         bank_found := FALSE;
@@ -49,53 +48,61 @@ BEGIN
     FOR current_tx IN SELECT * FROM jsonb_array_elements(batch_transactions)
     LOOP
         matched_driver := NULL;
-        match_reason := '';
 
-        -- 1. STRONGEST: Match by exact car plate (allow delisted drivers, but prefer active)
-        SELECT id, car_plate, name
+        SELECT id, car_plate
         INTO matched_driver
-        FROM public.drivers
+        FROM drivers
         WHERE 
-            LENGTH(REPLACE(REPLACE(car_plate, ' ', ''), '-', '')) > 2
+            is_delisted = FALSE
             AND (
-                REPLACE(REPLACE(current_tx->>'reference', ' ', ''), '-', '') ILIKE '%' || REPLACE(REPLACE(car_plate, ' ', ''), '-', '') || '%'
-                OR REPLACE(REPLACE(current_tx->>'sender_name', ' ', ''), '-', '') ILIKE '%' || REPLACE(REPLACE(car_plate, ' ', ''), '-', '') || '%'
-                OR REPLACE(REPLACE(current_tx->>'reference_1', ' ', ''), '-', '') ILIKE '%' || REPLACE(REPLACE(car_plate, ' ', ''), '-', '') || '%'
-                OR REPLACE(REPLACE(current_tx->>'reference_2', ' ', ''), '-', '') ILIKE '%' || REPLACE(REPLACE(car_plate, ' ', ''), '-', '') || '%'
+                REPLACE(current_tx->>'reference', ' ', '') ILIKE '%' || REPLACE(car_plate, ' ', '') || '%'
+                OR REPLACE(current_tx->>'sender_name', ' ', '') ILIKE '%' || REPLACE(car_plate, ' ', '') || '%'
+                OR REPLACE(current_tx->>'reference_1', ' ', '') ILIKE '%' || REPLACE(car_plate, ' ', '') || '%'
+                OR REPLACE(current_tx->>'reference_2', ' ', '') ILIKE '%' || REPLACE(car_plate, ' ', '') || '%'
             )
-        ORDER BY is_delisted ASC, LENGTH(car_plate) DESC
         LIMIT 1;
 
-        IF matched_driver IS NOT NULL THEN
-            match_reason := 'PLATE';
+        IF matched_driver IS NULL THEN
+            SELECT id, car_plate
+            INTO matched_driver
+            FROM drivers
+            WHERE
+                is_delisted = FALSE
+                AND (
+                    current_tx->>'sender_name' ILIKE '%' || name || '%'
+                    OR current_tx->>'reference' ILIKE '%' || name || '%'
+                )
+            LIMIT 1;
         END IF;
 
-        -- 2. HIGH: Match by driver name in sender_name
         IF matched_driver IS NULL THEN
-            SELECT id, car_plate, name
+            SELECT d.id, d.car_plate
             INTO matched_driver
-            FROM public.drivers
-            WHERE
-                LENGTH(TRIM(name)) > 5
-                AND (
-                    (current_tx->>'sender_name') ILIKE '%' || TRIM(name) || '%'
-                    OR (current_tx->>'reference') ILIKE '%' || TRIM(name) || '%'
-                )
-            ORDER BY is_delisted ASC, LENGTH(name) DESC
+            FROM payments p
+            JOIN drivers d ON p.driver_id = d.id
+            WHERE p.amount = (current_tx->>'amount')::NUMERIC
+              AND p.date = (current_tx->>'trans_date')::DATE
+            ORDER BY
+                CASE WHEN current_tx->>'sender_name' ILIKE '%' || d.name || '%' THEN 0 ELSE 1 END ASC
             LIMIT 1;
+        END IF;
 
-            IF matched_driver IS NOT NULL THEN
-                match_reason := 'NAME';
-            END IF;
+        IF matched_driver IS NULL THEN
+            SELECT id, car_plate
+            INTO matched_driver
+            FROM drivers
+            WHERE
+                is_delisted = FALSE
+                AND rental_rate = (current_tx->>'amount')::NUMERIC
+                AND rental_rate > 0
+            LIMIT 1;
         END IF;
 
         IF matched_driver IS NOT NULL THEN
             paired_json := paired_json || (current_tx || jsonb_build_object(
                 'status', 'MATCHED',
                 'driver_id', matched_driver.id,
-                'plate_number', matched_driver.car_plate,
-                'matched_by', match_reason,
-                'matched_driver_name', matched_driver.name
+                'plate_number', matched_driver.car_plate
             ));
         ELSE
             unpaired_json := unpaired_json || (current_tx || jsonb_build_object(
