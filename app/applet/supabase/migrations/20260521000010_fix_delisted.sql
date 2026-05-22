@@ -13,7 +13,6 @@ DECLARE
     max_date DATE;
     sys_pay RECORD;
     bank_found BOOLEAN;
-    match_reason TEXT;
 BEGIN
     SELECT MIN((tx->>'trans_date')::DATE), MAX((tx->>'trans_date')::DATE)
     INTO min_date, max_date
@@ -49,10 +48,9 @@ BEGIN
     FOR current_tx IN SELECT * FROM jsonb_array_elements(batch_transactions)
     LOOP
         matched_driver := NULL;
-        match_reason := '';
 
-        -- 1. STRONGEST: Match by exact car plate (allow delisted drivers, but prefer active)
-        SELECT id, car_plate, name
+        -- 1. STRONGEST: Match by exact car plate (even if delisted)
+        SELECT id, car_plate
         INTO matched_driver
         FROM public.drivers
         WHERE 
@@ -66,36 +64,27 @@ BEGIN
         ORDER BY is_delisted ASC, LENGTH(car_plate) DESC
         LIMIT 1;
 
-        IF matched_driver IS NOT NULL THEN
-            match_reason := 'PLATE';
-        END IF;
-
-        -- 2. HIGH: Match by driver name in sender_name
+        -- 2. HIGH: Match by driver name in sender_name or reference
         IF matched_driver IS NULL THEN
-            SELECT id, car_plate, name
+            SELECT id, car_plate
             INTO matched_driver
             FROM public.drivers
             WHERE
-                LENGTH(TRIM(name)) > 5
+                LENGTH(TRIM(name)) > 4
                 AND (
                     (current_tx->>'sender_name') ILIKE '%' || TRIM(name) || '%'
                     OR (current_tx->>'reference') ILIKE '%' || TRIM(name) || '%'
+                    OR TRIM(name) ILIKE '%' || (current_tx->>'sender_name') || '%'
                 )
             ORDER BY is_delisted ASC, LENGTH(name) DESC
             LIMIT 1;
-
-            IF matched_driver IS NOT NULL THEN
-                match_reason := 'NAME';
-            END IF;
         END IF;
 
         IF matched_driver IS NOT NULL THEN
             paired_json := paired_json || (current_tx || jsonb_build_object(
                 'status', 'MATCHED',
                 'driver_id', matched_driver.id,
-                'plate_number', matched_driver.car_plate,
-                'matched_by', match_reason,
-                'matched_driver_name', matched_driver.name
+                'plate_number', matched_driver.car_plate
             ));
         ELSE
             unpaired_json := unpaired_json || (current_tx || jsonb_build_object(
