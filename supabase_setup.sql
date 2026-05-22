@@ -64,6 +64,7 @@ create table if not exists public.payments (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   driver_id uuid references public.drivers(id) on delete cascade not null,
   amount numeric not null,
+  service_claim numeric default 0 not null,
   date date not null
 );
 

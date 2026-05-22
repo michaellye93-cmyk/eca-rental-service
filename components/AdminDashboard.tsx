@@ -59,7 +59,7 @@ interface AdminDashboardProps {
   drivers: Driver[];
   cars: Car[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string) => void;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number) => void;
   onCreateDriver: (driver: Driver) => void;
   onUpdateDriver: (driver: Driver) => void;
   onDelistDriver: (driverId: string) => void;
@@ -156,6 +156,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   // Payment Form State
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
   const [paymentDate, setPaymentDate] = useState('');
 
   // --- Security Logic ---
@@ -456,8 +457,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         // --- MODE 1: PERFORMANCE (Accrual/Recovery) ---
         if (inflowViewMode === 'PERFORMANCE') {
             let paymentPool = d.paymentHistory 
-                ? d.paymentHistory.reduce((sum, p) => sum + p.amount, 0) 
+                ? d.paymentHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0) 
                 : 0;
+
 
             let invoiceDate = new Date(contractStart);
             let safetyCounter = 0;
@@ -547,7 +549,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const weekIndex = weeks.findIndex(w => pDate >= w.start && pDate <= w.end);
                     
                     if (weekIndex !== -1) {
-                        weeks[weekIndex].collected += p.amount;
+                        weeks[weekIndex].collected += p.amount + (p.serviceClaim || 0);
                         
                         // Add to details
                         let detail = weeks[weekIndex].details.find((x: any) => x.id === d.id);
@@ -656,7 +658,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const historyText = selectedDriverForPayment.paymentHistory
-            .map(p => `- ${p.date}: RM${p.amount}`)
+            .map(p => `- ${p.date}: RM${p.amount}` + (p.serviceClaim ? ` + RM${p.serviceClaim} Service Claim` : ''))
             .join('\n');
         const prompt = `Role: Collection Analyst. Task: Analyze driver payment behavior. Driver: ${selectedDriverForPayment.name}. History:\n${historyText}\nProvide concise assessment and action item.`;
         const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
@@ -675,10 +677,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     if (!selectedDriverForPayment) return;
     const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) { alert("Invalid amount."); return; }
+    const serviceClaim = parseFloat(serviceClaimAmount) || 0;
+    if (isNaN(amount) || amount < 0) { alert("Invalid amount."); return; }
     if (!paymentDate) { alert("Select date."); return; }
-    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate);
-    setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setPaymentDate('');
+    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim);
+    setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate('');
   };
 
   const handleOpenCreateModal = () => { setEditingId(null); setFormData(initialFormState); setTagInput(''); setIsDriverModalOpen(true); };
@@ -1653,19 +1656,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="grid md:grid-cols-2 gap-6">
                     {/* Form Section */}
                     <form onSubmit={handleSubmitPayment} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Amount (RM)</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">RM</span>
-                                <input 
-                                    type="number" 
-                                    required
-                                    min="1"
-                                    step="0.01"
-                                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-lg font-bold text-gray-800"
-                                    value={paymentAmount}
-                                    onChange={(e) => setPaymentAmount(e.target.value)}
-                                />
+                        <div className="grid grid-cols-2 gap-4 items-end">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Amount (RM)</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">RM</span>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        min="0"
+                                        step="0.01"
+                                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-lg font-bold text-gray-800"
+                                        value={paymentAmount}
+                                        onChange={(e) => setPaymentAmount(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Service Claim (RM)</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">RM</span>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        step="0.01"
+                                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-lg font-bold text-gray-800"
+                                        value={serviceClaimAmount}
+                                        onChange={(e) => setServiceClaimAmount(e.target.value)}
+                                    />
+                                </div>
                             </div>
                         </div>
                         <div>

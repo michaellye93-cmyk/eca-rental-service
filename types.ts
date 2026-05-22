@@ -20,6 +20,7 @@ export interface PaymentTransaction {
   id: string;
   date: string; // YYYY-MM-DD
   amount: number;
+  serviceClaim?: number;
 }
 
 export interface Driver {

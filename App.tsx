@@ -67,11 +67,12 @@ const App: React.FC = () => {
             .map((p: any) => ({
                 id: p.id,
                 date: p.date,
-                amount: p.amount
+                amount: p.amount,
+                serviceClaim: p.service_claim || 0
             }))
             .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-            const totalPaid = myPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+            const totalPaid = myPayments.reduce((sum: number, p: any) => sum + p.amount + (p.serviceClaim || 0), 0);
 
             // Calculate momentum metrics locally to replace SQL View logic
             const tempDriverForCalc = {
@@ -275,21 +276,21 @@ const App: React.FC = () => {
   };
 
   // --- CRUD Operations (Passed to AdminDashboard) ---
-  const handleUpdatePayment = async (driverId: string, amount: number, date: string) => {
+  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0) => {
     try {
       setDrivers(prev => prev.map(d => {
         if (d.id === driverId) {
-          const newTx = { id: 'temp-' + Date.now(), amount, date };
+          const newTx = { id: 'temp-' + Date.now(), amount, serviceClaim, date };
           return {
              ...d,
-             totalAmountPaid: d.totalAmountPaid + amount,
+             totalAmountPaid: d.totalAmountPaid + amount + serviceClaim,
              paymentHistory: [newTx, ...d.paymentHistory]
           };
         }
         return d;
       }));
 
-      const { error } = await supabase.from('payments').insert({ driver_id: driverId, amount, date });
+      const { error } = await supabase.from('payments').insert({ driver_id: driverId, amount, service_claim: serviceClaim, date });
       if (error) throw error;
       await fetchDriversAndPayments();
     } catch (err: any) {
