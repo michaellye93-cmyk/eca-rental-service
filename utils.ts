@@ -2,6 +2,7 @@ import { Driver, DriverMetrics, DriverStatus } from './types';
 
 export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new Date()): DriverMetrics => {
   const now = new Date(referenceDate);
+  now.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
   const startDate = new Date(driver.contractStartDate);
   
   // Determine effective end date
@@ -93,7 +94,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   // Clone payments to consume them (FIFO)
   // Sort by date ascending AND Filter by referenceDate
   let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: new Date(p.date) }))
+    .map(p => ({ ...p, date: new Date(p.date), amount: p.amount + (p.serviceClaim || 0) }))
     .filter(p => p.date <= now) // Filter payments made after the reference date
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -308,12 +309,14 @@ import { Invoice } from './types';
 export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new Date()): Invoice[] => {
   const invoices: Invoice[] = [];
   const startDate = new Date(driver.contractStartDate);
+  const refDate = new Date(referenceDate);
+  refDate.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
   
   // Clone payments to consume them (FIFO)
   // Sort by date ascending AND Filter by referenceDate
   let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: new Date(p.date) }))
-    .filter(p => p.date <= referenceDate)
+    .map(p => ({ ...p, date: new Date(p.date), amount: p.amount + (p.serviceClaim || 0) }))
+    .filter(p => p.date <= refDate)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   // Generate invoices for the whole contract duration

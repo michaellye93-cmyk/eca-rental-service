@@ -1,5 +1,6 @@
 {
   "name": "ECA RENTAL MANAGEMENT (COMPLETE)",
   "description": "A gamified E-hailing Car Rental Management System designed to track driver payments and visualize status.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 } 
