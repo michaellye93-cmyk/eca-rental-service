@@ -87,8 +87,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefresh
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'INFLOW' | 'CARS' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE'>('ACTIVE');
-  const [inflowViewMode, setInflowViewMode] = useState<'PERFORMANCE' | 'CASHFLOW'>('PERFORMANCE');
+  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'CARS' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE'>('ACTIVE');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('ALL');
+  const [highlightedDriverId, setHighlightedDriverId] = useState<string | null>(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('ALL');
   const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
   
@@ -161,8 +162,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- Security Logic ---
   useEffect(() => {
-    // Access Restriction: If staff is on INFLOW tab, redirect to ACTIVE
-    if (userRole === 'staff' && (viewMode === 'INFLOW' || viewMode === 'CARS')) {
+    // Access Restriction: If staff is on CARS tab, redirect to ACTIVE
+    if (userRole === 'staff' && viewMode === 'CARS') {
       setViewMode('ACTIVE');
     }
   }, [userRole, viewMode]);
@@ -289,43 +290,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return Array.from(tags).sort();
   }, [driverData]);
 
-  // Calculate Alerts for Feed
-  const alertFeedItems = useMemo(() => {
-    const alerts: any[] = [];
+  // Calculate top 10 active drivers whose last paid was 8 or more days ago
+  const habitualLateAlerts = useMemo(() => {
+    const alerts: { driver: Driver; daysSinceLastPay: number }[] = [];
+    const todayRef = new Date();
+    todayRef.setHours(0,0,0,0);
 
     driverData.filter(d => !d.isDelisted).forEach(d => {
-        // 1. Critical Slipping Alert (Mid or Bad Status + Slipping)
-        if ((d.metrics.status === DriverStatus.BAD || d.metrics.status === DriverStatus.MID) && d.velocityData.isSlipping) {
-             alerts.push({
-                id: d.id + '-slip',
-                driver: d,
-                type: 'CRITICAL',
-                msg: `Slipping Rapidly (+${d.velocityData.velocity.toFixed(0)} days)`
-             });
+      const lastPayment = d.paymentHistory && d.paymentHistory.length > 0 ? d.paymentHistory[0] : null;
+      if (lastPayment) {
+        const lastPaymentDate = new Date(lastPayment.date);
+        lastPaymentDate.setHours(0,0,0,0);
+        const diffTime = todayRef.getTime() - lastPaymentDate.getTime();
+        const daysSinceLastPay = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (daysSinceLastPay >= 8) {
+          alerts.push({
+            driver: d,
+            daysSinceLastPay
+          });
         }
-        // 2. Recovery Alert
-        else if (d.velocityData.isRecovering) {
-            alerts.push({
-                id: d.id + '-recover',
-                driver: d,
-                type: 'GOOD',
-                msg: `Recovering Habit (-${Math.abs(d.velocityData.velocity).toFixed(0)} days)`
-            });
+      } else {
+        // Rent started, no payment yet
+        const contractStartDate = new Date(d.contractStartDate);
+        contractStartDate.setHours(0,0,0,0);
+        const diffTime = todayRef.getTime() - contractStartDate.getTime();
+        const daysSinceStart = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        if (daysSinceStart >= 8) {
+          alerts.push({
+            driver: d,
+            daysSinceLastPay: daysSinceStart
+          });
         }
-        // 3. New Bad Entry
-        else if (d.metrics.status === DriverStatus.BAD && d.velocityData.velocity > 0) {
-             alerts.push({
-                id: d.id + '-bad',
-                driver: d,
-                type: 'WARNING',
-                msg: 'Entered Bad Status'
-             });
-        }
+      }
     });
 
-    // Sort: Critical first
-    return alerts.sort((a,b) => (a.type === 'CRITICAL' ? -1 : 1));
+    // Sort descending by delay time
+    return alerts.sort((a, b) => b.daysSinceLastPay - a.daysSinceLastPay).slice(0, 10);
   }, [driverData]);
+
+  const handleAlertClick = (driverId: string) => {
+    setViewMode('ACTIVE');
+    setStatusFilter('ALL');
+    setSearchTerm('');
+    setHighlightedDriverId(driverId);
+    
+    // Scroll and flash
+    setTimeout(() => {
+      const element = document.getElementById(`driver-row-${driverId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+
+    // Clear highlight after 4.5 seconds
+    setTimeout(() => {
+      setHighlightedDriverId(null);
+    }, 4500);
+  };
 
 
   // Filter based on View Mode, Search, Tags, and Risk Sort
@@ -335,7 +357,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // 1. View Mode
     if (viewMode === 'ACTIVE') result = result.filter(d => !d.isDelisted);
     if (viewMode === 'DELISTED') result = result.filter(d => d.isDelisted);
-    if (viewMode === 'INFLOW') return result; 
+
+    // 1.5 Fleet Health statusFilter click
+    if (statusFilter !== 'ALL') {
+      result = result.filter(d => d.metrics.status === statusFilter);
+    }
 
     // 2. Search
     if (searchTerm) {
@@ -389,7 +415,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
     });
-  }, [driverData, viewMode, searchTerm, selectedTagFilter, sortConfig]);
+  }, [driverData, viewMode, searchTerm, selectedTagFilter, sortConfig, statusFilter]);
 
   // Summary Stats
   const totalArrears = driverData.filter(d => !d.isDelisted).reduce((sum, d) => sum + Math.max(0, d.activeBalance.baseValue), 0);
@@ -398,193 +424,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const goodDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.GOOD).length;
   const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
 
-  // --- Financial Logic (Refactored: Dual Mode) ---
-  const weeklyFinancials = useMemo(() => {
-    const weeks: any[] = [];
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    
-    // 1. Setup 12-Week Buckets (Monday to Sunday)
-    const currentDay = today.getDay(); 
-    const diff = today.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
-    const currentMonday = new Date(today);
-    currentMonday.setDate(diff);
-
-    for (let i = 0; i < 12; i++) {
-        const startOfWeek = new Date(currentMonday);
-        startOfWeek.setDate(currentMonday.getDate() - (i * 7));
-        startOfWeek.setHours(0,0,0,0);
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23,59,59,999);
-
-        weeks.push({
-            id: i,
-            start: startOfWeek,
-            end: endOfWeek,
-            label: `${startOfWeek.getDate()}/${startOfWeek.getMonth()+1} - ${endOfWeek.getDate()}/${endOfWeek.getMonth()+1}`,
-            fullLabel: `${startOfWeek.toLocaleDateString()} - ${endOfWeek.toLocaleDateString()}`,
-            expected: 0,
-            collected: 0,
-            activeDriverCount: 0,
-            details: [] as any[]
-        });
-    }
-
-    // 2. Process Each Driver
-    drivers.forEach(d => {
-        // A. Determine Effective End Date
-        const contractStart = new Date(d.contractStartDate + 'T00:00:00');
-        let effectiveEnd: Date;
-        
-        if (d.contractEndDate) {
-            effectiveEnd = new Date(d.contractEndDate + 'T23:59:59.999');
-        } else {
-            let durationDays = d.contractDuration * (d.rentalCycle === 'MONTHLY' ? 30 : 7);
-            effectiveEnd = new Date(contractStart);
-            effectiveEnd.setDate(effectiveEnd.getDate() + durationDays);
-            effectiveEnd.setHours(23,59,59,999);
-        }
-
-        // Handle Delisted (Early Termination) overrides
-        if (d.isDelisted && d.delistDate) {
-             const delistDate = new Date(d.delistDate + 'T23:59:59.999');
-             if (delistDate < effectiveEnd) {
-                 effectiveEnd = delistDate;
-             }
-        }
-
-        // --- MODE 1: PERFORMANCE (Accrual/Recovery) ---
-        if (inflowViewMode === 'PERFORMANCE') {
-            let paymentPool = d.paymentHistory 
-                ? d.paymentHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0) 
-                : 0;
-
-
-            let invoiceDate = new Date(contractStart);
-            let safetyCounter = 0;
-            const maxCycles = 500; 
-
-            while (invoiceDate <= effectiveEnd && safetyCounter < maxCycles) {
-                if (invoiceDate > weeks[0].end) break;
-
-                const invoiceAmount = d.rentalCycle === 'MONTHLY' ? (d.rentalRate * 12 / 52) : d.rentalRate;
-                
-                let paidForThisInvoice = 0;
-                if (paymentPool >= invoiceAmount - 0.01) {
-                    paidForThisInvoice = invoiceAmount;
-                    paymentPool -= invoiceAmount;
-                } else if (paymentPool > 0) {
-                    paidForThisInvoice = paymentPool;
-                    paymentPool = 0;
-                }
-
-                const weekIndex = weeks.findIndex(w => invoiceDate >= w.start && invoiceDate <= w.end);
-                
-                if (weekIndex !== -1) {
-                    const week = weeks[weekIndex];
-                    week.expected += invoiceAmount;
-                    week.collected += paidForThisInvoice;
-                    week.activeDriverCount++;
-
-                    week.details.push({
-                        id: d.id,
-                        name: d.name,
-                        plate: d.carPlate,
-                        cycle: d.rentalCycle,
-                        expected: invoiceAmount,
-                        paid: paidForThisInvoice,
-                        isActive: true,
-                        contractEnded: false
-                    });
-                }
-
-                if (d.rentalCycle === 'MONTHLY') invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-                else invoiceDate.setDate(invoiceDate.getDate() + 7);
-                safetyCounter++;
-            }
-        } 
-        // --- MODE 2: CASH FLOW (Bank Deposits) ---
-        else {
-            // 1. Calculate Expected (Same as Performance - based on Invoices Due)
-            let invoiceDate = new Date(contractStart);
-            let safetyCounter = 0;
-            const maxCycles = 500;
-
-            while (invoiceDate <= effectiveEnd && safetyCounter < maxCycles) {
-                if (invoiceDate > weeks[0].end) break;
-                const invoiceAmount = d.rentalCycle === 'MONTHLY' ? (d.rentalRate * 12 / 52) : d.rentalRate;
-                const weekIndex = weeks.findIndex(w => invoiceDate >= w.start && invoiceDate <= w.end);
-                
-                if (weekIndex !== -1) {
-                    weeks[weekIndex].expected += invoiceAmount;
-                    weeks[weekIndex].activeDriverCount++;
-                    // Initialize detail for this driver if not exists
-                    let detail = weeks[weekIndex].details.find((x: any) => x.id === d.id);
-                    if (!detail) {
-                        detail = {
-                            id: d.id,
-                            name: d.name,
-                            plate: d.carPlate,
-                            cycle: d.rentalCycle,
-                            expected: 0,
-                            paid: 0,
-                            isActive: true,
-                            contractEnded: false
-                        };
-                        weeks[weekIndex].details.push(detail);
-                    }
-                    detail.expected += invoiceAmount;
-                }
-
-                if (d.rentalCycle === 'MONTHLY') invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-                else invoiceDate.setDate(invoiceDate.getDate() + 7);
-                safetyCounter++;
-            }
-
-            // 2. Calculate Collected (Based on Actual Payment Date)
-            if (d.paymentHistory) {
-                d.paymentHistory.forEach(p => {
-                    const pDate = new Date(p.date + 'T00:00:00');
-                    const weekIndex = weeks.findIndex(w => pDate >= w.start && pDate <= w.end);
-                    
-                    if (weekIndex !== -1) {
-                        weeks[weekIndex].collected += p.amount + (p.serviceClaim || 0);
-                        
-                        // Add to details
-                        let detail = weeks[weekIndex].details.find((x: any) => x.id === d.id);
-                        if (!detail) {
-                             // If they paid but had no invoice due (e.g. advance or old debt), add them
-                            detail = {
-                                id: d.id,
-                                name: d.name,
-                                plate: d.carPlate,
-                                cycle: d.rentalCycle,
-                                expected: 0,
-                                paid: 0,
-                                isActive: true, // They paid, so they are active in cash flow terms
-                                contractEnded: false
-                            };
-                            weeks[weekIndex].details.push(detail);
-                        }
-                        detail.paid += p.amount;
-                    }
-                });
-            }
-        }
-    });
-
-    // 3. Final Aggregation & Sorting
-    weeks.forEach(week => {
-        week.variance = week.collected - week.expected;
-        week.rate = week.expected > 0 ? (week.collected / week.expected) * 100 : 0;
-        // Sort details by shortfall (biggest shortfall first)
-        week.details.sort((a: any, b: any) => (b.expected - b.paid) - (a.expected - a.paid));
-    });
-
-    return weeks;
-  }, [drivers, inflowViewMode]);
-
   const getMonthlyCollectionBreakdown = () => {
     const breakdown: Record<string, number> = {};
     drivers.forEach(driver => {
@@ -592,7 +431,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         driver.paymentHistory.forEach(payment => {
             const date = new Date(payment.date);
             const monthKey = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount;
+            breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount + (payment.serviceClaim || 0);
         });
       }
     });
@@ -862,8 +701,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
-        {/* Immediate Capture Alert Feed - unchanged */}
-        {viewMode === 'ACTIVE' && (
+        {/* Immediate Capture Alert Feed - deactivated */}
+        {false && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex items-center h-16 relative">
                  <div className="bg-gray-900 text-white px-4 h-full flex items-center gap-2 z-10 shrink-0 shadow-md">
                     <Siren className="w-5 h-5 text-red-500 animate-pulse" />
@@ -875,7 +714,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  
                  <div className="flex-1 overflow-x-auto whitespace-nowrap p-3 flex items-center gap-3 no-scrollbar mask-image-gradient">
                      {/* Alert Feed Items */}
-                     {alertFeedItems.map(alert => (
+                     {[].map((alert: any) => (
                          <div key={alert.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold shadow-sm shrink-0 transition-transform hover:scale-105 cursor-default
                              ${alert.type === 'CRITICAL' 
                                 ? 'bg-red-100 text-red-800 border-red-200 ring-1 ring-red-300' 
@@ -895,7 +734,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                              </span>
                          </div>
                      ))}
-                     {alertFeedItems.length === 0 && (
+                     {[].length === 0 && (
                          <div className="text-sm text-gray-400 italic flex items-center gap-2 pl-2">
                              <CheckCircle2 className="w-4 h-4 text-green-500" /> Fleet performance stable. No alerts.
                          </div>
@@ -906,7 +745,125 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
         )}
 
+        {/* Merged Fleet Overview & Fleet Health Card Grid */}
+        {(viewMode === 'ACTIVE' || viewMode === 'DELISTED') && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Merged Active Fleet & Fleet Health Status */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 flex flex-col justify-between lg:col-span-2">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  Fleet Overview & Health Status
+                </h3>
+                
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Good Status Button */}
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setViewMode('ACTIVE');
+                      setStatusFilter(statusFilter === 'GOOD' ? 'ALL' : 'GOOD');
+                      tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer ${statusFilter === 'GOOD' ? 'bg-green-50 border-green-300 ring-2 ring-green-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                  >
+                    <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">GOOD STATUS</span>
+                    <span className="text-2xl font-black text-green-600">{goodDriversCount}</span>
+                    <span className="text-[9px] text-gray-400 block mt-1 hover:underline">Click to filter</span>
+                  </button>
+
+                  {/* Mid Status Button */}
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setViewMode('ACTIVE');
+                      setStatusFilter(statusFilter === 'MID' ? 'ALL' : 'MID');
+                      tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer ${statusFilter === 'MID' ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                  >
+                    <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">MID STATUS</span>
+                    <span className="text-2xl font-black text-yellow-600">{midDriversCount}</span>
+                    <span className="text-[9px] text-gray-400 block mt-1 hover:underline">Click to filter</span>
+                  </button>
+
+                  {/* Bad Status Button */}
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setViewMode('ACTIVE');
+                      setStatusFilter(statusFilter === 'BAD' ? 'ALL' : 'BAD');
+                      tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer ${statusFilter === 'BAD' ? 'bg-red-50 border-red-300 ring-2 ring-red-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                  >
+                    <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">BAD STATUS</span>
+                    <span className="text-2xl font-black text-red-600">{badDriversCount}</span>
+                    <span className="text-[9px] text-gray-400 block mt-1 hover:underline">Click to filter</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-between items-center bg-gray-50 rounded-lg p-3.5 border border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                  <span className="text-sm font-medium text-gray-700">Total Active Fleet:</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-black text-gray-900">{activeFleetCount}</span>
+                  <span className="text-xs text-gray-400 font-medium">vehicles total</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Habitual Late Alert Feed */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 flex flex-col h-full max-h-[265px] overflow-hidden lg:col-span-1">
+              <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+                <h3 className="text-base font-semibold text-gray-800 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
+                  Late Alerts (8d+)
+                </h3>
+                <span className="bg-red-50 text-red-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase border border-red-200 tracking-wider">
+                  Top {habitualLateAlerts.length}
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+                {habitualLateAlerts.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                    <CheckCircle2 className="w-8 h-8 text-green-500 mb-1 animate-bounce" />
+                    <p className="text-xs text-gray-400 font-medium">All accounts stable.</p>
+                  </div>
+                ) : (
+                  habitualLateAlerts.map(({ driver, daysSinceLastPay }) => (
+                    <button
+                      key={driver.id}
+                      type="button"
+                      onClick={() => handleAlertClick(driver.id)}
+                      className="w-full text-left flex items-center justify-between p-2 rounded-lg border border-gray-100 bg-gray-50 hover:bg-orange-50 hover:border-orange-200 transition-all text-xs cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0 group-hover:scale-125 transition-transform" />
+                        <div className="truncate font-semibold text-gray-800 group-hover:text-orange-900 leading-tight">
+                          {driver.name}
+                          <span className="block text-[10px] text-gray-400 font-mono font-normal">
+                            {driver.carPlate}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="bg-orange-100 text-orange-850 font-mono font-bold px-1.5 py-0.5 rounded shrink-0 leading-none">
+                         {daysSinceLastPay}d
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* KPI Cards Grid - unchanged */}
+        {false && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 relative overflow-hidden">
             <div className="flex justify-between items-start relative z-0">
@@ -998,6 +955,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* View Toggle Tabs - unchanged */}
         <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit overflow-x-auto">
@@ -1007,7 +965,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           
           {userRole === 'admin' && (
             <>
-              <button onClick={() => setViewMode('INFLOW')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'INFLOW' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Activity className="w-4 h-4" /> Weekly Inflow</button>
               <button onClick={() => setViewMode('CARS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'CARS' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CarIcon className="w-4 h-4" /> Fleet Management</button>
               <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
               <button onClick={() => setViewMode('RECONCILE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'RECONCILE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CheckCircle2 className="w-4 h-4" /> Bank Recon</button>
@@ -1140,104 +1097,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    setSelectedDriverForPayment(invDriver);
                    setPaymentAmount(amount.toString());
                    setIsPaymentModalOpen(true);
-                 }} 
-               />
-             </div>
-          ) : viewMode === 'INFLOW' ? (
-             /* --- INFLOW VIEW --- */
-             <div>
-                 <div className="px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center bg-gray-50 gap-4">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                            <Activity className="w-5 h-5 text-blue-600" /> Cash Inflow Monitoring
-                        </h2>
-                        
-                        {/* LOGIC TOGGLE */}
-                        <div className="flex bg-gray-200 rounded-lg p-1">
-                            <button 
-                                onClick={() => setInflowViewMode('PERFORMANCE')}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${inflowViewMode === 'PERFORMANCE' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                Performance
-                            </button>
-                            <button 
-                                onClick={() => setInflowViewMode('CASHFLOW')}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${inflowViewMode === 'CASHFLOW' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                Cash Flow
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">Last 12 Weeks</span>
-                    </div>
-                 </div>
-                 <div className="p-6 text-center text-gray-500 text-sm italic">
-                    {inflowViewMode === 'PERFORMANCE' 
-                        ? "Tracking debt recovery based on invoice due dates (Accrual Basis)." 
-                        : "Tracking actual bank deposits received within the week (Cash Basis)."}
-                 </div>
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-600">
-                        <thead className="bg-gray-50 text-xs uppercase font-medium text-gray-500">
-                            <tr>
-                                <th className="px-6 py-3">Week Range</th>
-                                <th className="px-6 py-3 text-center">Active Drivers</th>
-                                <th className="px-6 py-3 text-right">Expected Rental</th>
-                                <th className="px-6 py-3 text-right">Cash Collected</th>
-                                <th className="px-6 py-3 text-right">{inflowViewMode === 'PERFORMANCE' ? 'Variance (Owed)' : 'Surplus / Deficit'}</th>
-                                <th className="px-6 py-3 w-1/4">Collection Rate</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {weeklyFinancials.map((week) => (
-                                <tr key={week.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4">
-                                        <div className="font-medium text-gray-900">{week.label}</div>
-                                        <div className="text-xs text-gray-400">Week {12 - week.id}</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <button 
-                                          onClick={() => setSelectedWeek(week)}
-                                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer underline decoration-blue-300 underline-offset-2 transition-colors"
-                                          title="View Breakdown"
-                                        >
-                                            <Eye className="w-3 h-3 mr-1" />
-                                            {week.activeDriverCount}
-                                        </button>
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-medium text-gray-500">
-                                        {formatCurrency(week.expected)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-bold text-gray-900">
-                                        {formatCurrency(week.collected)}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className={`font-mono font-medium ${week.variance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                            {week.variance > 0 ? '+' : ''}{formatCurrency(week.variance)}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xs font-bold w-8 text-right">{Math.round(week.rate)}%</span>
-                                            <div className="flex-1 bg-gray-200 rounded-full h-2">
-                                                <div 
-                                                    className={`h-2 rounded-full transition-all ${
-                                                        week.rate >= 100 ? 'bg-green-500' : 
-                                                        week.rate >= 80 ? 'bg-yellow-500' : 'bg-red-500'
-                                                    }`} 
-                                                    style={{ width: `${Math.min(100, week.rate)}%` }}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                 </div>
-             </div>
+                  }} 
+                />
+              </div>
           ) : (
             /* --- ACTIVE / DELISTED VIEW --- */
             <>
@@ -1275,6 +1137,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     {/* Risk Sort Toggle - Removed to use table headers */}
                 </div>
+
+                {statusFilter !== 'ALL' && (
+                    <div className="px-6 py-2.5 bg-blue-50 border-b border-blue-200 flex justify-between items-center text-xs text-blue-800 font-semibold">
+                        <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                            <span>Showing only drivers with <span className="underline uppercase tracking-wide font-black">{statusFilter}</span> status ({filteredDrivers.length} accounts matching)</span>
+                        </div>
+                        <button 
+                            type="button"
+                            onClick={() => setStatusFilter('ALL')}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-2.5 py-1 rounded shadow-sm text-[10px] cursor-pointer"
+                        >
+                            CLEAR FILTER
+                        </button>
+                    </div>
+                )}
 
                 {/* Table Header */}
                 <div className="overflow-x-auto">
@@ -1334,7 +1212,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            const tooltipText = `This driver paid ${Math.round(v.lastLateness)} days late, which is ${Math.round(v.velocity)} days slower than their usual ${Math.round(v.avgLateness)}-day habit. Contact them to prevent further slippage.`;
 
                         return (
-                            <tr key={driver.id} className={`group hover:bg-blue-50/50 transition-colors ${isRiskyAndSlipping ? 'bg-red-50/40 shadow-[0_0_15px_rgba(225,29,72,0.15)] border-l-4 border-l-red-500' : ''}`}>
+                            <tr id={`driver-row-${driver.id}`} key={driver.id} className={`group hover:bg-blue-50/50 transition-all duration-500 ${highlightedDriverId === driver.id ? 'ring-4 ring-orange-500 bg-orange-100/80 shadow-[0_0_20px_rgba(249,115,22,0.4)] scale-[1.01]' : ''} ${isRiskyAndSlipping ? 'bg-red-50/40 shadow-[0_0_15px_rgba(225,29,72,0.15)] border-l-4 border-l-red-500' : ''}`}>
                                 <td className="px-6 py-4 align-top">
                                     <div className="flex items-start gap-3">
                                         <div className="flex-1">
