@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
-import { Driver, DriverStatus, Car } from '../types';
+import { Driver, DriverStatus, Car, FleetSnapshot } from '../types';
 import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance } from '../utils';
 import DebtCollectionView from './DebtCollectionView';
 import AnalyticsView from './AnalyticsView';
@@ -33,8 +32,6 @@ import {
   Tags,
   Filter,
   Users,
-  Sparkles,
-  Brain,
   Eye,
   TrendingDown,
   ArrowRight,
@@ -58,8 +55,10 @@ import { supabase } from '../supabaseClient';
 interface AdminDashboardProps {
   drivers: Driver[];
   cars: Car[];
+  snapshots?: FleetSnapshot[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number) => void;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT') => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT') => void;
   onCreateDriver: (driver: Driver) => void;
   onUpdateDriver: (driver: Driver) => void;
   onDelistDriver: (driverId: string) => void;
@@ -74,8 +73,10 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   drivers, 
   cars,
+  snapshots = [],
   userRole, 
   onUpdatePayment, 
+  onEditPayment,
   onCreateDriver, 
   onUpdateDriver, 
   onDelistDriver,
@@ -118,9 +119,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingCarId, setEditingCarId] = useState<string | null>(null);
   const [selectedDriverForPayment, setSelectedDriverForPayment] = useState<Driver | null>(null);
   
-  // AI Analysis State
-  const [aiAnalysisResult, setAiAnalysisResult] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // Past Payment Edit State
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState<string>('');
+  const [editServiceClaim, setEditServiceClaim] = useState<string>('');
+  const [editDate, setEditDate] = useState<string>('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | null>(null);
 
 
 
@@ -159,6 +163,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
   const [paymentDate, setPaymentDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | null>(null);
 
   // --- Security Logic ---
   useEffect(() => {
@@ -424,6 +429,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const goodDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.GOOD).length;
   const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
 
+  const lastSnapshot = useMemo(() => {
+    if (!snapshots || snapshots.length === 0) return null;
+    return snapshots[snapshots.length - 1];
+  }, [snapshots]);
+
   const getMonthlyCollectionBreakdown = () => {
     const breakdown: Record<string, number> = {};
     drivers.forEach(driver => {
@@ -439,6 +449,80 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // --- Helpers ---
+  const formatSnapshotDateFriendly = (dateStr: string): string => {
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      const day = parseInt(parts[2], 10);
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const month = months[parseInt(parts[1], 10) - 1] || 'month';
+      
+      let j = day % 10, k = day % 100;
+      let suffix = "th";
+      if (j === 1 && k !== 11) {
+          suffix = "st";
+      } else if (j === 2 && k !== 12) {
+          suffix = "nd";
+      } else if (j === 3 && k !== 13) {
+          suffix = "rd";
+      }
+      return `${day}${suffix} ${month}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const renderTrendIndicator = (current: number, previous: number, type: 'GOOD' | 'MID' | 'BAD') => {
+    if (!lastSnapshot) {
+      return (
+        <span className="text-[9px] text-gray-400 block mt-1">
+          No baseline snapshot
+        </span>
+      );
+    }
+
+    const diff = current - previous;
+    const friendlyDate = formatSnapshotDateFriendly(lastSnapshot.snapshot_date);
+    
+    let isPositiveAspect = false;
+    if (type === 'GOOD') {
+      isPositiveAspect = diff > 0;
+    } else {
+      isPositiveAspect = diff < 0; 
+    }
+
+    const isUnchanged = diff === 0;
+    const diffPrefixed = diff > 0 ? `+${diff}` : `${diff}`;
+    
+    let textColorClass = "text-gray-500";
+    let bgClass = "bg-gray-100 border-gray-200 text-gray-600";
+    let Icon = Minus;
+
+    if (!isUnchanged) {
+      if (isPositiveAspect) {
+        textColorClass = "text-emerald-700 font-bold";
+        bgClass = "bg-emerald-50 border-emerald-200 text-emerald-700";
+        Icon = diff > 0 ? ArrowUpRight : ArrowDownRight;
+      } else {
+        textColorClass = "text-red-700 font-bold";
+        bgClass = "bg-red-50 border-red-200 text-red-700";
+        Icon = diff > 0 ? ArrowUpRight : ArrowDownRight;
+      }
+    }
+
+    return (
+      <div className="flex flex-col items-center mt-1.5 space-y-1">
+        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded-full border ${bgClass} ${textColorClass}`}>
+          <Icon className="w-2.5 h-2.5 stroke-[2.5]" />
+          {isUnchanged ? "Unchanged" : diffPrefixed}
+        </span>
+        <span className="text-[10px] text-gray-400 block font-medium">
+          vs {friendlyDate}
+        </span>
+      </div>
+    );
+  };
+
   const formatNric = (value: string) => {
     const cleaned = value.replace(/\D/g, '');
     const truncated = cleaned.slice(0, 12);
@@ -476,6 +560,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const currentMonthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const currentMonthCollection = getMonthlyCollectionBreakdown().find(b => b.month === currentMonthName)?.amount || 0;
 
+  const liveDriverForPayment = selectedDriverForPayment ? (drivers.find(d => d.id === selectedDriverForPayment.id) || selectedDriverForPayment) : null;
+
   // --- Handlers ---
   const handleSearchFocus = () => {
     tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -486,27 +572,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSelectedDriverForPayment(driver);
     setPaymentAmount(driver.rentalRate.toString());
     setPaymentDate(new Date().toISOString().split('T')[0]); 
-    setAiAnalysisResult(null); 
+    setPaymentMethod(null); // start empty
     setIsPaymentModalOpen(true);
-  };
-
-  const handleAnalyzeDriver = async () => {
-    if (!selectedDriverForPayment) return;
-    setIsAnalyzing(true);
-    setAiAnalysisResult(null);
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const historyText = selectedDriverForPayment.paymentHistory
-            .map(p => `- ${p.date}: RM${p.amount}` + (p.serviceClaim ? ` + RM${p.serviceClaim} Service Claim` : ''))
-            .join('\n');
-        const prompt = `Role: Collection Analyst. Task: Analyze driver payment behavior. Driver: ${selectedDriverForPayment.name}. History:\n${historyText}\nProvide concise assessment and action item.`;
-        const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-        setAiAnalysisResult(response.text);
-    } catch (error: any) {
-        setAiAnalysisResult("Unable to generate analysis.");
-    } finally {
-        setIsAnalyzing(false);
-    }
   };
 
   const handleDelistClick = (driver: Driver) => { setDriverToDelist(driver); };
@@ -519,8 +586,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const serviceClaim = parseFloat(serviceClaimAmount) || 0;
     if (isNaN(amount) || amount < 0) { alert("Invalid amount."); return; }
     if (!paymentDate) { alert("Select date."); return; }
-    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim);
-    setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate('');
+    if (!paymentMethod) { alert("Please select either BANK TRANSFER or CASH DEPOSIT."); return; }
+    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, paymentMethod);
+    setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null);
+  };
+
+  const handleStartEditTx = (tx: any) => {
+    setEditingTxId(tx.id);
+    setEditAmount(tx.amount.toString());
+    setEditServiceClaim((tx.serviceClaim || 0).toString());
+    setEditDate(tx.date);
+    setEditPaymentMethod(tx.paymentMethod || 'BANK TRANSFER');
+  };
+
+  const handleCancelEditTx = () => {
+    setEditingTxId(null);
+    setEditAmount('');
+    setEditServiceClaim('');
+    setEditDate('');
+    setEditPaymentMethod(null);
+  };
+
+  const handleSaveEditTx = async (txId: string) => {
+    const amountNum = parseFloat(editAmount);
+    const serviceClaimNum = parseFloat(editServiceClaim) || 0;
+    if (isNaN(amountNum) || amountNum < 0) {
+      alert("Invalid payment amount.");
+      return;
+    }
+    if (!editDate) {
+      alert("Please specify a valid payment date.");
+      return;
+    }
+    if (onEditPayment) {
+      onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER');
+    }
+    setEditingTxId(null);
+    setEditPaymentMethod(null);
   };
 
   const handleOpenCreateModal = () => { setEditingId(null); setFormData(initialFormState); setTagInput(''); setIsDriverModalOpen(true); };
@@ -756,7 +858,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   Fleet Overview & Health Status
                 </h3>
                 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-3 font-sans">
                   {/* Good Status Button */}
                   <button 
                     type="button"
@@ -765,11 +867,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setStatusFilter(statusFilter === 'GOOD' ? 'ALL' : 'GOOD');
                       tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
                     }}
-                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer ${statusFilter === 'GOOD' ? 'bg-green-50 border-green-300 ring-2 ring-green-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer flex flex-col justify-between items-center ${statusFilter === 'GOOD' ? 'bg-green-50 border-green-300 ring-2 ring-green-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
                   >
-                    <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">GOOD STATUS</span>
-                    <span className="text-2xl font-black text-green-600">{goodDriversCount}</span>
-                    <span className="text-[9px] text-gray-400 block mt-1 hover:underline">Click to filter</span>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">GOOD STATUS</span>
+                      <span className="text-2xl font-black text-green-600">{goodDriversCount}</span>
+                    </div>
+                    {renderTrendIndicator(goodDriversCount, lastSnapshot ? lastSnapshot.good_count : 0, 'GOOD')}
+                    <span className="text-[9px] text-gray-400 block mt-2 hover:underline font-semibold uppercase tracking-wider">Click to filter</span>
                   </button>
 
                   {/* Mid Status Button */}
@@ -780,11 +885,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setStatusFilter(statusFilter === 'MID' ? 'ALL' : 'MID');
                       tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
                     }}
-                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer ${statusFilter === 'MID' ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer flex flex-col justify-between items-center ${statusFilter === 'MID' ? 'bg-yellow-50 border-yellow-300 ring-2 ring-yellow-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
                   >
-                    <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">MID STATUS</span>
-                    <span className="text-2xl font-black text-yellow-600">{midDriversCount}</span>
-                    <span className="text-[9px] text-gray-400 block mt-1 hover:underline">Click to filter</span>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">MID STATUS</span>
+                      <span className="text-2xl font-black text-yellow-600">{midDriversCount}</span>
+                    </div>
+                    {renderTrendIndicator(midDriversCount, lastSnapshot ? lastSnapshot.mid_count : 0, 'MID')}
+                    <span className="text-[9px] text-gray-400 block mt-2 hover:underline font-semibold uppercase tracking-wider">Click to filter</span>
                   </button>
 
                   {/* Bad Status Button */}
@@ -795,11 +903,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setStatusFilter(statusFilter === 'BAD' ? 'ALL' : 'BAD');
                       tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
                     }}
-                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer ${statusFilter === 'BAD' ? 'bg-red-50 border-red-300 ring-2 ring-red-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+                    className={`p-4 rounded-xl border text-center transition-all cursor-pointer flex flex-col justify-between items-center ${statusFilter === 'BAD' ? 'bg-red-50 border-red-300 ring-2 ring-red-400' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
                   >
-                    <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">BAD STATUS</span>
-                    <span className="text-2xl font-black text-red-600">{badDriversCount}</span>
-                    <span className="text-[9px] text-gray-400 block mt-1 hover:underline">Click to filter</span>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold tracking-wider block mb-1">BAD STATUS</span>
+                      <span className="text-2xl font-black text-red-600">{badDriversCount}</span>
+                    </div>
+                    {renderTrendIndicator(badDriversCount, lastSnapshot ? lastSnapshot.bad_count : 0, 'BAD')}
+                    <span className="text-[9px] text-gray-400 block mt-2 hover:underline font-semibold uppercase tracking-wider">Click to filter</span>
                   </button>
                 </div>
               </div>
@@ -1435,20 +1546,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {formData.tags.map(tag => (
                           <span key={tag} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs flex items-center gap-1">
                               {tag}
-                              <button type="button" onClick={() => handleRemoveTag(tag)} className="hover:text-red-600"><X className="w-3 h-3" /></button>
+                              <button type="button" onClick={() => handleRemoveTag(tag)} className="hover:text-red-600"><X className="w-3.5 h-3.5" /></button>
                           </span>
                       ))}
+                      {formData.tags.length === 0 && (
+                          <span className="text-xs text-gray-400 italic">No tags selected</span>
+                      )}
                   </div>
-                  <div className="flex gap-2">
-                      <input 
-                          type="text" 
-                          placeholder="Add tag (e.g. Batch A, Staff)" 
-                          className="flex-1 px-3 py-2 rounded border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
-                          value={tagInput}
-                          onChange={(e) => setTagInput(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag(e))}
-                      />
-                      <button type="button" onClick={handleAddTag} className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded transition-colors"><Plus className="w-4 h-4" /></button>
+                  
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                      {/* Dropdown of available existing tags */}
+                      <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Choose Existing Tag</label>
+                          <select 
+                              className="w-full px-3 py-2 text-xs rounded border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-gray-700 h-[38px]"
+                              value=""
+                              onChange={(e) => {
+                                  const selectedVal = e.target.value;
+                                  if (selectedVal && !formData.tags.includes(selectedVal)) {
+                                      setFormData({ ...formData, tags: [...formData.tags, selectedVal] });
+                                  }
+                              }}
+                          >
+                              <option value="">-- Choose Tag --</option>
+                              {allTags.filter(tag => !formData.tags.includes(tag)).map(tag => (
+                                  <option key={tag} value={tag}>{tag}</option>
+                              ))}
+                          </select>
+                      </div>
+
+                      {/* Input for new tag */}
+                      <div>
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Or Create New Tag</label>
+                          <div className="flex gap-1.5 h-[38px]">
+                              <input 
+                                  type="text" 
+                                  placeholder="Type new tag..." 
+                                  className="flex-1 min-w-0 px-3 py-2 rounded border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs"
+                                  value={tagInput}
+                                  onChange={(e) => setTagInput(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag(e))}
+                              />
+                              <button 
+                                  type="button" 
+                                  onClick={handleAddTag} 
+                                  className="bg-blue-600 hover:bg-blue-700 text-white px-2.5 rounded transition-colors flex items-center justify-center cursor-pointer shadow-sm shadow-blue-600/10"
+                                  title="Add Tag"
+                              >
+                                  <Plus className="w-4 h-4" />
+                              </button>
+                          </div>
+                      </div>
                   </div>
               </div>
 
@@ -1515,99 +1663,231 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Payment Modal & others - unchanged */}
       {isPaymentModalOpen && selectedDriverForPayment && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
-            <div className="bg-blue-600 p-6 text-white shrink-0">
-               <h2 className="text-xl font-bold">Record Payment</h2>
-               <p className="text-blue-100 text-sm mt-1">For {selectedDriverForPayment.name}</p>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
+            <div className="bg-blue-600 p-6 text-white shrink-0 flex justify-between items-center">
+               <div>
+                  <h2 className="text-xl font-bold">Driver Payment Panel</h2>
+                  <p className="text-blue-100 text-sm mt-1">For {liveDriverForPayment?.name || selectedDriverForPayment.name}</p>
+               </div>
+               <button onClick={() => { setIsPaymentModalOpen(false); handleCancelEditTx(); }} className="p-1 hover:bg-blue-700/50 rounded-full transition-colors">
+                 <X className="w-6 h-6 text-white" />
+               </button>
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 
-                {/* --- Payment Schedule --- */}
-                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                        <CalendarCheck className="w-4 h-4" /> Invoice Schedule
-                    </h3>
-                    {renderPaymentSchedule(selectedDriverForPayment)}
-                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* LEFT SIDE: INVOICE SCHEDULE & CHRONOLOGICAL HISTORY (7 cols) */}
+                    <div className="lg:col-span-7 space-y-6">
+                        {/* --- Payment Schedule --- */}
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                            <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                <CalendarCheck className="w-4 h-4 text-blue-600" /> Invoice Schedule
+                            </h3>
+                            {liveDriverForPayment && renderPaymentSchedule(liveDriverForPayment)}
+                        </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
-                    {/* Form Section */}
-                    <form onSubmit={handleSubmitPayment} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 items-end">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Amount (RM)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">RM</span>
+                        {/* --- Recent 10 Transactions Log --- */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-200">
+                            <h3 className="text-sm font-bold text-gray-700 mb-3 flex flex-row items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-emerald-600" /> Recent 10 Transactions
+                                </div>
+                                <span className="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
+                                    Staff Log
+                                </span>
+                            </h3>
+                            
+                            {(!liveDriverForPayment?.paymentHistory || liveDriverForPayment.paymentHistory.length === 0) ? (
+                                <p className="text-xs text-gray-400 italic text-center py-4">No transactions recorded yet.</p>
+                            ) : (
+                                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                    {liveDriverForPayment.paymentHistory.slice(0, 10).map((tx) => {
+                                        const isEditing = editingTxId === tx.id;
+                                        return (
+                                            <div key={tx.id} className={`p-3 rounded-lg border text-sm transition-all duration-150 ${isEditing ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-gray-50 border-gray-100 hover:bg-gray-100/70'}`}>
+                                                {isEditing ? (
+                                                    <div className="space-y-3">
+                                                        <div className="grid grid-cols-4 gap-2">
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase">Amount (RM)</label>
+                                                                <input 
+                                                                    type="number" 
+                                                                    step="0.01"
+                                                                    className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none font-bold bg-white"
+                                                                    value={editAmount}
+                                                                    onChange={(e) => setEditAmount(e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase">Claim (RM)</label>
+                                                                <input 
+                                                                    type="number" 
+                                                                    step="0.01"
+                                                                    className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
+                                                                    value={editServiceClaim}
+                                                                    onChange={(e) => setEditServiceClaim(e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase">Date</label>
+                                                                <input 
+                                                                    type="date" 
+                                                                    className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
+                                                                    value={editDate}
+                                                                    onChange={(e) => setEditDate(e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase">Method</label>
+                                                                <select 
+                                                                    className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white font-medium text-[11px]"
+                                                                    value={editPaymentMethod || 'BANK TRANSFER'}
+                                                                    onChange={(e) => setEditPaymentMethod(e.target.value as 'BANK TRANSFER' | 'CASH DEPOSIT')}
+                                                                >
+                                                                    <option value="BANK TRANSFER">BANK TRANSFER</option>
+                                                                    <option value="CASH DEPOSIT">CASH DEPOSIT</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex justify-end gap-2 text-xs font-bold pt-1">
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={handleCancelEditTx} 
+                                                                className="px-2.5 py-1 text-gray-600 hover:bg-gray-200 rounded border border-gray-200 bg-white cursor-pointer"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => handleSaveEditTx(tx.id)} 
+                                                                className="px-2.5 py-1 text-white bg-green-600 hover:bg-green-700 rounded shadow cursor-pointer"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex justify-between items-center gap-3">
+                                                        <div className="space-y-0.5">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className="font-mono text-gray-500 text-xs font-semibold">{tx.date}</span>
+                                                                <span className="bg-blue-55 text-blue-700 text-[9px] font-bold px-1.5 py-0.2 rounded border border-blue-100">
+                                                                    ID: {tx.id.startsWith('temp-') ? 'Syncing...' : tx.id.slice(0, 8)}
+                                                                </span>
+                                                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${tx.paymentMethod === 'CASH DEPOSIT' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                                                                    {tx.paymentMethod || 'BANK TRANSFER'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="font-semibold text-gray-800">
+                                                                Paid: <span className="text-emerald-700">RM {tx.amount.toFixed(2)}</span>
+                                                                {tx.serviceClaim ? (
+                                                                    <span className="text-xs text-gray-500 font-normal"> (+ RM {tx.serviceClaim.toFixed(2)} Claim)</span>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleStartEditTx(tx)}
+                                                            className="px-2.5 py-1.5 text-xs font-bold text-blue-600 border border-blue-100 bg-blue-50/50 hover:bg-blue-100 rounded-md transition-colors shrink-0 cursor-pointer"
+                                                        >
+                                                            Edit Figure
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* RIGHT SIDE: RECORD NEW PAYMENT & SYSTEM INSIGHTS (5 cols) */}
+                    <div className="lg:col-span-5 space-y-6">
+                        {/* Record Form */}
+                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                                <DollarSign className="w-4 h-4 text-blue-600" /> Record New Payment
+                            </h3>
+                            <form onSubmit={handleSubmitPayment} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Amount (RM)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">RM</span>
+                                            <input 
+                                                type="number" 
+                                                required
+                                                min="0"
+                                                step="0.01"
+                                                className="w-full pl-9 pr-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-base font-bold text-gray-800 bg-white"
+                                                value={paymentAmount}
+                                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Claim (RM)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">RM</span>
+                                            <input 
+                                                type="number" 
+                                                min="0"
+                                                step="0.01"
+                                                className="w-full pl-9 pr-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-base font-bold text-gray-800 bg-white"
+                                                value={serviceClaimAmount}
+                                                onChange={(e) => setServiceClaimAmount(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Payment Date</label>
                                     <input 
-                                        type="number" 
+                                        type="date" 
                                         required
-                                        min="0"
-                                        step="0.01"
-                                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-lg font-bold text-gray-800"
-                                        value={paymentAmount}
-                                        onChange={(e) => setPaymentAmount(e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm font-medium bg-white"
+                                        value={paymentDate}
+                                        onChange={(e) => setPaymentDate(e.target.value)}
                                     />
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Service Claim (RM)</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">RM</span>
-                                    <input 
-                                        type="number" 
-                                        min="0"
-                                        step="0.01"
-                                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-lg font-bold text-gray-800"
-                                        value={serviceClaimAmount}
-                                        onChange={(e) => setServiceClaimAmount(e.target.value)}
-                                    />
+                                
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Payment Method</label>
+                                    <div className="flex gap-6 mt-1 p-2.5 border border-gray-100 rounded-lg bg-gray-50/50">
+                                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700 select-none">
+                                            <input 
+                                                type="checkbox" 
+                                                id="pm-bank-transfer"
+                                                className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                checked={paymentMethod === 'BANK TRANSFER'}
+                                                onChange={() => setPaymentMethod(paymentMethod === 'BANK TRANSFER' ? null : 'BANK TRANSFER')}
+                                            />
+                                            BANK TRANSFER
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700 select-none">
+                                            <input 
+                                                type="checkbox" 
+                                                id="pm-cash-deposit"
+                                                className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                checked={paymentMethod === 'CASH DEPOSIT'}
+                                                onChange={() => setPaymentMethod(paymentMethod === 'CASH DEPOSIT' ? null : 'CASH DEPOSIT')}
+                                            />
+                                            CASH DEPOSIT
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
-                            <input 
-                                type="date" 
-                                required
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                value={paymentDate}
-                                onChange={(e) => setPaymentDate(e.target.value)}
-                            />
-                        </div>
-                        
-                        <div className="pt-2 flex gap-3">
-                            <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors">Cancel</button>
-                            <button type="submit" className="flex-1 py-3 bg-blue-600 rounded-lg text-white font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">Confirm</button>
-                        </div>
-                    </form>
-
-                    {/* AI & Analysis Section */}
-                    <div className="space-y-4">
-                        {!aiAnalysisResult && !isAnalyzing && (
-                            <button onClick={handleAnalyzeDriver} className="w-full py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-purple-100 transition-colors">
-                                <Sparkles className="w-4 h-4" /> AI Analysis
-                            </button>
-                        )}
-                        {isAnalyzing && (
-                            <div className="flex items-center justify-center gap-2 text-purple-600 text-sm py-2">
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-                                Analyzing payment patterns...
-                            </div>
-                        )}
-                        {aiAnalysisResult && (
-                            <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 text-sm text-gray-800">
-                                <div className="flex items-start gap-2 mb-2">
-                                    <Brain className="w-5 h-5 text-purple-600 mt-0.5" />
-                                    <h4 className="font-bold text-purple-900">AI Insight</h4>
+                                
+                                <div className="pt-2 flex gap-3">
+                                    <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+                                    <button type="submit" className="flex-1 py-2 bg-blue-600 rounded-lg text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 cursor-pointer">Confirm</button>
                                 </div>
-                                <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line leading-relaxed">
-                                    {aiAnalysisResult}
-                                </div>
-                            </div>
-                        )}
+                            </form>
+                        </div>
                     </div>
                 </div>
+
             </div>
           </div>
         </div>

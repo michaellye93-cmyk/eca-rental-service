@@ -206,10 +206,10 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   };
 };
 
-export const calculateActiveBalance = (driver: Driver): { baseValue: number, accruedInterest: number } => {
+export const calculateActiveBalance = (driver: Driver, referenceDate?: Date): { baseValue: number, accruedInterest: number } => {
   // Unified Calculation: Sums invoices where status === 'unpaid' (handled by metrics logic)
   // Ignores VOID (handled by contractEndDate capping logic above)
-  const metrics = calculateDriverMetrics(driver);
+  const metrics = calculateDriverMetrics(driver, referenceDate);
   return {
     baseValue: metrics.principalOutstanding,
     accruedInterest: metrics.penaltyAmount
@@ -380,4 +380,67 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new
   }
 
   return invoices;
+};
+
+export const getElapsedMonthEndDates = (): Date[] => {
+  const dates: Date[] = [];
+  const startYear = 2026;
+  const startMonth = 0; // January
+  
+  const now = new Date();
+  
+  // Use Asia/Kuala_Lumpur year and month
+  const klFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: 'numeric' });
+  const parts = klFormatter.formatToParts(now);
+  const klYear = parseInt(parts.find(p => p.type === 'year')?.value || '2026', 10);
+  const klMonth = parseInt(parts.find(p => p.type === 'month')?.value || '5', 10) - 1; // 0-indexed
+  
+  let currentY = startYear;
+  let currentM = startMonth;
+  
+  while (currentY < klYear || (currentY === klYear && currentM <= klMonth)) {
+    const lastDay = new Date(currentY, currentM + 1, 0); // last day of currentY/currentM month
+    const yearStr = lastDay.getFullYear();
+    const monthStr = String(lastDay.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(lastDay.getDate()).padStart(2, '0');
+    
+    // Construct KL 23:59:00 timestamp
+    const snapshotISO = `${yearStr}-${monthStr}-${dayStr}T23:59:00+08:00`;
+    const snapshotDate = new Date(snapshotISO);
+    
+    if (snapshotDate <= now) {
+      dates.push(snapshotDate);
+    }
+    
+    currentM++;
+    if (currentM > 11) {
+      currentM = 0;
+      currentY++;
+    }
+  }
+  
+  return dates;
+};
+
+export const calculateSnapshotForDate = (drivers: Driver[], snapshotDate: Date) => {
+  let good = 0;
+  let mid = 0;
+  let bad = 0;
+  
+  drivers.forEach(d => {
+    const contractStart = new Date(d.contractStartDate);
+    if (contractStart > snapshotDate) return; // not active yet
+    
+    if (d.isDelisted && d.delistDate) {
+      const delist = new Date(d.delistDate);
+      if (delist <= snapshotDate) return; // already delisted by this snapshot date
+    }
+    
+    const metrics = calculateDriverMetrics(d, snapshotDate);
+    if (metrics.status === DriverStatus.GOOD) good++;
+    else if (metrics.status === DriverStatus.MID) mid++;
+    else if (metrics.status === DriverStatus.BAD) bad++;
+  });
+  
+  return { good, mid, bad };
 };

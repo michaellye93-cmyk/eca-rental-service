@@ -65,7 +65,18 @@ create table if not exists public.payments (
   driver_id uuid references public.drivers(id) on delete cascade not null,
   amount numeric not null,
   service_claim numeric default 0 not null,
-  date date not null
+  date date not null,
+  payment_method text default 'BANK TRANSFER'
+);
+
+-- 3.1 Create Fleet Snapshots Table (Safe if not exists)
+create table if not exists public.fleet_snapshots (
+  id uuid default uuid_generate_v4() primary key,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  snapshot_date date unique not null,
+  good_count integer not null default 0,
+  mid_count integer not null default 0,
+  bad_count integer not null default 0
 );
 
 -- 4. Enable Row Level Security (RLS)
@@ -73,6 +84,7 @@ alter table public.drivers enable row level security;
 alter table public.payments enable row level security;
 alter table public.cars enable row level security;
 alter table public.profiles enable row level security;
+alter table public.fleet_snapshots enable row level security;
 
 -- 5. Create Policies (Safe execution)
 do $$
@@ -91,6 +103,10 @@ begin
 
     if not exists (select from pg_policies where tablename = 'profiles' and policyname = 'Enable all access for profiles') then
         create policy "Enable all access for profiles" on public.profiles for all using (true) with check (true);
+    end if;
+
+    if not exists (select from pg_policies where tablename = 'fleet_snapshots' and policyname = 'Enable all access for fleet_snapshots') then
+        create policy "Enable all access for fleet_snapshots" on public.fleet_snapshots for all using (true) with check (true);
     end if;
 end
 $$;
@@ -116,6 +132,11 @@ begin
     -- Add contract_end_date if missing
     if not exists (select from information_schema.columns where table_name = 'drivers' and column_name = 'contract_end_date') then
         alter table public.drivers add column contract_end_date date;
+    end if;
+
+    -- Add payment_method if missing to payments table
+    if not exists (select from information_schema.columns where table_name = 'payments' and column_name = 'payment_method') then
+        alter table public.payments add column payment_method text default 'BANK TRANSFER';
     end if;
 end
 $$;

@@ -21,6 +21,7 @@ export interface PaymentTransaction {
   date: string; // YYYY-MM-DD
   amount: number;
   serviceClaim?: number;
+  paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT';
 }
 
 export interface Driver {
@@ -48,6 +49,15 @@ export interface Driver {
   avgDaysLate?: number;
   lastDaysLate?: number;
   performanceVelocity?: number;
+}
+
+export interface FleetSnapshot {
+  id: string;
+  snapshot_date: string; // YYYY-MM-DD
+  good_count: number;
+  mid_count: number;
+  bad_count: number;
+  created_at: string;
 }
 
 export interface DriverMetrics {

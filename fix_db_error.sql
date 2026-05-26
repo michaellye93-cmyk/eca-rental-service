@@ -24,6 +24,7 @@ BEGIN
         FROM public.payments p
         JOIN public.drivers d ON p.driver_id = d.id
         WHERE p.date >= min_date AND p.date <= max_date
+          AND COALESCE(p.payment_method, 'BANK TRANSFER') <> 'CASH DEPOSIT'
     LOOP
         bank_found := FALSE;
         FOR current_tx IN SELECT * FROM jsonb_array_elements(batch_transactions)

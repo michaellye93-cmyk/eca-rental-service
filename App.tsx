@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
-import { Driver, PaymentTransaction, Car } from './types';
-import { calculateMomentum } from './utils'; // Import frontend metric calculation
+import { Driver, PaymentTransaction, Car, FleetSnapshot } from './types';
+import { calculateMomentum, getElapsedMonthEndDates, calculateSnapshotForDate } from './utils'; // Import frontend metric calculation
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
@@ -11,6 +11,7 @@ import { Session } from '@supabase/supabase-js';
 const App: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [cars, setCars] = useState<Car[]>([]);
+  const [snapshots, setSnapshots] = useState<FleetSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -70,7 +71,8 @@ const App: React.FC = () => {
                 id: p.id,
                 date: p.date,
                 amount: p.amount,
-                serviceClaim: p.service_claim || 0
+                serviceClaim: p.service_claim || 0,
+                paymentMethod: p.payment_method || 'BANK TRANSFER'
             }))
             .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -108,14 +110,73 @@ const App: React.FC = () => {
             performanceVelocity: momentum.velocity
             };
         });
-        return formattedDrivers;
+
+        // Fetch snapshots
+        const { data: snapshotsData, error: snapshotsError } = await supabase
+            .from('fleet_snapshots')
+            .select('*')
+            .order('snapshot_date', { ascending: true });
+
+        let loadedSnapshots: FleetSnapshot[] = [];
+        if (snapshotsError) {
+            console.warn('fleet_snapshots table might not exist or select failed:', snapshotsError);
+        } else {
+            loadedSnapshots = snapshotsData || [];
+        }
+
+        // Perform programmatic backfill of missing elapsed snapshots
+        const elapsedDates = getElapsedMonthEndDates();
+        const existingDatesSet = new Set(loadedSnapshots.map(s => s.snapshot_date));
+        const newSnapshotsToInsert: any[] = [];
+
+        elapsedDates.forEach(dateObj => {
+          const y = dateObj.getFullYear();
+          const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const dStr = String(dateObj.getDate()).padStart(2, '0');
+          const dateStr = `${y}-${m}-${dStr}`;
+          
+          if (!existingDatesSet.has(dateStr)) {
+            const counts = calculateSnapshotForDate(formattedDrivers, dateObj);
+            newSnapshotsToInsert.push({
+              snapshot_date: dateStr,
+              good_count: counts.good,
+              mid_count: counts.mid,
+              bad_count: counts.bad
+            });
+          }
+        });
+
+        if (newSnapshotsToInsert.length > 0) {
+          console.log("Upserting missing month-end snapshots:", newSnapshotsToInsert);
+          const { data: upsertedData, error: upsertError } = await supabase
+            .from('fleet_snapshots')
+            .upsert(newSnapshotsToInsert, { onConflict: 'snapshot_date' })
+            .select();
+          
+          if (upsertError) {
+            console.error("Failed to upsert snapshots:", upsertError);
+          } else if (upsertedData) {
+            upsertedData.forEach((newS: any) => {
+              const idx = loadedSnapshots.findIndex(x => x.snapshot_date === newS.snapshot_date);
+              if (idx !== -1) {
+                loadedSnapshots[idx] = newS;
+              } else {
+                loadedSnapshots.push(newS);
+              }
+            });
+            loadedSnapshots.sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
+          }
+        }
+
+        return { formattedDrivers, loadedSnapshots };
       };
 
       // Race the fetch against the timeout
-      const result = await Promise.race([fetchData(), timeoutPromise]);
+      const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[], loadedSnapshots: FleetSnapshot[] };
       
       if (isMounted) {
-        setDrivers(result as Driver[]);
+        setDrivers(result.formattedDrivers);
+        setSnapshots(result.loadedSnapshots);
       }
 
     } catch (err: any) {
@@ -278,11 +339,11 @@ const App: React.FC = () => {
   };
 
   // --- CRUD Operations (Passed to AdminDashboard) ---
-  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0) => {
+  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' = 'BANK TRANSFER') => {
     try {
       setDrivers(prev => prev.map(d => {
         if (d.id === driverId) {
-          const newTx = { id: 'temp-' + Date.now(), amount, serviceClaim, date };
+          const newTx = { id: 'temp-' + Date.now(), amount, serviceClaim, date, paymentMethod };
           return {
              ...d,
              totalAmountPaid: d.totalAmountPaid + amount + serviceClaim,
@@ -292,11 +353,55 @@ const App: React.FC = () => {
         return d;
       }));
 
-      const { error } = await supabase.from('payments').insert({ driver_id: driverId, amount, service_claim: serviceClaim, date });
+      const { error } = await supabase.from('payments').insert({ 
+        driver_id: driverId, 
+        amount, 
+        service_claim: serviceClaim, 
+        date,
+        payment_method: paymentMethod
+      });
       if (error) throw error;
       await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error saving payment: ${err.message}`);
+      await fetchDriversAndPayments(true);
+    }
+  };
+
+  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT') => {
+    try {
+      setDrivers(prev => prev.map(d => {
+        const hasTx = d.paymentHistory.some(p => p.id === paymentId);
+        if (hasTx) {
+          const updatedHistory = d.paymentHistory.map(p => {
+            if (p.id === paymentId) {
+              return { ...p, amount, serviceClaim, date, paymentMethod: paymentMethod || p.paymentMethod };
+            }
+            return p;
+          });
+          const totalPaid = updatedHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0);
+          return {
+            ...d,
+            paymentHistory: updatedHistory,
+            totalAmountPaid: totalPaid
+          };
+        }
+        return d;
+      }));
+
+      const updateData: any = { amount, service_claim: serviceClaim, date };
+      if (paymentMethod) {
+        updateData.payment_method = paymentMethod;
+      }
+
+      const { error } = await supabase
+        .from('payments')
+        .update(updateData)
+        .eq('id', paymentId);
+      if (error) throw error;
+      await fetchDriversAndPayments(true);
+    } catch (err: any) {
+      alert(`Error updating payment record: ${err.message}`);
       await fetchDriversAndPayments(true);
     }
   };
@@ -486,8 +591,10 @@ const App: React.FC = () => {
       <AdminDashboard 
         drivers={drivers}
         cars={cars}
+        snapshots={snapshots}
         userRole={userRole || 'staff'} // Default to staff safety if null
         onUpdatePayment={handleUpdatePayment}
+        onEditPayment={handleEditPayment}
         onCreateDriver={handleCreateDriver}
         onUpdateDriver={handleUpdateDriver}
         onDelistDriver={handleDelistDriver}
