@@ -23,10 +23,12 @@ const App: React.FC = () => {
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   // --- Data Fetching ---
-  const fetchDriversAndPayments = async () => {
+  const fetchDriversAndPayments = async (silent: boolean = false) => {
     let isMounted = true;
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
 
       // Timeout Promise
@@ -169,16 +171,16 @@ const App: React.FC = () => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setSession(session);
           if (session) {
-            // FIX: If it's the hardcoded admin, we already optimistically set the state in handleAdminLogin.
-            // Do NOT reset isAuthChecking to true, or it will cause a flicker (Admin -> Splash -> Admin).
-            const isOptimisticAdmin = session.user.email === 'ecaadmin6727@eca.com';
-            
-            if (!isOptimisticAdmin) {
-                // Only show splash screen for non-optimized users (like normal drivers or other staff)
-                setIsAuthChecking(true);
+            // Only trigger loading/auth check and route transition if we are currently on the LOGIN screen.
+            // This prevents background token refreshes (e.g. from tab focuses) from unmounting the dashboard and resetting user state.
+            if (currentView === 'LOGIN') {
+              const isOptimisticAdmin = session.user.email === 'ecaadmin6727@eca.com';
+              if (!isOptimisticAdmin) {
+                  // Only show splash screen for non-optimized users (like normal drivers or other staff)
+                  setIsAuthChecking(true);
+              }
+              fetchUserRole(session.user.id, session.user.email);
             }
-            
-            fetchUserRole(session.user.id, session.user.email);
           }
       }
     });
@@ -292,10 +294,10 @@ const App: React.FC = () => {
 
       const { error } = await supabase.from('payments').insert({ driver_id: driverId, amount, service_claim: serviceClaim, date });
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error saving payment: ${err.message}`);
-      fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     }
   };
 
@@ -317,7 +319,7 @@ const App: React.FC = () => {
       };
       const { error } = await supabase.from('drivers').insert(dbDriver);
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error creating driver: ${err.message}`);
     }
@@ -340,7 +342,7 @@ const App: React.FC = () => {
       };
       const { error } = await supabase.from('drivers').update(dbUpdate).eq('id', updatedDriver.id);
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error updating driver: ${err.message}`);
     }
@@ -351,7 +353,7 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('drivers').update({ is_delisted: true, delist_date: today }).eq('id', driverId);
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error delisting driver: ${err.message}`);
     }
@@ -361,7 +363,7 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('cars').insert(newCar);
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error creating car: ${err.message}`);
     }
@@ -371,7 +373,7 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('cars').update(updatedCar).eq('id', updatedCar.id);
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error updating car: ${err.message}`);
     }
@@ -381,7 +383,7 @@ const App: React.FC = () => {
     try {
       const { error } = await supabase.from('cars').delete().eq('id', carId);
       if (error) throw error;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error deleting car: ${err.message}`);
     }
@@ -393,7 +395,7 @@ const App: React.FC = () => {
       if (paymentError) throw paymentError;
       const { error: driverError } = await supabase.from('drivers').delete().eq('id', driverId);
       if (driverError) throw driverError;
-      await fetchDriversAndPayments();
+      await fetchDriversAndPayments(true);
       alert('Driver profile deleted.');
     } catch (err: any) {
       alert(`Error deleting driver: ${err.message}`);

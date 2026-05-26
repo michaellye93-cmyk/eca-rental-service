@@ -326,7 +326,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
 
     // Sort descending by delay time
-    return alerts.sort((a, b) => b.daysSinceLastPay - a.daysSinceLastPay).slice(0, 10);
+    return alerts.sort((a, b) => b.daysSinceLastPay - a.daysSinceLastPay);
   }, [driverData]);
 
   const handleAlertClick = (driverId: string) => {
@@ -817,14 +817,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Habitual Late Alert Feed */}
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 flex flex-col h-full max-h-[265px] overflow-hidden lg:col-span-1">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 flex flex-col h-full max-h-[350px] overflow-hidden lg:col-span-1">
               <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
                 <h3 className="text-base font-semibold text-gray-800 flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
                   Late Alerts (8d+)
                 </h3>
                 <span className="bg-red-50 text-red-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase border border-red-200 tracking-wider">
-                  Top {habitualLateAlerts.length}
+                  {habitualLateAlerts.length} Drivers
                 </span>
               </div>
 
