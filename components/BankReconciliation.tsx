@@ -46,20 +46,40 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
     }
   };
 
-  const processMockReconciliation = async () => {
-    // Local mock for preview in AI Studio
+    const processMockReconciliation = async () => {
+    // Local mock for preview in AI Studio: Synergized with System Data
     return new Promise<ReconciliationResult>((resolve) => {
       setTimeout(() => {
-        resolve({
-          paired_transactions: [
-             { status: 'MATCHED', trans_date: '2026-05-17', amount: 350.00, sender_name: 'JOHN DOE', reference: 'RENTAL WK 3', plate_number: 'BEE1234' },
-             { status: 'MATCHED', trans_date: '2026-05-18', amount: 280.00, sender_name: 'ALICE SMITH', reference: 'SEWA KERETA', plate_number: 'WQB5555' }
-          ],
-          unpaired_transactions: [
-             { status: 'UNMATCHED', trans_date: '2026-05-18', amount: 100.00, sender_name: 'UNKNOWN ENTITY', reference: 'TRANSFER', plate_number: 'UNKNOWN' }
-          ], unsolved_system_transactions: [{ status: 'SYSTEM_UNSOLVED', trans_date: '2026-05-19', amount: 200, driver_name: 'FAKE DRIVER', plate_number: 'FK9999' }]
+        const paired: ReconcileTransaction[] = [];
+        const unsolved: any[] = [];
+        
+        drivers.forEach(driver => {
+           if (driver.isDelisted) return;
+           driver.paymentHistory.forEach(tx => {
+               const isCashDeposit = tx.paymentMethod === 'CASH DEPOSIT';
+               
+               paired.push({
+                   status: 'MATCHED',
+                   trans_date: tx.date,
+                   amount: tx.amount,
+                   sender_name: isCashDeposit ? 'CASH DEPOSIT MACH' : driver.name.toUpperCase(),
+                   reference: isCashDeposit ? 'CASH DEPOSIT' : 'TRF ' + driver.carPlate,
+                   plate_number: driver.carPlate,
+                   driver_id: driver.id
+               });
+           });
         });
-      }, 3000);
+
+        const unpaired: ReconcileTransaction[] = [
+           { status: 'UNMATCHED', trans_date: new Date().toISOString().split('T')[0], amount: 100.00, sender_name: 'UNKNOWN TRANSFER', reference: 'NO REF', plate_number: 'UNKNOWN' }
+        ];
+
+        resolve({
+          paired_transactions: paired,
+          unpaired_transactions: unpaired,
+          unsolved_system_transactions: unsolved
+        });
+      }, 2000);
     });
   };
 

@@ -1,0 +1,5 @@
+
+                        return (
+                           <React.Fragment key={driver.id}>
+                            <tr id={`driver-row-${driver.id}`} className={`group hover:bg-blue-50/50 transition-all duration-500 ${highlightedDriverId === driver.id ? 'ring-4 ring-orange-500 bg-orange-100/80 shadow-[0_0_20px_rgba(249,115,22,0.4)] scale-[1.01]' : ''} ${isRiskyAndSlipping ? 'bg-red-50/40 shadow-[0_0_15px_rgba(225,29,72,0.15)] border-l-4 border-l-red-500' : ''}`}>
+                                <td className="px-6 py-4 align-top">
