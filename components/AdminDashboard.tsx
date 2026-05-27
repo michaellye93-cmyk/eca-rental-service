@@ -165,6 +165,79 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | null>(null);
 
+  // --- Red Dot Notification & Screening States (Kuala Lumpur Timezone sensitive) ---
+  const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
+  const [screeningDate, setScreeningDate] = useState<string>('');
+
+  const getKualaLumpurTodayDateString = (): string => {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parts.find(p => p.type === 'year')?.value || '2026';
+    const month = parts.find(p => p.type === 'month')?.value || '05';
+    const day = parts.find(p => p.type === 'day')?.value || '27';
+    return `${year}-${month}-${day}`;
+  };
+
+  // Load screened status today
+  useEffect(() => {
+    const todayStr = getKualaLumpurTodayDateString();
+    setScreeningDate(todayStr);
+    
+    try {
+      const stored = localStorage.getItem('eca_rental_screening_status');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.date === todayStr && Array.isArray(parsed.screenedIds)) {
+          setScreenedDriverIds(parsed.screenedIds);
+        } else {
+          localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: [] }));
+          setScreenedDriverIds([]);
+        }
+      } else {
+        localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: [] }));
+        setScreenedDriverIds([]);
+      }
+    } catch (e) {
+      console.error("Error reading screening status from localStorage:", e);
+    }
+  }, []);
+
+  // Periodic timezone date change checking & refresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const todayStr = getKualaLumpurTodayDateString();
+      if (screeningDate && todayStr !== screeningDate) {
+        setScreeningDate(todayStr);
+        setScreenedDriverIds([]);
+        try {
+          localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: [] }));
+        } catch (e) {
+          console.error("Error writing reset state to localStorage:", e);
+        }
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [screeningDate]);
+
+  const handleScreenDriver = (driverId: string) => {
+    const todayStr = getKualaLumpurTodayDateString();
+    setScreenedDriverIds(prev => {
+      if (prev.includes(driverId)) return prev;
+      const next = [...prev, driverId];
+      try {
+        localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: next }));
+      } catch (e) {
+        console.error("Error writing screening status to localStorage:", e);
+      }
+      return next;
+    });
+  };
+
   // --- Security Logic ---
   useEffect(() => {
     // Access Restriction: If staff is on CARS tab, redirect to ACTIVE
@@ -569,6 +642,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleOpenPaymentModal = (driver: Driver) => {
+    handleScreenDriver(driver.id);
     setSelectedDriverForPayment(driver);
     setPaymentAmount(driver.rentalRate.toString());
     setPaymentDate(new Date().toISOString().split('T')[0]); 
@@ -628,6 +702,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleOpenCreateModal = () => { setEditingId(null); setFormData(initialFormState); setTagInput(''); setIsDriverModalOpen(true); };
   
   const handleOpenEditModal = (driver: Driver) => {
+    handleScreenDriver(driver.id);
     setEditingId(driver.id);
     setFormData({
       name: driver.name,
@@ -915,14 +990,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-between items-center bg-gray-50 rounded-lg p-3.5 border border-gray-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                  <span className="text-sm font-medium text-gray-700">Total Active Fleet:</span>
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Total Active Fleet info */}
+                <div className="flex justify-between items-center bg-gray-50 rounded-lg p-3.5 border border-gray-100 h-full">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Active Fleet</span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-black text-gray-900">{activeFleetCount}</span>
+                    <span className="text-xs text-gray-400 font-medium">vehicles total</span>
+                  </div>
                 </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-xl font-black text-gray-900">{activeFleetCount}</span>
-                  <span className="text-xs text-gray-400 font-medium">vehicles total</span>
+
+                {/* Daily Human Screening Progress with gamification! */}
+                <div className="flex flex-col justify-center bg-gradient-to-r from-rose-50/50 to-rose-50/20 rounded-lg p-3.5 border border-rose-105 shadow-sm relative overflow-hidden group">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        {screenedDriverIds.length < activeFleetCount ? (
+                          <>
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+                          </>
+                        ) : (
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        )}
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-rose-800">
+                        Daily Screening Progress
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-gray-750">
+                      {screenedDriverIds.length} / {activeFleetCount}
+                    </span>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`h-1.5 rounded-full transition-all duration-700 ${
+                        screenedDriverIds.length === activeFleetCount 
+                          ? 'bg-emerald-500' 
+                          : 'bg-rose-500'
+                      }`}
+                      style={{ width: `${activeFleetCount > 0 ? (screenedDriverIds.length / activeFleetCount) * 100 : 0}%` }}
+                    />
+                  </div>
+
+                  {/* Date details & status */}
+                  <div className="flex justify-between items-center mt-1 text-[10px]">
+                    <span className="text-gray-400 font-medium">
+                      KL GMT+8 (Resets at 00:00:00)
+                    </span>
+                    {screenedDriverIds.length === activeFleetCount ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                        🎉 All screened today!
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-semibold">
+                        {activeFleetCount - screenedDriverIds.length} pending manual screening
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1327,10 +1457,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <td className="px-6 py-4 align-top">
                                     <div className="flex items-start gap-3">
                                         <div className="flex-1">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap pb-0.5">
                                                 <div className={`font-bold text-base ${driver.debtTrend.isStreak ? 'text-[#DC143C] font-bold' : 'text-gray-900'}`}>
                                                     {driver.name}
                                                 </div>
+                                                {/* Red Dot Daily Screening pending */}
+                                                {!screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleScreenDriver(driver.id);
+                                                        }}
+                                                        className="relative flex h-4 w-4 items-center justify-center cursor-pointer group/reddot shrink-0"
+                                                        title="Click to complete driver screening for today"
+                                                    >
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600 border border-white hover:bg-rose-700 transition-all transform hover:scale-125 shadow-sm shadow-rose-600/40"></span>
+                                                        
+                                                        {/* Small tooltip on hover */}
+                                                        <div className="invisible group-hover/reddot:visible opacity-0 group-hover/reddot:opacity-100 transition-all duration-200 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 bg-gray-900 text-white text-[10px] font-bold rounded shadow-xl pointer-events-none z-50 whitespace-nowrap">
+                                                            Pending Daily Screening (Click to complete)
+                                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                                        </div>
+                                                    </button>
+                                                )}
+                                                {/* Green checkmark to declare complete */}
+                                                {screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
+                                                    <div className="text-emerald-500 group/screened relative ml-0.5 shrink-0" title="Daily screening completed">
+                                                        <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                                                        <div className="invisible group-hover/screened:visible opacity-0 group-hover/screened:opacity-100 transition-all duration-200 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 bg-gray-900 text-white text-[10px] font-bold rounded shadow-xl pointer-events-none z-50 whitespace-nowrap">
+                                                            Screened Today
+                                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 {driver.debtTrend.isStreak && (
                                                     <div className="group/streak relative">
                                                         <span className="cursor-help text-lg animate-pulse">⚠️</span>
