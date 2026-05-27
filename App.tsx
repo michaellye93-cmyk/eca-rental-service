@@ -603,7 +603,7 @@ const App: React.FC = () => {
         onUpdateCar={handleUpdateCar}
         onDeleteCar={handleDeleteCar}
         onLogout={handleLogout}
-        onRefresh={fetchDriversAndPayments}
+        onRefresh={() => fetchDriversAndPayments(true)}
       />
     );
   }
