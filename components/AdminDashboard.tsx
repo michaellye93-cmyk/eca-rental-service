@@ -1813,7 +1813,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                          )}
                                      </div>
                                       <div 
-                                        className="w-[280px] shrink-0 px-6 flex items-center justify-end gap-1 cursor-pointer hover:text-gray-800 transition-colors"
+                                        className="w-[320px] shrink-0 px-6 flex items-center justify-end gap-1 cursor-pointer hover:text-gray-800 transition-colors"
                                         onClick={() => handleSort('OUTSTANDING')}
                                      >
                                          Outstanding (Base)
@@ -1943,7 +1943,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                      </div>
 
                                                      {/* OUTSTANDING ALIGNED RIGHT */}
-                                                     <div className="flex flex-col items-end w-[280px] shrink-0 border-l border-slate-100 px-6">
+                                                     <div className="flex flex-col items-end w-[320px] shrink-0 border-l border-slate-100 px-6">
                                                          <div className="flex flex-col items-end gap-1">
                                                              <div className="font-mono font-bold text-xl text-slate-900">
                                                                  {currentOutstanding > 0 ? <span className="text-rose-600">{formatCurrency(currentOutstanding)}</span> : <span className="text-emerald-600">PAID</span>}

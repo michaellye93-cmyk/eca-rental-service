@@ -39,20 +39,35 @@ const App: React.FC = () => {
 
       // Actual Data Fetch
       const fetchData = async () => {
-        // CHANGED: Fetch directly from 'drivers' table to ensure we get all new columns
-        // The view 'driver_performance_monitor' might be stale regarding new schema changes
-        const { data: driversData, error: driversError } = await supabase
-            .from('drivers')
-            .select('*')
-            .order('created_at', { ascending: false });
+        let allDrivers: any[] = [];
+        let dFrom = 0;
+        while (true) {
+            const { data, error } = await supabase
+                .from('drivers')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .range(dFrom, dFrom + 999);
+            if (error) throw error;
+            if (data) allDrivers.push(...data);
+            if (!data || data.length < 1000) break;
+            dFrom += 1000;
+        }
+        const driversData = allDrivers;
 
-        if (driversError) throw driversError;
-
-        const { data: paymentsData, error: paymentsError } = await supabase
-            .from('payments')
-            .select('*');
-
-        if (paymentsError) throw paymentsError;
+        let allPayments: any[] = [];
+        let fromIdx = 0;
+        const pageLimit = 1000;
+        while (true) {
+            const { data, error } = await supabase
+                .from('payments')
+                .select('*')
+                .range(fromIdx, fromIdx + pageLimit - 1);
+            if (error) throw error;
+            if (data) allPayments.push(...data);
+            if (!data || data.length < pageLimit) break;
+            fromIdx += pageLimit;
+        }
+        const paymentsData = allPayments;
         
         const { data: carsData, error: carsError } = await supabase
             .from('cars')
