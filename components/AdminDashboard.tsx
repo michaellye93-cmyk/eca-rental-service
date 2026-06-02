@@ -100,7 +100,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   });
   
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'CARS' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE'>(() => {
+  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'CARS' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST'>(() => {
     try {
       const saved = localStorage.getItem('eca_admin_view_mode');
       return (saved as any) || 'ACTIVE';
@@ -133,6 +133,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
+  const [driverListSortConfig, setDriverListSortConfig] = useState<{ direction: 'asc' | 'desc' | null }>({ direction: null });
 
   // Persistence hooks
   useEffect(() => {
@@ -1588,6 +1589,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {userRole === 'admin' && (
             <>
               <button onClick={() => setViewMode('CARS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'CARS' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CarIcon className="w-4 h-4" /> Fleet Management</button>
+              <button onClick={() => setViewMode('DRIVER_LIST')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DRIVER_LIST' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Users className="w-4 h-4" /> Driver List</button>
               <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
               <button onClick={() => setViewMode('RECONCILE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'RECONCILE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CheckCircle2 className="w-4 h-4" /> Bank Recon</button>
             </>
@@ -1710,6 +1712,71 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
                <BankReconciliation drivers={driverData} />
+             </div>
+          ) : viewMode === 'DRIVER_LIST' && userRole === 'admin' ? (
+             <div className="bg-white">
+                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                    <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        <Users className="w-5 h-5 text-orange-600" /> Driver List
+                    </h2>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
+                            <tr>
+                                <th className="px-6 py-3">Full Name</th>
+                                <th className="px-6 py-3">NRIC</th>
+                                <th className="px-6 py-3">Plate Number</th>
+                                <th 
+                                  className="px-6 py-3 cursor-pointer hover:text-gray-800 transition-colors group select-none"
+                                  onClick={() => setDriverListSortConfig(prev => ({ direction: prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc' }))}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    Category
+                                    <span className={`text-[10px] ${driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-500'}`}>
+                                      {driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.direction === 'desc' ? '▼' : '↕'}
+                                    </span>
+                                  </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {(() => {
+                                const driverListSorted = [...driverData.filter(d => !d.isDelisted)];
+                                if (driverListSortConfig.direction) {
+                                  driverListSorted.sort((a, b) => {
+                                    const valA = a.category || '';
+                                    const valB = b.category || '';
+                                    if (valA < valB) return driverListSortConfig.direction === 'asc' ? -1 : 1;
+                                    if (valA > valB) return driverListSortConfig.direction === 'asc' ? 1 : -1;
+                                    return 0;
+                                  });
+                                }
+                                return driverListSorted.map(driver => (
+                                <tr key={driver.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-6 py-4 font-bold text-gray-900">{driver.name}</td>
+                                    <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
+                                    <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
+                                    <td className="px-6 py-4 text-gray-600">
+                                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                          driver.category === 'SEWABELI' ? 'bg-blue-100 text-blue-800' :
+                                          driver.category === 'SEWA_BIASA' ? 'bg-purple-100 text-purple-800' :
+                                          'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {driver.category}
+                                      </span>
+                                    </td>
+                                </tr>
+                                ));
+                            })()}
+                            {driverData.filter(d => !d.isDelisted).length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">No active drivers found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
              </div>
           ) : (
             /* --- ACTIVE / DELISTED VIEW --- */
