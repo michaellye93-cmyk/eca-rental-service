@@ -2082,6 +2082,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                 )}
 
+                {/* Delist Confirmation Modal */}
+                {driverToDelist && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+                            <div className="p-6">
+                                <div className="flex items-center gap-3 text-rose-600 mb-4">
+                                    <AlertTriangle className="w-8 h-8 shrink-0" />
+                                    <h2 className="text-xl font-bold text-gray-900">Delist Driver</h2>
+                                </div>
+                                <p className="text-sm text-gray-600 mb-6">
+                                    Are you sure you want to delist <strong>{driverToDelist.name}</strong>? This will mark them as inactive and freeze their active balance.
+                                </p>
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setDriverToDelist(null)} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                                    <button onClick={confirmDelist} className="px-5 py-2 bg-rose-600 text-white text-sm font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm">Confirm Delist</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Payment Modal */}
                 {isPaymentModalOpen && liveDriverForPayment && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
