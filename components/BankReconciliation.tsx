@@ -856,11 +856,6 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
               };
 
               processedTxs.sort((a, b) => {
-                  const timeA = parseDateForSort(a.trans_date) || parseDateForSort(a.display_date);
-                  const timeB = parseDateForSort(b.trans_date) || parseDateForSort(b.display_date);
-                  if (timeA !== timeB) {
-                      return timeA - timeB;
-                  }
                   return (a.original_index ?? 0) - (b.original_index ?? 0);
               });
 
@@ -952,19 +947,28 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                 <table className="w-full text-left border-collapse border border-[#9bdcf6] mt-4">
                   <thead>
                      <tr className="bg-[#9bdcf6] text-[#3e78a8] font-bold text-[10px]">
+                       <th className="p-2 border-r border-[#ffffff]/50 text-center w-[110px]">Audit Status</th>
                        <th className="p-2 border-r border-[#ffffff]/50 w-[80px]">Date</th>
                        <th className="p-2 border-r border-[#ffffff]/50 w-[150px]">Sender's Name</th>
                        <th className="p-2 border-r border-[#ffffff]/50 w-[150px]">Reference 1</th>
                        <th className="p-2 border-r border-[#ffffff]/50 w-[120px]">Reference 2</th>
                        <th className="p-2 border-r border-[#ffffff]/50 text-right w-[80px]">Amount (DR)</th>
                        <th className="p-2 border-r border-[#ffffff]/50 text-right w-[80px]">Amount (CR)</th>
-                       <th className="p-2 border-r border-[#ffffff]/50 text-center w-[110px]">Audit Status</th>
                        <th className="p-2 text-right w-[90px]">Balance</th>
                      </tr>
                   </thead>
                   <tbody className="text-[10px] text-[#1f2937] align-top bg-[#ffffff]">
                      {filteredDisplayTxs.map((tx, idx) => (
                         <tr key={idx} className={`border-b border-[#f0f0f0] ${tx.status === 'UNMATCHED' ? 'bg-[#fff5f5]' : tx.status === 'WITHDRAWAL' ? 'bg-[#fbfbfb]' : ''}`}>
+                          <td className="p-2 text-center align-middle" style={{ height: '40px' }}>
+                              {tx.status === 'WITHDRAWAL' ? (
+                                  <span className="inline-block border-2 border-gray-400 text-gray-500 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[1deg] bg-gray-50 shadow-sm whitespace-nowrap">WITHDRAWAL</span>
+                              ) : tx.status === 'UNMATCHED' ? (
+                                  <span className="inline-block border-2 border-red-500 text-red-600 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[-2deg] bg-red-50/50 shadow-sm whitespace-nowrap">UNMATCHED</span>
+                              ) : (
+                                  <span className="inline-block border-2 border-emerald-600 text-emerald-600 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[-2deg] bg-emerald-50/50 shadow-sm whitespace-nowrap">{tx.plate_number || 'MATCHED'}</span>
+                              )}
+                          </td>
                           <td className="p-2 whitespace-nowrap">{tx.display_date || tx.trans_date}</td>
                                                      <td className="p-2 uppercase leading-tight font-medium">
                              {tx.status === 'UNMATCHED' && !isPrinting ? (
@@ -1015,15 +1019,6 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                           </td>
                           <td className="p-2 font-bold text-right text-emerald-600 tabular-nums">
                               {tx.is_deposit === true ? (tx.amount_cr || tx.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}
-                          </td>
-                          <td className="p-2 text-center align-middle" style={{ height: '40px' }}>
-                              {tx.status === 'WITHDRAWAL' ? (
-                                  <span className="inline-block border-2 border-gray-400 text-gray-500 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[1deg] bg-gray-50 shadow-sm whitespace-nowrap">WITHDRAWAL</span>
-                              ) : tx.status === 'UNMATCHED' ? (
-                                  <span className="inline-block border-2 border-red-500 text-red-600 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[-2deg] bg-red-50/50 shadow-sm whitespace-nowrap">UNMATCHED</span>
-                              ) : (
-                                  <span className="inline-block border-2 border-emerald-600 text-emerald-600 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[-2deg] bg-emerald-50/50 shadow-sm whitespace-nowrap">{tx.plate_number || 'MATCHED'}</span>
-                              )}
                           </td>
                           <td className="p-2 text-right tabular-nums font-semibold">
                             {tx.runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}+
