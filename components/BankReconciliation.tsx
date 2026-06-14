@@ -954,7 +954,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                        <th className="p-2 border-r border-[#ffffff]/50 w-[120px]">Reference 2</th>
                        <th className="p-2 border-r border-[#ffffff]/50 text-right w-[80px]">Amount (DR)</th>
                        <th className="p-2 border-r border-[#ffffff]/50 text-right w-[80px]">Amount (CR)</th>
-                       <th className="p-2 border-r border-[#ffffff]/50 text-right w-[90px]">Balance</th>
+                       {!isPrinting && <th className="p-2 border-r border-[#ffffff]/50 text-right w-[90px]">Balance</th>}
                        <th className="p-2 text-center w-[110px]">Audit Status</th>
                      </tr>
                   </thead>
@@ -1012,9 +1012,11 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                           <td className="p-2 font-bold text-right text-emerald-600 tabular-nums">
                               {tx.is_deposit === true ? (tx.amount_cr || tx.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}
                           </td>
-                          <td className="p-2 text-right tabular-nums font-semibold">
-                            {tx.runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}+
-                          </td>
+                          {!isPrinting && (
+                            <td className="p-2 text-right tabular-nums font-semibold">
+                              {tx.runningBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}+
+                            </td>
+                          )}
                           <td className="p-2 text-center align-middle" style={{ height: '40px' }}>
                               {tx.status === 'WITHDRAWAL' ? (
                                   <span className="inline-block border-2 border-gray-400 text-gray-500 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider rotate-[1deg] bg-gray-50 shadow-sm whitespace-nowrap">WITHDRAWAL</span>
