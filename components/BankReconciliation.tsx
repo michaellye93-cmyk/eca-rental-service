@@ -440,62 +440,13 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
   };
 
   const handleDownloadPdf = () => {
-    if (!reportRef.current) return;
     setIsPrinting(true);
-
     setTimeout(() => {
-      const element = reportRef.current;
-      if (!element) {
+      window.print();
+      // Delay resetting isPrinting to allow print dialog to capture the DOM reliably
+      setTimeout(() => {
         setIsPrinting(false);
-        return;
-      }
-      
-      const opt = {
-        margin:       0.5,
-        filename:     `Bank-Reconciliation-${new Date().toISOString().split('T')[0]}.pdf`,
-        image:        { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' as const }
-      };
-
-      try {
-        const html2pdfExporter = (html2pdf as any).default || html2pdf;
-        console.log("html2pdfExporter type:", typeof html2pdfExporter, html2pdfExporter);
-        
-        const triggerSave = (exporter: any) => {
-          return exporter.set(opt).from(element).save();
-        };
-
-        if (typeof html2pdfExporter === 'function') {
-          const promise = triggerSave(html2pdfExporter());
-          if (promise && typeof promise.then === 'function') {
-            promise.then(() => setIsPrinting(false)).catch((err: any) => {
-               console.error("html2pdf Promise error:", err);
-               setIsPrinting(false);
-            });
-          } else {
-            setIsPrinting(false);
-          }
-        } else if (typeof (window as any).html2pdf === 'function') {
-          const promise = (window as any).html2pdf().set(opt).from(element).save();
-          if (promise && typeof promise.then === 'function') {
-            promise.then(() => setIsPrinting(false)).catch((err: any) => {
-               console.error("window.html2pdf Promise error:", err);
-               setIsPrinting(false);
-            });
-          } else {
-            setIsPrinting(false);
-          }
-        } else {
-          console.warn("html2pdf constructor not found. Falling back to native system printer.");
-          window.print();
-          setIsPrinting(false);
-        }
-      } catch (e) {
-        console.error("PDF download caught error:", e);
-        window.print();
-        setIsPrinting(false);
-      }
+      }, 500);
     }, 150);
   };
 
@@ -550,13 +501,13 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
+    <div className="space-y-6 print:space-y-0">
+      <div className="mb-6 print:hidden">
         <h2 className="text-2xl font-bold text-[#111827]">Bank Reconciliation</h2>
         <p className="text-[#6b7280] text-sm mt-1">AI-powered bank statement matching with Gemini 3.0 Flash</p>
       </div>
 
-      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm mb-6">
+      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm mb-6 print:hidden">
          <h3 className="text-sm font-bold text-gray-800 mb-3 uppercase tracking-wider">Step 1: Select Reconciliation Month</h3>
          <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-1 max-w-xs">
@@ -640,7 +591,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
       )}
 
       {result && !isLoading && (
-        <div className="space-y-6">
+        <div className="space-y-6 print:hidden">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 flex items-center justify-between ">
               <div>
@@ -693,7 +644,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
             const isDep = (t: any) => t.is_deposit !== undefined ? t.is_deposit : t.status !== 'WITHDRAWAL';
             const totalJsonDeposits = (result.paired_transactions?.filter(isDep).length || 0) + (result.unpaired_transactions?.filter(isDep).length || 0);
             return (
-              <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-xl p-4 flex justify-between items-center text-sm font-medium text-[#075985] mt-4">
+              <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-xl p-4 flex justify-between items-center text-sm font-medium text-[#075985] mt-4 print:hidden">
                 <div>
                   <span className="opacity-80 uppercase tracking-wider text-[10px] block mb-1">Data Comparison</span>
                   Total Bank Deposits (JSON): <strong className="text-lg">{totalJsonDeposits}</strong>
@@ -707,7 +658,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
         })()}
 
         {viewMode === 'BANK_STATEMENT' && (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200 print:hidden">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Statements Filter:</span>
             <div className="flex gap-1.5">
               <button 
@@ -729,14 +680,14 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
           </div>
         )}
 
-          <p className="text-sm text-[#6b7280]">
+          <p className="text-sm text-[#6b7280] print:hidden">
             A corporate audited document will be generated locally. Below is a preview of the report.
           </p>
         </div>
       )}
 
       {/* Hidden Div for PDF Generation Layout */}
-      <div ref={reportRef} className="mt-8 border border-[#e5e7eb] overflow-x-auto rounded-lg  bg-[#ffffff]">
+      <div ref={reportRef} className="mt-8 border border-[#e5e7eb] overflow-x-auto rounded-lg bg-[#ffffff] print:mt-0 print:border-none print:shadow-none print:overflow-visible">
          {result && (() => {
              const rawAllTxs = result.all_transactions || [...result.paired_transactions, ...result.unpaired_transactions];
              

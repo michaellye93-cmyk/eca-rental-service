@@ -1087,9 +1087,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans">
+    <div className="min-h-screen bg-gray-100 font-sans print:bg-white">
       {/* Top Navigation - unchanged */}
-      <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shadow-md sticky top-0 z-20">
+      <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shadow-md sticky top-0 z-20 print:hidden">
         <h1 className="text-xl font-bold tracking-tight">Admin<span className="text-blue-400">Control</span></h1>
         
         <div className="flex items-center gap-4">
@@ -1113,7 +1113,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 print:p-0 print:m-0 print:w-full print:max-w-none">
         
         {/* Immediate Capture Alert Feed - deactivated */}
         {false && (
@@ -1582,7 +1582,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* View Toggle Tabs - unchanged */}
-        <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit overflow-x-auto">
+        <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit overflow-x-auto print:hidden">
           <button onClick={() => setViewMode('ACTIVE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${viewMode === 'ACTIVE' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}>Active Fleet</button>
           <button onClick={() => setViewMode('DELISTED')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DELISTED' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Archive className="w-4 h-4" /> Delisted / Returned</button>
           
@@ -1597,7 +1597,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Main Table Section - unchanged */}
-        <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px]">
+        <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
           {viewMode === 'CARS' ? (
              /* --- CARS VIEW --- */
              <div>
