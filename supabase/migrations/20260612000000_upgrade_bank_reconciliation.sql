@@ -1,29 +1,4 @@
--- Safe Migration Script to add missing columns without errors
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'payment_method') THEN
-        ALTER TABLE public.payments ADD COLUMN payment_method text DEFAULT 'BANK TRANSFER';
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'drivers' AND column_name = 'contract_end_date') THEN
-        ALTER TABLE public.drivers ADD COLUMN contract_end_date date;
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'drivers' AND column_name = 'category') THEN
-        ALTER TABLE public.drivers ADD COLUMN category text DEFAULT 'SEWABELI';
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'drivers' AND column_name = 'rental_cycle') THEN
-        ALTER TABLE public.drivers ADD COLUMN rental_cycle text DEFAULT 'WEEKLY';
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'drivers' AND column_name = 'tags') THEN
-        ALTER TABLE public.drivers ADD COLUMN tags text[] DEFAULT '{}'::text[];
-    END IF;
-END
-$$;
-
--- Update the Bank Reconciliation Logic with robust bidirectional name matching, plate normalization, date margins, and deductive fallbacks
+-- Upgraded Bank Reconciliation Logic with Bidirectional Name matching, Plate normalization, and timezone date-margins
 CREATE OR REPLACE FUNCTION public.reconcile_bank_statement(batch_transactions JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -56,19 +31,19 @@ BEGIN
         );
     END IF;
 
-    -- 1. Analyze system payments vs bank statement to find Unsolved (recorded in system but not in bank statement)
+    -- 1. Analyze system payments vs bank statement to find Unsolved (those recorded in system but not in bank statement)
     FOR sys_pay IN 
         SELECT p.id, p.amount, p.date as trans_date, d.name as driver_name, d.car_plate as plate_number, COALESCE(p.payment_method, 'BANK TRANSFER') as p_method
         FROM public.payments p
         JOIN public.drivers d ON p.driver_id = d.id
-        WHERE (p.date + INTERVAL '8 hours')::DATE >= (min_date)::DATE AND (p.date + INTERVAL '8 hours')::DATE <= (max_date)::DATE
+        WHERE p.date >= (min_date - INTERVAL '3 days')::DATE AND p.date <= (max_date + INTERVAL '3 days')::DATE
     LOOP
         bank_found := FALSE;
         FOR current_tx IN SELECT * FROM jsonb_array_elements(batch_transactions)
         LOOP
-            -- Exact Date Narrowing (+8 Hours)
+            -- Check if amount is identical and the recorded date is within 2 days of trans_date (robust to timezone offsets)
             IF (current_tx->>'amount')::NUMERIC = sys_pay.amount 
-               AND (sys_pay.trans_date + INTERVAL '8 hours')::DATE = (current_tx->>'trans_date')::DATE THEN
+               AND ABS(EXTRACT(epoch FROM (sys_pay.trans_date - (current_tx->>'trans_date')::DATE)) / 86400) <= 2 THEN
                 bank_found := TRUE;
                 EXIT;
             END IF;
@@ -93,7 +68,7 @@ BEGIN
         matched_driver := NULL;
         match_reason := '';
 
-        -- Normalize transaction text for matching
+        -- Normalize transaction text
         normalized_ref := UPPER(REPLACE(REPLACE(COALESCE(current_tx->>'reference', '') || ' ' || COALESCE(current_tx->>'reference_1', '') || ' ' || COALESCE(current_tx->>'reference_2', ''), ' ', ''), '-', ''));
         normalized_sender := UPPER(REPLACE(REPLACE(COALESCE(current_tx->>'sender_name', ''), ' ', ''), '-', ''));
 
@@ -114,7 +89,7 @@ BEGIN
             match_reason := 'PLATE';
         END IF;
 
-        -- B. HIGH: Bidirectional Name matching (checks if driver name is inside bank statement properties, OR vice-versa)
+        -- B. HIGH: Bidirectional Name matching (checks if driver name is in bank statement, OR bank sender name is in driver name)
         IF matched_driver IS NULL THEN
             SELECT id, car_plate, name
             INTO matched_driver
@@ -122,15 +97,10 @@ BEGIN
             WHERE
                 LENGTH(TRIM(name)) > 3
                 AND (
-                    (LENGTH(TRIM(COALESCE(current_tx->>'sender_name', ''))) > 3 AND (
-                        UPPER(COALESCE(current_tx->>'sender_name', '')) ILIKE '%' || UPPER(TRIM(name)) || '%'
-                        OR UPPER(TRIM(name)) ILIKE '%' || UPPER(COALESCE(current_tx->>'sender_name', '')) || '%'
-                    ))
-                    OR 
-                    (LENGTH(TRIM(COALESCE(current_tx->>'reference', ''))) > 3 AND (
-                        UPPER(COALESCE(current_tx->>'reference', '')) ILIKE '%' || UPPER(TRIM(name)) || '%'
-                        OR UPPER(TRIM(name)) ILIKE '%' || UPPER(COALESCE(current_tx->>'reference', '')) || '%'
-                    ))
+                    UPPER(COALESCE(current_tx->>'sender_name', '')) ILIKE '%' || UPPER(TRIM(name)) || '%'
+                    OR UPPER(TRIM(name)) ILIKE '%' || UPPER(COALESCE(current_tx->>'sender_name', '')) || '%'
+                    OR UPPER(COALESCE(current_tx->>'reference', '')) ILIKE '%' || UPPER(TRIM(name)) || '%'
+                    OR UPPER(TRIM(name)) ILIKE '%' || UPPER(COALESCE(current_tx->>'reference', '')) || '%'
                 )
             ORDER BY is_delisted ASC, LENGTH(name) DESC
             LIMIT 1;
@@ -156,12 +126,29 @@ BEGIN
             JOIN public.payments p ON p.driver_id = d.id
             WHERE p.payment_method = 'CASH DEPOSIT'
               AND p.amount = (current_tx->>'amount')::NUMERIC
-              AND (p.date + INTERVAL '8 hours')::DATE = (current_tx->>'trans_date')::DATE
+              AND ABS(EXTRACT(epoch FROM (p.date - (current_tx->>'trans_date')::DATE)) / 86400) <= 3
             ORDER BY d.is_delisted ASC
             LIMIT 1;
             
             IF matched_driver IS NOT NULL THEN
                 match_reason := 'CASH_DEPOSIT_MATCH';
+            END IF;
+        END IF;
+
+        -- D. FALLBACK MATCH: Match using exact amount and date (+/- 3 days)
+        -- This covers cases where driver name was shortened to initials or misspelled in the transfer description
+        IF matched_driver IS NULL THEN
+            SELECT d.id, d.car_plate, d.name
+            INTO matched_driver
+            FROM public.drivers d
+            JOIN public.payments p ON p.driver_id = d.id
+            WHERE p.amount = (current_tx->>'amount')::NUMERIC
+              AND ABS(EXTRACT(epoch FROM (p.date - (current_tx->>'trans_date')::DATE)) / 86400) <= 3
+            ORDER BY d.is_delisted ASC
+            LIMIT 1;
+
+            IF matched_driver IS NOT NULL THEN
+                match_reason := 'FALLBACK_AMOUNT_DATE';
             END IF;
         END IF;
 
