@@ -307,13 +307,31 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                    const sysDateObj = new Date(new Date(sysPay.trans_date).getTime() + (8 * 3600 * 1000));
                    const sysDateLocal = sysDateObj.toISOString().split('T')[0];
                    if (sysDateLocal === bankTx.trans_date) {
-                       let sysName = String(sysPay.driver_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
                        let rawSender = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
                        let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
                                     String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
                                     String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
                        
-                       let isNameMatch = sysName.length > 3 && (rawSender.includes(sysName) || sysName.includes(rawSender));
+                       let sysNameRaw = String(sysPay.driver_name).toUpperCase().replace(/\b(BIN|BINTI|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
+                       let bankNameRaw = String(bankTx.sender_name).toUpperCase().replace(/\b(BIN|BINTI|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
+                       let sysNameTokens = sysNameRaw.split(/[\s-]+/).filter(t => t.length > 2);
+                       let bankNameTokens = bankNameRaw.split(/[\s-]+/).filter(t => t.length > 2);
+                       
+                       let commonTokens = sysNameTokens.filter(t => bankNameTokens.includes(t));
+                       let isNameMatch = commonTokens.length >= 2 || (commonTokens.length === 1 && commonTokens[0].length >= 4);
+                       
+                       if (!isNameMatch) {
+                           let sysNameStr = sysNameTokens.join('');
+                           let bankNameStr = bankNameTokens.join('');
+                           if (sysNameStr.length > 4 && bankNameStr.length > 4) {
+                               if (bankNameStr.includes(sysNameStr)) {
+                                   isNameMatch = (sysNameStr.length / bankNameStr.length) >= 0.5;
+                               } else if (sysNameStr.includes(bankNameStr)) {
+                                   isNameMatch = (bankNameStr.length / sysNameStr.length) >= 0.5;
+                               }
+                           }
+                       }
+                       
                        let isCashDeposit = (rawSender.includes('CASHDEPOSIT') || rawSender.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
                        if (isCashDeposit && sysPay.p_method === 'CASH DEPOSIT') isNameMatch = true; 
                        
