@@ -502,12 +502,117 @@ Deno.serve(async (req) => {
          }
     }
 
-    // Two-pass matching to ensure Plate matches are NEVER stolen by eager Name matches.
+    // Helper functions for matching
+    function getExtSysDateLocal(sysPay: any) {
+      let sysDateLocal = "";
+      try {
+          let safeDateStr = sysPay.trans_date || "";
+          if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(safeDateStr)) {
+              const parts = safeDateStr.split(/[-\/]/);
+              safeDateStr = parts[2]+"-"+parts[1].padStart(2,"0")+"-"+parts[0].padStart(2,"0");
+          }
+          let timeVal = new Date(safeDateStr).getTime();
+          if (isNaN(timeVal)) timeVal = 0;
+          else timeVal += (8 * 3600 * 1000);
+          const sysDateObj = new Date(timeVal);
+          sysDateLocal = sysDateObj.toISOString().split("T")[0];
+      } catch(e) {
+          sysDateLocal = sysPay.trans_date || "";
+      }
+      return sysDateLocal;
+    }
+
+    function normalizeToken(token: string) {
+      const t = token.toUpperCase().trim();
+      if (/^(MOHD|MHD|MOHAMAD|MOHAMID|MOHAMED|MOHAMMAD|MOHAMMED|MUHD|MUHAMAD|MUHAMID|MUHAMED|MUHAMMAD|MUHAMMED|MD|M)$/.test(t)) {
+        return 'MD';
+      }
+      if (/^(ABDUL|ABD)$/.test(t)) {
+        return 'ABD';
+      }
+      if (/^(AHMAD|AHMED)$/.test(t)) {
+        return 'AHMAD';
+      }
+      if (/^(CHANDRAN|CHNDRAN)$/.test(t)) {
+        return 'CHANDRAN';
+      }
+      return t;
+    }
+
+    function getBigrams(str: string): Set<string> {
+      const bigrams = new Set<string>();
+      const s = str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      for (let i = 0; i < s.length - 1; i++) {
+        bigrams.add(s.substring(i, i + 2));
+      }
+      return bigrams;
+    }
+
+    function checkBigramSimilarity(str1: string, str2: string): number {
+      const b1 = getBigrams(str1);
+      const b2 = getBigrams(str2);
+      if (b1.size === 0 || b2.size === 0) return 0;
+      
+      let intersection = 0;
+      b1.forEach(bg => {
+        if (b2.has(bg)) intersection++;
+      });
+      
+      return (2 * intersection) / (b1.size + b2.size);
+    }
+
+    function checkNameMatch(sysDriverName: string, bankSenderName: string) {
+      let sysClean = String(sysDriverName || '').toUpperCase().replace(/\b(BIN|BINTI|BTE|BT|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
+      let bankClean = String(bankSenderName || '').toUpperCase().replace(/\b(BIN|BINTI|BTE|BT|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
+      
+      let sysTokens = sysClean.split(/[\s-]+/).filter(t => t.length >= 2).map(normalizeToken);
+      let bankTokens = bankClean.split(/[\s-]+/).filter(t => t.length >= 2).map(normalizeToken);
+      
+      let commonTokens = sysTokens.filter(t => bankTokens.includes(t));
+      let tokenSimilarity = 0;
+      if (sysTokens.length + bankTokens.length > 0) {
+          tokenSimilarity = (commonTokens.length * 2) / (sysTokens.length + bankTokens.length);
+      }
+      
+      const bigramSim = checkBigramSimilarity(sysClean, bankClean);
+      
+      let sysNameClean = sysClean.replace(/[^A-Z0-9]/g, '');
+      let bankNameClean = bankClean.replace(/[^A-Z0-9]/g, '');
+      let hasInclusionMatch = false;
+      let inclusionSimilarity = 0;
+      
+      if (sysNameClean.length >= 3 && bankNameClean.length >= 3) {
+          if (sysNameClean.includes(bankNameClean) && (bankNameClean.length / sysNameClean.length) >= 0.5) {
+              hasInclusionMatch = true;
+              inclusionSimilarity = bankNameClean.length / sysNameClean.length;
+          } else if (bankNameClean.includes(sysNameClean) && (sysNameClean.length / bankNameClean.length) >= 0.5) {
+              hasInclusionMatch = true;
+              inclusionSimilarity = sysNameClean.length / bankNameClean.length;
+          }
+      }
+
+      const isNameMatch = tokenSimilarity >= 0.55 || bigramSim >= 0.6 || hasInclusionMatch;
+      const nameSimilarity = Math.max(tokenSimilarity, bigramSim, inclusionSimilarity);
+      
+      return { isNameMatch, nameSimilarity };
+    }
+
+    function checkPlateMatch(plateNumber: string, reference?: string, reference_1?: string, reference_2?: string) {
+      let sysPlate = String(plateNumber || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+      if (sysPlate.length <= 3) return false;
+      
+      let rawRef = String(reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                   String(reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                   String(reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+      return rawRef.includes(sysPlate);
+    }
+
+    // Init matching state
     batchTransactions.forEach((bankTx: any) => {
         bankTx.isMatched = false;
     });
 
-    // Pass 1: Plate Matches Only (Score >= 100)
+    // Pass 1: Strict Matches (Within 1.1 days, same amount, and Name or Plate match)
     batchTransactions.forEach((bankTx: any) => {
         if (bankTx.isMatched) return;
         let bestMatchIndex = -1;
@@ -517,17 +622,18 @@ Deno.serve(async (req) => {
              const sysPay = allSystemPayments[i];
              if (sysPay.isMatched) continue;
              
-             if (Number(sysPay.amount) === Number(bankTx.amount)) {
-                 const sysDateObj = new Date(new Date(sysPay.trans_date).getTime() + (8 * 3600 * 1000));
-                 const sysDateLocal = sysDateObj.toISOString().split('T')[0];
-                 if (sysDateLocal === bankTx.trans_date) {
-                     let sysPlate = String(sysPay.plate_number).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                     let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                  String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                  String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                     let isPlateMatch = sysPlate.length > 3 && rawRef.includes(sysPlate);
-                     let score = isPlateMatch ? 100 : 0;
-                     if (score >= 100 && score > bestScore) {
+             let sysTime = new Date(getExtSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 1.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += (1.05 - daysDiff) * 50;
+                     if (score > bestScore) {
                          bestScore = score;
                          bestMatchIndex = i;
                      }
@@ -539,11 +645,18 @@ Deno.serve(async (req) => {
              const bestSysPay = allSystemPayments[bestMatchIndex];
              bestSysPay.isMatched = true;
              bankTx.isMatched = true;
-             paired.push({ ...bankTx, status: 'MATCHED', plate_number: bestSysPay.plate_number, driver_id: bestSysPay.driver_id, matched_driver_name: bestSysPay.driver_name });
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS1_STRICT', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
         }
     });
 
-    // Pass 2: Name & Cash Deposit Matches (Score >= 10)
+    // Pass 2: Relaxed Matches (Within 5.1 days, same amount, and Name or Plate match)
     batchTransactions.forEach((bankTx: any) => {
         if (bankTx.isMatched) return;
         let bestMatchIndex = -1;
@@ -553,22 +666,18 @@ Deno.serve(async (req) => {
              const sysPay = allSystemPayments[i];
              if (sysPay.isMatched) continue;
              
-             if (Number(sysPay.amount) === Number(bankTx.amount)) {
-                 const sysDateObj = new Date(new Date(sysPay.trans_date).getTime() + (8 * 3600 * 1000));
-                 const sysDateLocal = sysDateObj.toISOString().split('T')[0];
-                 if (sysDateLocal === bankTx.trans_date) {
-                     let sysName = String(sysPay.driver_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                     let rawSender = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                     let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                  String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                  String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                     
-                     let isNameMatch = sysName.length > 3 && (rawSender.includes(sysName) || sysName.includes(rawSender));
-                     let isCashDeposit = (rawSender.includes('CASHDEPOSIT') || rawSender.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
-                     if (isCashDeposit && sysPay.p_method === 'CASH DEPOSIT') isNameMatch = true; 
-                     
-                     let score = isNameMatch ? 10 : 0;
-                     if (score >= 10 && score > bestScore) {
+             let sysTime = new Date(getExtSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 5.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += Math.max(0, (5.05 - daysDiff) * 20);
+                     if (score > bestScore) {
                          bestScore = score;
                          bestMatchIndex = i;
                      }
@@ -580,7 +689,198 @@ Deno.serve(async (req) => {
              const bestSysPay = allSystemPayments[bestMatchIndex];
              bestSysPay.isMatched = true;
              bankTx.isMatched = true;
-             paired.push({ ...bankTx, status: 'MATCHED', plate_number: bestSysPay.plate_number, driver_id: bestSysPay.driver_id, matched_driver_name: bestSysPay.driver_name });
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS2_RELAXED', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 3: Extended Matches (Within 14.1 days, same amount, Name or Plate match)
+    batchTransactions.forEach((bankTx: any) => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getExtSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 14.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += Math.max(0, (14.05 - daysDiff) * 5);
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS3_EXTENDED_NAME', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 4: Wide Late Matches (Within 32.1 days, same amount, Name or Plate match)
+    batchTransactions.forEach((bankTx: any) => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getExtSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 32.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += Math.max(0, (32.05 - daysDiff) * 2);
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS4_WIDE_NAME', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 5: Cash Deposit Matches - Strict (Within 5.1 days, same amount, CASH DEPOSIT method)
+    batchTransactions.forEach((bankTx: any) => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getExtSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 5.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 let rawSender = String(bankTx.sender_name || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                 let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                              
+                 let isCashText = (rawSender.includes('CASHDEPOSIT') || rawSender.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
+                 let isCashPayMethod = (sysPay.p_method === 'CASH DEPOSIT');
+                 
+                 if (isCashText && isCashPayMethod) {
+                     let score = 200 + (5.05 - daysDiff) * 10;
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS5_CASH_STRICT', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 6: Cash Deposit Matches - Wide (Within 32.1 days, same amount, CASH DEPOSIT method)
+    batchTransactions.forEach((bankTx: any) => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getExtSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 32.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 let rawSender = String(bankTx.sender_name || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                 let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                              
+                 let isCashText = (rawSender.includes('CASHDEPOSIT') || rawSender.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
+                 let isCashPayMethod = (sysPay.p_method === 'CASH DEPOSIT');
+                 
+                 if (isCashText && isCashPayMethod) {
+                     let score = 100 + (32.05 - daysDiff) * 2;
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS6_CASH_WIDE', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
         } else {
              unpaired.push({ ...bankTx, status: 'UNMATCHED', plate_number: 'UNKNOWN' });
         }
