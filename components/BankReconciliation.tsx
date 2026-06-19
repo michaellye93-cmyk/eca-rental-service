@@ -39,6 +39,493 @@ interface ReconciliationResult {
   };
 }
 
+function getSysDateLocal(sysPay: any) {
+  let sysDateLocal = "";
+  try {
+      let safeDateStr = sysPay.trans_date || sysPay.date || "";
+      if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(safeDateStr)) {
+          const parts = safeDateStr.split(/[-\/]/);
+          safeDateStr = parts[2]+"-"+parts[1].padStart(2,"0")+"-"+parts[0].padStart(2,"0");
+      }
+      let timeVal = new Date(safeDateStr).getTime();
+      if (isNaN(timeVal)) timeVal = 0;
+      else timeVal += (8 * 3600 * 1000);
+      const sysDateObj = new Date(timeVal);
+      sysDateLocal = sysDateObj.toISOString().split("T")[0];
+  } catch(e) {
+      sysDateLocal = sysPay.trans_date || sysPay.date || "";
+  }
+  return sysDateLocal;
+}
+
+function normalizeToken(token: string) {
+  const t = token.toUpperCase().trim();
+  if (/^(MOHD|MHD|MOHAMAD|MOHAMID|MOHAMED|MOHAMMAD|MOHAMMED|MUHD|MUHAMAD|MUHAMID|MUHAMED|MUHAMMAD|MUHAMMED|MD|M)$/.test(t)) {
+    return 'MD';
+  }
+  if (/^(ABDUL|ABD)$/.test(t)) {
+    return 'ABD';
+  }
+  if (/^(AHMAD|AHMED)$/.test(t)) {
+    return 'AHMAD';
+  }
+  if (/^(CHANDRAN|CHNDRAN)$/.test(t)) {
+    return 'CHANDRAN';
+  }
+  return t;
+}
+
+function getBigrams(str: string): Set<string> {
+  const bigrams = new Set<string>();
+  const s = str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  for (let i = 0; i < s.length - 1; i++) {
+    bigrams.add(s.substring(i, i + 2));
+  }
+  return bigrams;
+}
+
+function checkBigramSimilarity(str1: string, str2: string): number {
+  const b1 = getBigrams(str1);
+  const b2 = getBigrams(str2);
+  if (b1.size === 0 || b2.size === 0) return 0;
+  
+  let intersection = 0;
+  b1.forEach(bg => {
+    if (b2.has(bg)) intersection++;
+  });
+  
+  return (2 * intersection) / (b1.size + b2.size);
+}
+
+function isDateInPaddedMonth(dateStr: string, selectedMonth: string) {
+  if (!selectedMonth) return true;
+  try {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    // Pads of 10 days
+    const rangeStart = new Date(monthStart.getTime() - 10 * 24 * 3600 * 1000);
+    const rangeEnd = new Date(monthEnd.getTime() + 10 * 24 * 3600 * 1000);
+    
+    let safeDate = dateStr;
+    if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(safeDate)) {
+        const parts = safeDate.split(/[-\/]/);
+        safeDate = parts[2]+"-"+parts[1].padStart(2,"0")+"-"+parts[0].padStart(2,"0");
+    }
+    const checkDate = new Date(safeDate);
+    return checkDate >= rangeStart && checkDate <= rangeEnd;
+  } catch (e) {
+    return true; 
+  }
+}
+
+function checkNameMatch(sysDriverName: string, bankSenderName: string) {
+  let sysClean = String(sysDriverName || '').toUpperCase().replace(/\b(BIN|BINTI|BTE|BT|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
+  let bankClean = String(bankSenderName || '').toUpperCase().replace(/\b(BIN|BINTI|BTE|BT|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
+  
+  let sysTokens = sysClean.split(/[\s-]+/).filter(t => t.length >= 2).map(normalizeToken);
+  let bankTokens = bankClean.split(/[\s-]+/).filter(t => t.length >= 2).map(normalizeToken);
+  
+  let commonTokens = sysTokens.filter(t => bankTokens.includes(t));
+  let tokenSimilarity = 0;
+  if (sysTokens.length + bankTokens.length > 0) {
+      tokenSimilarity = (commonTokens.length * 2) / (sysTokens.length + bankTokens.length);
+  }
+  
+  // Calculate Bigram similarity
+  const bigramSim = checkBigramSimilarity(sysClean, bankClean);
+  
+  // Clean names for substring checks
+  let sysNameClean = sysClean.replace(/[^A-Z0-9]/g, '');
+  let bankNameClean = bankClean.replace(/[^A-Z0-9]/g, '');
+  let hasInclusionMatch = false;
+  let inclusionSimilarity = 0;
+  
+  if (sysNameClean.length >= 3 && bankNameClean.length >= 3) {
+      if (sysNameClean.includes(bankNameClean) && (bankNameClean.length / sysNameClean.length) >= 0.5) {
+          hasInclusionMatch = true;
+          inclusionSimilarity = bankNameClean.length / sysNameClean.length;
+      } else if (bankNameClean.includes(sysNameClean) && (sysNameClean.length / bankNameClean.length) >= 0.5) {
+          hasInclusionMatch = true;
+          inclusionSimilarity = sysNameClean.length / bankNameClean.length;
+      }
+  }
+
+  const isNameMatch = tokenSimilarity >= 0.55 || bigramSim >= 0.6 || hasInclusionMatch;
+  const nameSimilarity = Math.max(tokenSimilarity, bigramSim, inclusionSimilarity);
+  
+  return { isNameMatch, nameSimilarity };
+}
+
+function checkPlateMatch(plateNumber: string, reference?: string, reference_1?: string, reference_2?: string) {
+  let sysPlate = String(plateNumber || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+  if (sysPlate.length <= 3) return false;
+  
+  let rawRef = String(reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+               String(reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+               String(reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+  return rawRef.includes(sysPlate);
+}
+
+function performMultiPassMatching(deposits: any[], allSystemPayments: any[]): { paired: any[], unpaired: any[] } {
+    const paired: any[] = [];
+    const unpaired: any[] = [];
+    
+    // Init status
+    deposits.forEach(bankTx => {
+        bankTx.isMatched = false;
+    });
+    allSystemPayments.forEach(sysPay => {
+        sysPay.isMatched = false;
+    });
+
+    // Pass 1: Strict Matches (Within 1 day, same amount, and Name or Plate match)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 1.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += (1.05 - daysDiff) * 50; // Closer date gets bonus points
+                     
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS1_STRICT', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 2: Relaxed Matches (Within 5.05 days, same amount, and Name or Plate match)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 5.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += Math.max(0, (5.05 - daysDiff) * 20); // Closer date gets bonus points
+                     
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS2_RELAXED', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 3: Extended Name/Plate Matches (Within 14.05 days, same amount, Name or Plate match)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 14.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += Math.max(0, (14.05 - daysDiff) * 5); // Closer date gets bonus points
+                     
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS3_EXTENDED_NAME', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 4: Wide Late-Payment Name/Plate Matches (Within 32.05 days, same amount, Name or Plate match)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 32.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 const { isNameMatch, nameSimilarity } = checkNameMatch(sysPay.driver_name, bankTx.sender_name);
+                 const isPlateMatch = checkPlateMatch(sysPay.plate_number, bankTx.reference, bankTx.reference_1, bankTx.reference_2);
+                 
+                 if (isNameMatch || isPlateMatch) {
+                     let score = (isNameMatch ? 100 * nameSimilarity : 0) + (isPlateMatch ? 150 : 0);
+                     score += Math.max(0, (32.05 - daysDiff) * 2); // Closer date gets bonus points
+                     
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS4_WIDE_NAME', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 5: Cash Deposit Matches - Strict (Within 5.05 days, same amount, and payment method is Cash Deposit or Cash)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 5.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 let rawSenderBase = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                 let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                 let isCashDepositText = (rawSenderBase.includes('CASHDEPOSIT') || rawSenderBase.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
+                 
+                 const pMethod = String(sysPay.p_method || '').toUpperCase();
+                 let isCashDepositMatch = (isCashDepositText && (pMethod === 'CASH DEPOSIT' || pMethod === 'CASH'));
+                 
+                 if (isCashDepositMatch) {
+                     let score = 50; 
+                     score += Math.max(0, (5.05 - daysDiff) * 20); // Closer date gets bonus points
+                     
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS5_CDM_STRICT', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 6: Cash Deposit Matches - Medium (Within 12.05 days, same amount, and payment method is Cash Deposit or Cash)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        let bestMatchIndex = -1;
+        let bestScore = -1;
+        
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 12.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 let rawSenderBase = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                 let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                              String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                 let isCashDepositText = (rawSenderBase.includes('CASHDEPOSIT') || rawSenderBase.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
+                 
+                 const pMethod = String(sysPay.p_method || '').toUpperCase();
+                 let isCashDepositMatch = (isCashDepositText && (pMethod === 'CASH DEPOSIT' || pMethod === 'CASH'));
+                 
+                 if (isCashDepositMatch) {
+                     let score = 50; 
+                     score += Math.max(0, (12.05 - daysDiff) * 5); // Closer date gets bonus points
+                     
+                     if (score > bestScore) {
+                         bestScore = score;
+                         bestMatchIndex = i;
+                     }
+                 }
+             }
+        }
+        
+        if (bestMatchIndex > -1) {
+             const bestSysPay = allSystemPayments[bestMatchIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS6_CDM_MEDIUM', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Pass 7: Relaxed Cash Deposit Matches (Unique matching unmatched system payment of same amount within 12 days)
+    deposits.forEach(bankTx => {
+        if (bankTx.isMatched) return;
+        
+        let rawSenderBase = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+        let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                     String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                     String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+        let isCashDepositText = (rawSenderBase.includes('CASHDEPOSIT') || rawSenderBase.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
+        if (!isCashDepositText) return;
+        
+        let matchingSysPays: any[] = [];
+        for (let i = 0; i < allSystemPayments.length; i++) {
+             const sysPay = allSystemPayments[i];
+             if (sysPay.isMatched) continue;
+             
+             let sysTime = new Date(getSysDateLocal(sysPay)).getTime();
+             let bankTime = new Date(bankTx.trans_date).getTime();
+             let daysDiff = Math.abs(sysTime - bankTime) / (24 * 3600 * 1000);
+             
+             if (daysDiff <= 12.05 && Math.abs(Number(sysPay.amount) - Number(bankTx.amount)) < 0.01) {
+                 matchingSysPays.push({ index: i, daysDiff });
+             }
+        }
+        
+        if (matchingSysPays.length === 1) {
+             const bestIndex = matchingSysPays[0].index;
+             const bestSysPay = allSystemPayments[bestIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS7_CDM_RELAXED_UNIQUE', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        } else if (matchingSysPays.length > 1) {
+             matchingSysPays.sort((a, b) => a.daysDiff - b.daysDiff);
+             const bestIndex = matchingSysPays[0].index;
+             const bestSysPay = allSystemPayments[bestIndex];
+             bestSysPay.isMatched = true;
+             bankTx.isMatched = true;
+             paired.push({ 
+                 ...bankTx, 
+                 status: 'MATCHED', 
+                 matched_by: 'AUTO_PASS7_CDM_RELAXED_CLOSEST', 
+                 plate_number: bestSysPay.plate_number, 
+                 driver_id: bestSysPay.driver_id, 
+                 matched_driver_name: bestSysPay.driver_name 
+             });
+        }
+    });
+
+    // Populate unpaired list for final return
+    deposits.forEach(bankTx => {
+        if (!bankTx.isMatched) {
+            unpaired.push({ ...bankTx, status: 'UNMATCHED', plate_number: 'UNKNOWN' });
+        }
+    });
+
+    return { paired, unpaired };
+}
+
 interface BankReconciliationProps {
   drivers: Driver[]; // We pass drivers just in case we need it for mock local data
 }
@@ -152,6 +639,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
   };
 
   const processJsonLocally = async (parsed: any): Promise<ReconciliationResult> => {
+      // Process the JSON data locally and run multi-pass matching
       let transactions: any[] = [];
       if (parsed && Array.isArray(parsed.transactions)) {
           transactions = parsed.transactions;
@@ -237,7 +725,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
       const allSystemPayments: any[] = [];
       drivers.forEach(d => {
            (d.paymentHistory || []).forEach(pt => {
-                if (!selectedMonth || (pt.date && pt.date.startsWith(selectedMonth))) {
+                if (!selectedMonth || (pt.date && isDateInPaddedMonth(pt.date, selectedMonth))) {
                     allSystemPayments.push({
                         id: pt.id || Math.random().toString(),
                         amount: pt.amount,
@@ -252,12 +740,12 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
            });
       });
       
-      // Two-pass matching to ensure Plate matches are NEVER stolen by eager Name matches.
-      deposits.forEach(bankTx => {
-          bankTx.isMatched = false;
-      });
+      // Perform robust multi-pass matching to prioritize exact/strict matches and prevent plate misassignment
+      const { paired: matchedPaired, unpaired: matchedUnpaired } = performMultiPassMatching(deposits, allSystemPayments);
+      paired.push(...matchedPaired);
+      unpaired.push(...matchedUnpaired);
 
-      // Pass 1: Plate Matches Only (Score >= 100)
+      /* Original sequential match loop commented out for accuracy
       deposits.forEach(bankTx => {
           if (bankTx.isMatched) return;
           let bestMatchIndex = -1;
@@ -267,78 +755,97 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                const sysPay = allSystemPayments[i];
                if (sysPay.isMatched) continue;
                
+               // The restriction: Must automatically +8 hours to tally with bank statement date
+               let sysDateLocal = "";
+try {
+    let safeDateStr = sysPay.trans_date;
+    if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(safeDateStr)) {
+        const parts = safeDateStr.split(/[-\/]/);
+        safeDateStr = parts[2]+"-"+parts[1].padStart(2,"0")+"-"+parts[0].padStart(2,"0");
+    }
+    let timeVal = new Date(safeDateStr).getTime();
+    if (isNaN(timeVal)) timeVal = 0;
+    else timeVal += (8 * 3600 * 1000);
+    const sysDateObj = new Date(timeVal);
+    sysDateLocal = sysDateObj.toISOString().split("T")[0];
+} catch(e) {
+    sysDateLocal = sysPay.trans_date;
+}
                if (Number(sysPay.amount) === Number(bankTx.amount)) {
-                   const sysDateObj = new Date(new Date(sysPay.trans_date).getTime() + (8 * 3600 * 1000));
-                   const sysDateLocal = sysDateObj.toISOString().split('T')[0];
-                   if (sysDateLocal === bankTx.trans_date) {
-                       let sysPlate = String(sysPay.plate_number).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                       let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                    String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                    String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                       let isPlateMatch = sysPlate.length > 3 && rawRef.includes(sysPlate);
-                       let score = isPlateMatch ? 100 : 0;
-                       if (score >= 100 && score > bestScore) {
-                           bestScore = score;
-                           bestMatchIndex = i;
-                       }
-                   }
+                   bankTx._debug_sys_dates = (bankTx._debug_sys_dates || '') + sysDateLocal + ',';
                }
-          }
-          
-          if (bestMatchIndex > -1) {
-               const bestSysPay = allSystemPayments[bestMatchIndex];
-               bestSysPay.isMatched = true;
-               bankTx.isMatched = true;
-               paired.push({ ...bankTx, status: 'MATCHED', plate_number: bestSysPay.plate_number, driver_id: bestSysPay.driver_id, matched_driver_name: bestSysPay.driver_name });
-          }
-      });
-
-      // Pass 2: Name & Cash Deposit Matches (Score >= 10)
-      deposits.forEach(bankTx => {
-          if (bankTx.isMatched) return;
-          let bestMatchIndex = -1;
-          let bestScore = -1;
-          
-          for (let i = 0; i < allSystemPayments.length; i++) {
-               const sysPay = allSystemPayments[i];
-               if (sysPay.isMatched) continue;
                
-               if (Number(sysPay.amount) === Number(bankTx.amount)) {
-                   const sysDateObj = new Date(new Date(sysPay.trans_date).getTime() + (8 * 3600 * 1000));
-                   const sysDateLocal = sysDateObj.toISOString().split('T')[0];
-                   if (sysDateLocal === bankTx.trans_date) {
-                       let rawSender = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
-                       let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                    String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
-                                    String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+               let sysTime = new Date(sysDateLocal).getTime();
+               let bankTime = new Date(bankTx.trans_date).getTime();
+               let isDateMatch = Math.abs(sysTime - bankTime) <= (3 * 24 * 3600 * 1000);
+
+               if (isDateMatch) {
+                   bankTx._debug_seen_date_match = true;
+                   
+                   // Pass 1: Compare the transaction amount
+                   if (Number(sysPay.amount) === Number(bankTx.amount)) {
+                       bankTx._debug_amt_match = 'Y';
+                       // Pass 2 Criteria Evaluation:
+                       // Criteria 1. Amount match (We already achieved this, counts as 1 point)
+                       let criteriaPassed = 1;
                        
+                       // Evaluate Name Match (>= 60% similarity threshold)
                        let sysNameRaw = String(sysPay.driver_name).toUpperCase().replace(/\b(BIN|BINTI|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
                        let bankNameRaw = String(bankTx.sender_name).toUpperCase().replace(/\b(BIN|BINTI|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g, '');
                        let sysNameTokens = sysNameRaw.split(/[\s-]+/).filter(t => t.length > 2);
                        let bankNameTokens = bankNameRaw.split(/[\s-]+/).filter(t => t.length > 2);
                        
                        let commonTokens = sysNameTokens.filter(t => bankNameTokens.includes(t));
-                       let isNameMatch = commonTokens.length >= 2 || (commonTokens.length === 1 && commonTokens[0].length >= 4);
+                       let nameSimilarity = 0;
+                       if (sysNameTokens.length + bankNameTokens.length > 0) {
+                           nameSimilarity = (commonTokens.length * 2) / (sysNameTokens.length + bankNameTokens.length);
+                       }
+                       bankTx._debug_name_sim = Math.max((bankTx._debug_name_sim || 0), nameSimilarity);
                        
+                       let isNameMatch = nameSimilarity >= 0.6;
                        if (!isNameMatch) {
-                           let sysNameStr = sysNameTokens.join('');
-                           let bankNameStr = bankNameTokens.join('');
-                           if (sysNameStr.length > 4 && bankNameStr.length > 4) {
-                               if (bankNameStr.includes(sysNameStr)) {
-                                   isNameMatch = (sysNameStr.length / bankNameStr.length) >= 0.5;
-                               } else if (sysNameStr.includes(bankNameStr)) {
-                                   isNameMatch = (bankNameStr.length / sysNameStr.length) >= 0.5;
+                           let sysName = String(sysPay.driver_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                           let rawSender = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                           if (sysName.length > 3) {
+                               if (rawSender.includes(sysName) && (sysName.length / rawSender.length) >= 0.6) {
+                                   isNameMatch = true;
+                               } else if (sysName.includes(rawSender) && rawSender.length > 3 && (rawSender.length / sysName.length) >= 0.6) {
+                                   isNameMatch = true;
                                }
                            }
                        }
                        
-                       let isCashDeposit = (rawSender.includes('CASHDEPOSIT') || rawSender.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
-                       if (isCashDeposit && sysPay.p_method === 'CASH DEPOSIT') isNameMatch = true; 
+                       if (isNameMatch) {
+                           criteriaPassed++;
+                       }
+                       bankTx._debug_crit = Math.max((bankTx._debug_crit || 0), criteriaPassed);
                        
-                       let score = isNameMatch ? 10 : 0;
-                       if (score >= 10 && score > bestScore) {
-                           bestScore = score;
-                           bestMatchIndex = i;
+                       // Evaluate Reference 1/2 Match (Plate matching)
+                       let sysPlate = String(sysPay.plate_number).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                       let rawRef = String(bankTx.reference || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                                    String(bankTx.reference_1 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '') + 
+                                    String(bankTx.reference_2 || '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                       let isPlateMatch = sysPlate.length > 3 && rawRef.includes(sysPlate);
+                       
+                       if (isPlateMatch) {
+                           criteriaPassed++;
+                       }
+                       
+                       // For Cash Deposit, it's a straightforward separate condition
+                       let rawSenderBase = String(bankTx.sender_name).toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
+                       let isCashDepositText = (rawSenderBase.includes('CASHDEPOSIT') || rawSenderBase.includes('CDM') || rawRef.includes('CASHDEPOSIT') || rawRef.includes('CDM'));
+                       let isCashDepositMatch = (isCashDepositText && sysPay.p_method === 'CASH DEPOSIT');
+                       
+                       // Verification: If any 2 of 3 criteria is passed (which means Pass 1 + EITHER Name OR Plate), OR if it's a valid Cash Deposit Match
+                       let isPass2 = criteriaPassed >= 2 || isCashDepositMatch;
+                       
+                       if (isPass2) {
+                           // Pick the best score if multiple system records fulfill the criteria
+                           let score = (isNameMatch ? 10 * nameSimilarity : 0) + (isPlateMatch ? 15 : 0) + (isCashDepositMatch ? 20 : 0);
+                           if (score > bestScore) {
+                               bestScore = score;
+                               bestMatchIndex = i;
+                           }
                        }
                    }
                }
@@ -353,6 +860,7 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                unpaired.push({ ...bankTx, status: 'UNMATCHED', plate_number: 'UNKNOWN' });
           }
       });
+      */
       
       allSystemPayments.forEach(sysPay => {
            if (!sysPay.isMatched) {
@@ -468,6 +976,64 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
     }, 500);
   };
 
+  const handleAutoReEvaluate = (txOriginalIndex: number, newSenderName: string) => {
+    if (!result || !result.unpaired_transactions || !result.unsolved_system_transactions) return;
+
+    const bankTxIndex = result.unpaired_transactions.findIndex(t => t.original_index === txOriginalIndex);
+    if (bankTxIndex === -1) return;
+
+    const bankTx = { ...result.unpaired_transactions[bankTxIndex], sender_name: newSenderName };
+    
+    const unconvertedPayments = result.unsolved_system_transactions.map(sysPay => ({
+         id: sysPay.id,
+         amount: sysPay.amount,
+         trans_date: sysPay.trans_date,
+         driver_name: sysPay.driver_name,
+         plate_number: sysPay.plate_number,
+         p_method: sysPay.payment_method || 'BANK TRANSFER',
+         driver_id: sysPay.driver_id,
+         isMatched: false
+    }));
+
+    const { paired: newlyPaired } = performMultiPassMatching([bankTx], unconvertedPayments);
+
+    if (newlyPaired.length > 0) {
+        // MATCH FOUND! Auto-link and update!
+        const matchedBankTx = newlyPaired[0];
+
+        const newUnpaired = [...result.unpaired_transactions];
+        newUnpaired.splice(bankTxIndex, 1);
+
+        const newUnsolved = unconvertedPayments.filter(p => !p.isMatched).map(sysPay => ({
+             id: sysPay.id,
+             amount: sysPay.amount,
+             trans_date: sysPay.trans_date,
+             driver_name: sysPay.driver_name,
+             plate_number: sysPay.plate_number,
+             payment_method: sysPay.p_method,
+             driver_id: sysPay.driver_id,
+             status: 'SYSTEM_UNSOLVED'
+        }));
+
+        const newPaired = [...result.paired_transactions, matchedBankTx];
+
+        const newAll = (result.all_transactions || []).map(t => {
+            if (t.original_index === bankTx.original_index) {
+                return matchedBankTx;
+            }
+            return t;
+        });
+
+        setResult({
+            ...result,
+            paired_transactions: newPaired,
+            unpaired_transactions: newUnpaired,
+            all_transactions: newAll,
+            unsolved_system_transactions: newUnsolved
+        });
+    }
+  };
+
   const handleManualMatch = () => {
     if (selectedBankTxOriginalIndex === null || selectedSysTxId === null || !result) return;
 
@@ -516,6 +1082,54 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
 
     setSelectedBankTxOriginalIndex(null);
     setSelectedSysTxId(null);
+  };
+
+  const handleReevaluateAll = () => {
+    if (!result || !result.unpaired_transactions || !result.unsolved_system_transactions) return;
+
+    // Convert unsolved payments format to include standard keys
+    const unconvertedPayments = result.unsolved_system_transactions.map(sysPay => ({
+         id: sysPay.id,
+         amount: sysPay.amount,
+         trans_date: sysPay.trans_date,
+         driver_name: sysPay.driver_name,
+         plate_number: sysPay.plate_number,
+         p_method: sysPay.payment_method || 'BANK TRANSFER',
+         driver_id: sysPay.driver_id,
+         isMatched: false
+    }));
+
+    const { paired: newlyPaired, unpaired: newlyUnpaired } = performMultiPassMatching(result.unpaired_transactions, unconvertedPayments);
+
+    if (newlyPaired.length === 0) {
+        setErrorMsg("No additional automatic matches could be established.");
+        return;
+    }
+
+    // Build the updated unsolved array
+    const remainingUnsolvedSys = unconvertedPayments.filter(p => !p.isMatched).map(sysPay => ({
+         id: sysPay.id,
+         amount: sysPay.amount,
+         trans_date: sysPay.trans_date,
+         driver_name: sysPay.driver_name,
+         plate_number: sysPay.plate_number,
+         payment_method: sysPay.p_method,
+         driver_id: sysPay.driver_id,
+         status: 'SYSTEM_UNSOLVED'
+    }));
+
+    // Build the updated paired array
+    const updatedPaired = [...result.paired_transactions, ...newlyPaired];
+
+    setResult({
+        ...result,
+        paired_transactions: updatedPaired,
+        unpaired_transactions: newlyUnpaired,
+        unsolved_system_transactions: remainingUnsolvedSys,
+        all_transactions: [...updatedPaired, ...newlyUnpaired].sort((a,b) => (a.original_index||0) - (b.original_index||0))
+    });
+    
+    setErrorMsg(`Successfully auto-matched ${newlyPaired.length} more transactions based on Name/Amount/Date matches!`);
   };
 
   return (
@@ -649,6 +1263,12 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
             >
               <Download className="w-4 h-4" />
               Download Audited Statement PDF
+            </button>
+            <button
+               onClick={handleReevaluateAll}
+               className="ml-4 px-5 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 shadow-sm"
+            >
+               Retry Auto-Match
             </button>
             <button onClick={() => {setResult(null); setFile(null);}} className="ml-4 px-5 py-2.5 bg-gray-200 text-[#1f2937] font-medium rounded-lg hover:bg-gray-300">
                Start Over
@@ -1015,6 +1635,13 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
                                        unpaired_transactions: updatedUnpaired
                                      });
                                    }
+                                 }}
+                                 onBlur={(e) => {
+                                    const newName = e.target.value;
+                                    const txKey = tx.original_index !== undefined ? tx.original_index : idx;
+                                    if (newName && newName.length > 2) {
+                                       handleAutoReEvaluate(txKey, newName);
+                                    }
                                  }}
                                  className="bg-red-50/50 border border-red-200 rounded px-1.5 py-0.5 text-[9px] w-full text-red-950 focus:outline-none focus:ring-1 focus:ring-red-400 placeholder:normal-case placeholder:text-red-400 uppercase font-medium"
                                />

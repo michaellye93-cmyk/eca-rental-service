@@ -61,6 +61,7 @@ const App: React.FC = () => {
             const { data, error } = await supabase
                 .from('payments')
                 .select('*')
+                .order('date', { ascending: false })
                 .range(fromIdx, fromIdx + pageLimit - 1);
             if (error) throw error;
             if (data) allPayments.push(...data);
