@@ -2097,6 +2097,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
 
                 
+            </>
+         )}
+      </div>
+
                 {/* Driver Modal */}
                 {isDriverModalOpen && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -2319,10 +2323,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
                 )}
-            </>
-         )}
-      </div>
-
       {/* Arrears/Week/Collection Modals - unchanged */}
       {isArrearsModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
