@@ -106,6 +106,7 @@ const App: React.FC = () => {
             return {
             id: d.id,
             nric: d.nric,
+            email: d.email,
             name: d.name,
             carPlate: d.car_plate,
             contractStartDate: d.contract_start_date,
@@ -426,6 +427,7 @@ const App: React.FC = () => {
     try {
       const dbDriver = {
         nric: newDriver.nric,
+        email: newDriver.email || null,
         name: newDriver.name,
         // contact_number removed
         car_plate: newDriver.carPlate,
@@ -450,6 +452,7 @@ const App: React.FC = () => {
     try {
        const dbUpdate = {
         nric: updatedDriver.nric,
+        email: updatedDriver.email || null,
         name: updatedDriver.name,
         // contact_number removed
         car_plate: updatedDriver.carPlate,

@@ -237,6 +237,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // New Driver Form State
   const initialFormState = {
     name: '',
+    email: '',
     nric: '',
     // contactNumber removed
     carPlate: '',
@@ -934,6 +935,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingId(driver.id);
     setFormData({
       name: driver.name,
+      email: driver.email || '',
       nric: driver.nric,
       // contactNumber removed
       carPlate: driver.carPlate,
@@ -1725,6 +1727,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
                             <tr>
                                 <th className="px-6 py-3">Full Name</th>
+                                <th className="px-6 py-3">Email Address</th>
                                 <th className="px-6 py-3">NRIC</th>
                                 <th className="px-6 py-3">Plate Number</th>
                                 <th 
@@ -1738,6 +1741,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     </span>
                                   </div>
                                 </th>
+                                <th className="px-6 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -1752,26 +1756,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     return 0;
                                   });
                                 }
-                                return driverListSorted.map(driver => (
-                                <tr key={driver.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-gray-900">{driver.name}</td>
-                                    <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
-                                    <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
-                                    <td className="px-6 py-4 text-gray-600">
-                                      <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                          driver.category === 'SEWABELI' ? 'bg-blue-100 text-blue-800' :
-                                          driver.category === 'SEWA_BIASA' ? 'bg-purple-100 text-purple-800' :
-                                          'bg-gray-100 text-gray-800'
-                                      }`}>
-                                        {driver.category}
-                                      </span>
-                                    </td>
-                                </tr>
-                                ));
+                                return driverListSorted.map(driver => {
+                                    let isNew = false;
+                                    if (driver.contractStartDate) {
+                                      const start = new Date(driver.contractStartDate);
+                                      const now = new Date();
+                                      const diffTime = Math.abs(now.getTime() - start.getTime());
+                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                      isNew = diffDays <= 30;
+                                    }
+                                    return (
+                                    <tr key={driver.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4 font-bold text-gray-900 flex items-center gap-2">
+                                          {driver.name}
+                                          {isNew && (
+                                            <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] tracking-widest border border-red-500/30 px-1.5 py-0.5 rounded-sm bg-red-50">NEW</span>
+                                          )}
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
+                                        <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
+                                        <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                          <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                              driver.category === 'SEWABELI' ? 'bg-blue-100 text-blue-800' :
+                                              driver.category === 'SEWA_BIASA' ? 'bg-purple-100 text-purple-800' :
+                                              'bg-gray-100 text-gray-800'
+                                          }`}>
+                                            {driver.category}
+                                          </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button 
+                                                onClick={() => handleOpenEditModal(driver)} 
+                                                className="text-xs text-blue-600 font-semibold hover:bg-blue-50 px-3 py-1.5 rounded transition-colors border border-blue-100 bg-white shadow-sm"
+                                            >
+                                                Edit Details
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )});
                             })()}
                             {driverData.filter(d => !d.isDelisted).length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">No active drivers found.</td>
+                                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">No active drivers found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2082,6 +2109,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Full Name</label>
                                     <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Driver Full Name" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
+                                    <input type="email" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Email (Optional)" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
