@@ -27,6 +27,7 @@ export interface PaymentTransaction {
 export interface Driver {
   id: string;
   nric: string; // Acts as password
+  email?: string;
   name: string;
   carPlate: string;
   contractStartDate: string; // YYYY-MM-DD
