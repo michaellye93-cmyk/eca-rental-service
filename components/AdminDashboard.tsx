@@ -133,7 +133,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
-  const [driverListSortConfig, setDriverListSortConfig] = useState<{ direction: 'asc' | 'desc' | null }>({ direction: null });
+  const [driverListSortConfig, setDriverListSortConfig] = useState<{ key: 'CATEGORY' | 'NAME' | null, direction: 'asc' | 'desc' | null }>({ key: null, direction: null });
 
   // Persistence hooks
   useEffect(() => {
@@ -1726,18 +1726,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
                             <tr>
-                                <th className="px-6 py-3">Full Name</th>
+                                <th 
+                                  className="px-6 py-3 cursor-pointer hover:text-gray-800 transition-colors group select-none"
+                                  onClick={() => setDriverListSortConfig(prev => ({ 
+                                      key: 'NAME', 
+                                      direction: prev.key === 'NAME' ? (prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc') : 'asc' 
+                                  }))}
+                                >
+                                  <div className="flex items-center gap-1">
+                                    Full Name
+                                    <span className={`text-[10px] ${driverListSortConfig.key === 'NAME' && driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-500'}`}>
+                                      {driverListSortConfig.key === 'NAME' && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === 'NAME' && driverListSortConfig.direction === 'desc' ? '▼' : '↕'}
+                                    </span>
+                                  </div>
+                                </th>
                                 <th className="px-6 py-3">Email Address</th>
                                 <th className="px-6 py-3">NRIC</th>
                                 <th className="px-6 py-3">Plate Number</th>
                                 <th 
                                   className="px-6 py-3 cursor-pointer hover:text-gray-800 transition-colors group select-none"
-                                  onClick={() => setDriverListSortConfig(prev => ({ direction: prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc' }))}
+                                  onClick={() => setDriverListSortConfig(prev => ({ 
+                                      key: 'CATEGORY', 
+                                      direction: prev.key === 'CATEGORY' ? (prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc') : 'asc' 
+                                  }))}
                                 >
                                   <div className="flex items-center gap-1">
                                     Category
-                                    <span className={`text-[10px] ${driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-500'}`}>
-                                      {driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.direction === 'desc' ? '▼' : '↕'}
+                                    <span className={`text-[10px] ${driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-500'}`}>
+                                      {driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction === 'desc' ? '▼' : '↕'}
                                     </span>
                                   </div>
                                 </th>
@@ -1747,10 +1763,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <tbody className="divide-y divide-gray-100">
                             {(() => {
                                 const driverListSorted = [...driverData.filter(d => !d.isDelisted)];
-                                if (driverListSortConfig.direction) {
+                                if (driverListSortConfig.direction && driverListSortConfig.key) {
                                   driverListSorted.sort((a, b) => {
-                                    const valA = a.category || '';
-                                    const valB = b.category || '';
+                                    let valA = '';
+                                    let valB = '';
+                                    
+                                    if (driverListSortConfig.key === 'CATEGORY') {
+                                      valA = a.category || '';
+                                      valB = b.category || '';
+                                    } else if (driverListSortConfig.key === 'NAME') {
+                                      valA = (a.name || '').toLowerCase();
+                                      valB = (b.name || '').toLowerCase();
+                                    }
+
                                     if (valA < valB) return driverListSortConfig.direction === 'asc' ? -1 : 1;
                                     if (valA > valB) return driverListSortConfig.direction === 'asc' ? 1 : -1;
                                     return 0;
