@@ -29,6 +29,7 @@ export interface Driver {
   nric: string; // Acts as password
   email?: string;
   name: string;
+  address?: string;
   carPlate: string;
   contractStartDate: string; // YYYY-MM-DD
   contractEndDate?: string; // YYYY-MM-DD (New)

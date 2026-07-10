@@ -238,6 +238,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const initialFormState = {
     name: '',
     email: '',
+    address: '',
     nric: '',
     // contactNumber removed
     carPlate: '',
@@ -936,6 +937,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setFormData({
       name: driver.name,
       email: driver.email || '',
+      address: driver.address || '',
       nric: driver.nric,
       // contactNumber removed
       carPlate: driver.carPlate,
@@ -1741,6 +1743,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </div>
                                 </th>
                                 <th className="px-6 py-3">Email Address</th>
+                                <th className="px-6 py-3">Address</th>
                                 <th className="px-6 py-3">NRIC</th>
                                 <th className="px-6 py-3">Plate Number</th>
                                 <th 
@@ -1799,6 +1802,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           )}
                                         </td>
                                         <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
+                                        <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={driver.address || ''}>{driver.address || '-'}</td>
                                         <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
                                         <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
                                         <td className="px-6 py-4 text-gray-600">
@@ -1823,7 +1827,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             })()}
                             {driverData.filter(d => !d.isDelisted).length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">No active drivers found.</td>
+                                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">No active drivers found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2142,6 +2146,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
                                     <input type="email" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Email (Optional)" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Address</label>
+                                    <textarea className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={2} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Driver Address"></textarea>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>

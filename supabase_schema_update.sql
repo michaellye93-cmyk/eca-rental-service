@@ -198,3 +198,11 @@ BEGIN
         ALTER TABLE public.drivers ADD COLUMN email text;
     END IF;
 END$$;
+
+-- Added Address Column
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'drivers' AND column_name = 'address') THEN
+        ALTER TABLE public.drivers ADD COLUMN address text;
+    END IF;
+END$$;

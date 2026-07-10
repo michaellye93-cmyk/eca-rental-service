@@ -108,6 +108,7 @@ const App: React.FC = () => {
             nric: d.nric,
             email: d.email,
             name: d.name,
+            address: d.address,
             carPlate: d.car_plate,
             contractStartDate: d.contract_start_date,
             contractEndDate: d.contract_end_date, // Now reliably fetched from table
@@ -429,6 +430,7 @@ const App: React.FC = () => {
         nric: newDriver.nric,
         email: newDriver.email || null,
         name: newDriver.name,
+        address: newDriver.address || null,
         // contact_number removed
         car_plate: newDriver.carPlate,
         contract_start_date: newDriver.contractStartDate,
@@ -454,6 +456,7 @@ const App: React.FC = () => {
         nric: updatedDriver.nric,
         email: updatedDriver.email || null,
         name: updatedDriver.name,
+        address: updatedDriver.address || null,
         // contact_number removed
         car_plate: updatedDriver.carPlate,
         contract_start_date: updatedDriver.contractStartDate,
