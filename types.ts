@@ -21,7 +21,7 @@ export interface PaymentTransaction {
   date: string; // YYYY-MM-DD
   amount: number;
   serviceClaim?: number;
-  paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT';
+  paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM';
 }
 
 export interface Driver {

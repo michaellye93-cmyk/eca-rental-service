@@ -357,7 +357,7 @@ const App: React.FC = () => {
   };
 
   // --- CRUD Operations (Passed to AdminDashboard) ---
-  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' = 'BANK TRANSFER') => {
+  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' = 'BANK TRANSFER') => {
     try {
       setDrivers(prev => prev.map(d => {
         if (d.id === driverId) {
@@ -386,7 +386,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT') => {
+  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => {
     try {
       setDrivers(prev => prev.map(d => {
         const hasTx = d.paymentHistory.some(p => p.id === paymentId);

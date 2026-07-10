@@ -62,8 +62,8 @@ interface AdminDashboardProps {
   cars: Car[];
   snapshots?: FleetSnapshot[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT') => void;
-  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT') => void;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
   onCreateDriver: (driver: Driver) => void;
   onUpdateDriver: (driver: Driver) => void;
   onDelistDriver: (driverId: string) => void;
@@ -267,7 +267,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
   const [paymentDate, setPaymentDate] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' | null>(null);
 
   // --- Red Dot Notification & Screening States (Kuala Lumpur Timezone sensitive) ---
   const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
@@ -886,12 +886,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSubmitPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDriverForPayment) return;
-    const amount = parseFloat(paymentAmount);
+    const amount = parseFloat(paymentAmount) || 0;
     const serviceClaim = parseFloat(serviceClaimAmount) || 0;
     if (isNaN(amount) || amount < 0) { alert("Invalid amount."); return; }
     if (!paymentDate) { alert("Select date."); return; }
-    if (!paymentMethod) { alert("Please select either BANK TRANSFER or CASH DEPOSIT."); return; }
-    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, paymentMethod);
+    
+    let finalMethod = paymentMethod;
+    if (!finalMethod) {
+        if (amount === 0 && serviceClaim > 0) {
+            finalMethod = 'CLAIM';
+        } else {
+            alert("Please select either BANK TRANSFER or CASH DEPOSIT."); return;
+        }
+    }
+    
+    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod);
     setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null);
   };
 
