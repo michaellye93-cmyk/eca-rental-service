@@ -982,17 +982,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const submissionData = { ...formData, contractDuration: finalDuration };
 
-    if (editingId) {
-      const originalDriver = drivers.find(d => d.id === editingId);
-      if (!originalDriver) return;
-      await onUpdateDriver({ ...originalDriver, ...submissionData });
-    } else {
-      if (drivers.some(d => d.nric === formData.nric)) { alert("NRIC exists."); return; }
-      await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
+    try {
+      if (editingId) {
+        const originalDriver = drivers.find(d => d.id === editingId);
+        if (!originalDriver) return;
+        await onUpdateDriver({ ...originalDriver, ...submissionData });
+      } else {
+        if (drivers.some(d => d.nric === formData.nric)) { alert("NRIC exists."); return; }
+        await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
+      }
+      // Immediate Refresh on Update
+      await onRefresh();
+      setIsDriverModalOpen(false); setFormData(initialFormState);
+    } catch (e) {
+      // Error handled by parent, keep modal open
     }
-    // Immediate Refresh on Update
-    await onRefresh();
-    setIsDriverModalOpen(false); setFormData(initialFormState);
   };
 
   const handleCarFormSubmit = async (e: React.FormEvent) => {
@@ -1197,7 +1201,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }`}
                   >
                     <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">GOOD STATUS</span>
-                    <span className="text-5xl font-black text-emerald-600 my-2 font-sans">{goodDriversCount}</span>
+                    <span className="text-5xl font-black text-emerald-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((goodDriversCount / activeFleetCount) * 100) : 0}%</span>
+                    <span className="text-sm font-bold text-gray-400 mb-2">{goodDriversCount} drivers</span>
                     {renderTrendIndicator(goodDriversCount, lastSnapshot ? lastSnapshot.good_count : 0, 'GOOD')}
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
                   </button>
@@ -1220,7 +1225,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }`}
                   >
                     <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">MID STATUS</span>
-                    <span className="text-5xl font-black text-amber-500 my-2 font-sans">{midDriversCount}</span>
+                    <span className="text-5xl font-black text-amber-500 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((midDriversCount / activeFleetCount) * 100) : 0}%</span>
+                    <span className="text-sm font-bold text-gray-400 mb-2">{midDriversCount} drivers</span>
                     {renderTrendIndicator(midDriversCount, lastSnapshot ? lastSnapshot.mid_count : 0, 'MID')}
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
                   </button>
@@ -1243,7 +1249,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }`}
                   >
                     <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">BAD STATUS</span>
-                    <span className="text-5xl font-black text-rose-600 my-2 font-sans">{badDriversCount}</span>
+                    <span className="text-5xl font-black text-rose-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((badDriversCount / activeFleetCount) * 100) : 0}%</span>
+                    <span className="text-sm font-bold text-gray-400 mb-2">{badDriversCount} drivers</span>
                     {renderTrendIndicator(badDriversCount, lastSnapshot ? lastSnapshot.bad_count : 0, 'BAD')}
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
                   </button>

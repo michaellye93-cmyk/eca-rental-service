@@ -472,6 +472,7 @@ const App: React.FC = () => {
       await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error updating driver: ${err.message}`);
+      throw err;
     }
   };
 
