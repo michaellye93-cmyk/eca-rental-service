@@ -2304,10 +2304,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                   </div>
                                                   <div className="flex-1">
                                                     <label className="text-[9px] font-bold text-gray-500 uppercase block mb-0.5">Method</label>
-                                                    <select value={editPaymentMethod || 'BANK TRANSFER'} onChange={e => setEditPaymentMethod(e.target.value as any)} className="w-full p-1 border border-gray-300 rounded text-xs">
-                                                      <option value="BANK TRANSFER">Bank Transfer</option>
-                                                      <option value="CASH DEPOSIT">Cash Deposit</option>
-                                                    </select>
+                                                    {(parseFloat(editAmount || '0') === 0 && parseFloat(editServiceClaim || '0') > 0) ? (
+                                                      <div className="w-full p-1 border border-amber-200 bg-amber-50 text-amber-700 rounded text-xs font-bold text-center">CLAIM</div>
+                                                    ) : (
+                                                      <select value={editPaymentMethod || 'BANK TRANSFER'} onChange={e => setEditPaymentMethod(e.target.value as any)} className="w-full p-1 border border-gray-300 rounded text-xs">
+                                                        <option value="BANK TRANSFER">Bank Transfer</option>
+                                                        <option value="CASH DEPOSIT">Cash Deposit</option>
+                                                      </select>
+                                                    )}
                                                   </div>
                                                 </div>
                                                 <div className="flex gap-2 justify-end pt-1">
@@ -2356,8 +2360,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           <div>
                                             <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Payment Method</label>
                                             <div className="grid grid-cols-2 gap-2 text-xs">
-                                              <button type="button" onClick={() => setPaymentMethod('BANK TRANSFER')} className={`p-2 rounded border ${paymentMethod === 'BANK TRANSFER' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Bank Transfer</button>
-                                              <button type="button" onClick={() => setPaymentMethod('CASH DEPOSIT')} className={`p-2 rounded border ${paymentMethod === 'CASH DEPOSIT' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Cash Deposit</button>
+                                              {(parseFloat(paymentAmount || '0') === 0 && parseFloat(serviceClaimAmount || '0') > 0) ? (
+                                                <div className="col-span-2 p-2 rounded border bg-amber-50 border-amber-200 text-amber-700 font-bold text-center">
+                                                  Claim Only (Auto)
+                                                </div>
+                                              ) : (
+                                                <>
+                                                  <button type="button" onClick={() => setPaymentMethod('BANK TRANSFER')} className={`p-2 rounded border ${paymentMethod === 'BANK TRANSFER' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Bank Transfer</button>
+                                                  <button type="button" onClick={() => setPaymentMethod('CASH DEPOSIT')} className={`p-2 rounded border ${paymentMethod === 'CASH DEPOSIT' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Cash Deposit</button>
+                                                </>
+                                              )}
                                             </div>
                                           </div>
 
