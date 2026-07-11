@@ -2322,7 +2322,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             ) : (
                                               <>
                                                 <div>
-                                                    <div className="text-[10px] text-gray-500">{new Date(tx.date).toLocaleDateString()} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
+                                                    <div className="text-[10px] text-gray-500">{new Date(tx.date).toLocaleDateString('en-GB')} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
                                                     <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
                                                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
                                                 </div>
