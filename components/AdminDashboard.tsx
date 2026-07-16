@@ -2170,7 +2170,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">NRIC</label>
-                                        <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => setFormData({...formData, nric: e.target.value})} placeholder="NRIC Number" />
+                                        <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => {
+                                            const val = e.target.value;
+                                            const cleaned = val.replace(/\D/g, '');
+                                            const truncated = cleaned.slice(0, 12);
+                                            let formatted = truncated;
+                                            if (truncated.length > 8) {
+                                                formatted = `${truncated.slice(0, 6)}-${truncated.slice(6, 8)}-${truncated.slice(8)}`;
+                                            } else if (truncated.length > 6) {
+                                                formatted = `${truncated.slice(0, 6)}-${truncated.slice(6)}`;
+                                            }
+                                            // Keep original value if user is deleting hyphens manually, but formatNric is safer to just apply on input
+                                            setFormData({...formData, nric: formatted});
+                                        }} placeholder="NRIC Number" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Plate Number</label>

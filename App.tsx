@@ -306,7 +306,8 @@ const App: React.FC = () => {
   // --- Login Handlers ---
 
   const handleDriverLogin = (nric: string) => {
-    const driver = drivers.find(d => d.nric === nric);
+    const cleanedLoginNric = nric.replace(/\D/g, '');
+    const driver = drivers.find(d => (d.nric || '').replace(/\D/g, '') === cleanedLoginNric);
     if (driver) {
       setActiveDriverId(driver.id);
       setCurrentView('DRIVER');
