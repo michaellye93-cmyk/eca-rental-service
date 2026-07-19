@@ -12,7 +12,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
   const today = new Date();
   
   const [selectedMonth, setSelectedMonth] = useState<string>('');
-  const [inflowViewMode, setInflowViewMode] = useState<'PERFORMANCE' | 'CASHFLOW'>('PERFORMANCE');
+  
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [selectedWeekDetail, setSelectedWeekDetail] = useState<any | null>(null);
   
@@ -177,7 +177,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             label: `${startOfWeek.getDate()}/${startOfWeek.getMonth()+1} - ${endOfWeek.getDate()}/${endOfWeek.getMonth()+1}`,
             fullLabel: `${startOfWeek.toLocaleDateString('en-MY')} - ${endOfWeek.toLocaleDateString('en-MY')}`,
             expected: 0,
-            collected: 0,
+            performanceCollected: 0,
+            cashFlowCollected: 0,
             activeDriverCount: 0,
             details: [] as any[]
         });
@@ -204,66 +205,69 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
              }
         }
 
-        if (inflowViewMode === 'PERFORMANCE') {
-            let paymentPool = d.paymentHistory 
-                ? d.paymentHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0) 
-                : 0;
+        // PERFORMANCE LOGIC (Accrual)
+        let paymentPool = d.paymentHistory 
+            ? d.paymentHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0) 
+            : 0;
 
-            let invoiceDate = new Date(contractStart);
-            let safetyCounter = 0;
-            const maxCycles = 500; 
+        let invoiceDate = new Date(contractStart);
+        let safetyCounter = 0;
+        const maxCycles = 500; 
 
-            while (invoiceDate <= effectiveEnd && safetyCounter < maxCycles) {
-                if (invoiceDate > weeks[0].end) break;
-                const invoiceAmount = d.rentalCycle === 'MONTHLY' ? (d.rentalRate * 12 / 52) : d.rentalRate;
-                
-                let paidForThisInvoice = 0;
-                if (paymentPool >= invoiceAmount - 0.01) {
-                    paidForThisInvoice = invoiceAmount;
-                    paymentPool -= invoiceAmount;
-                } else if (paymentPool > 0) {
-                    paidForThisInvoice = paymentPool;
-                    paymentPool = 0;
-                }
+        while (invoiceDate <= effectiveEnd && safetyCounter < maxCycles) {
+            if (invoiceDate > weeks[0].end) break;
+            const invoiceAmount = d.rentalRate;
+            
+            let paidForThisInvoice = 0;
+            if (paymentPool >= invoiceAmount - 0.01) {
+                paidForThisInvoice = invoiceAmount;
+                paymentPool -= invoiceAmount;
+            } else if (paymentPool > 0) {
+                paidForThisInvoice = paymentPool;
+                paymentPool = 0;
+            }
 
-                const weekIndex = weeks.findIndex(w => invoiceDate >= w.start && invoiceDate <= w.end);
-                
-                if (weekIndex !== -1) {
-                    const week = weeks[weekIndex];
-                    week.expected += invoiceAmount;
-                    week.collected += paidForThisInvoice;
-                    week.activeDriverCount++;
+            const weekIndex = weeks.findIndex(w => invoiceDate >= w.start && invoiceDate <= w.end);
+            
+            if (weekIndex !== -1) {
+                const week = weeks[weekIndex];
+                week.expected += invoiceAmount;
+                week.performanceCollected += paidForThisInvoice;
+                week.activeDriverCount++;
 
-                    week.details.push({
+                let detail = week.details.find((x: any) => x.id === d.id);
+                if (!detail) {
+                    detail = {
                         id: d.id,
                         name: d.name,
                         plate: d.carPlate,
                         cycle: d.rentalCycle,
-                        expected: invoiceAmount,
-                        paid: paidForThisInvoice,
+                        expected: 0,
+                        performancePaid: 0,
+                        cashFlowPaid: 0,
                         isActive: true,
                         contractEnded: false
-                    });
+                    };
+                    week.details.push(detail);
                 }
-
-                if (d.rentalCycle === 'MONTHLY') invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-                else invoiceDate.setDate(invoiceDate.getDate() + 7);
-                safetyCounter++;
+                detail.expected += invoiceAmount;
+                detail.performancePaid += paidForThisInvoice;
             }
-        } else {
-            // CASH FLOW (Bank Deposits)
-            let invoiceDate = new Date(contractStart);
-            let safetyCounter = 0;
-            const maxCycles = 500;
 
-            while (invoiceDate <= effectiveEnd && safetyCounter < maxCycles) {
-                if (invoiceDate > weeks[0].end) break;
-                const invoiceAmount = d.rentalCycle === 'MONTHLY' ? (d.rentalRate * 12 / 52) : d.rentalRate;
-                const weekIndex = weeks.findIndex(w => invoiceDate >= w.start && invoiceDate <= w.end);
+            if (d.rentalCycle === 'MONTHLY') invoiceDate.setMonth(invoiceDate.getMonth() + 1);
+            else invoiceDate.setDate(invoiceDate.getDate() + 7);
+            safetyCounter++;
+        }
+
+        // CASH FLOW LOGIC (Bank Deposits)
+        if (d.paymentHistory) {
+            d.paymentHistory.forEach(p => {
+                const pDate = new Date(p.date + 'T00:00:00');
+                const weekIndex = weeks.findIndex(w => pDate >= w.start && pDate <= w.end);
                 
                 if (weekIndex !== -1) {
-                    weeks[weekIndex].expected += invoiceAmount;
-                    weeks[weekIndex].activeDriverCount++;
+                    weeks[weekIndex].cashFlowCollected += p.amount + (p.serviceClaim || 0);
+                    
                     let detail = weeks[weekIndex].details.find((x: any) => x.id === d.id);
                     if (!detail) {
                         detail = {
@@ -272,66 +276,31 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                             plate: d.carPlate,
                             cycle: d.rentalCycle,
                             expected: 0,
-                            paid: 0,
+                            performancePaid: 0,
+                            cashFlowPaid: 0,
                             isActive: true,
                             contractEnded: false
                         };
                         weeks[weekIndex].details.push(detail);
                     }
-                    detail.expected += invoiceAmount;
+                    detail.cashFlowPaid += p.amount + (p.serviceClaim || 0);
                 }
-
-                if (d.rentalCycle === 'MONTHLY') invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-                else invoiceDate.setDate(invoiceDate.getDate() + 7);
-                safetyCounter++;
-            }
-
-            if (d.paymentHistory) {
-                d.paymentHistory.forEach(p => {
-                    const pDate = new Date(p.date + 'T00:00:00');
-                    const weekIndex = weeks.findIndex(w => pDate >= w.start && pDate <= w.end);
-                    
-                    if (weekIndex !== -1) {
-                        weeks[weekIndex].collected += p.amount + (p.serviceClaim || 0);
-                        
-                        let detail = weeks[weekIndex].details.find((x: any) => x.id === d.id);
-                        if (!detail) {
-                            detail = {
-                                id: d.id,
-                                name: d.name,
-                                plate: d.carPlate,
-                                cycle: d.rentalCycle,
-                                expected: 0,
-                                paid: 0,
-                                isActive: true,
-                                contractEnded: false
-                            };
-                            weeks[weekIndex].details.push(detail);
-                        }
-                        detail.paid += p.amount + (p.serviceClaim || 0);
-                    }
-                });
-            }
+            });
         }
     });
 
     weeks.forEach(week => {
-        week.variance = week.collected - week.expected;
-        week.rate = week.expected > 0 ? (week.collected / week.expected) * 100 : 0;
-        week.details.sort((a: any, b: any) => (b.expected - b.paid) - (a.expected - a.paid));
+        week.variance = week.performanceCollected - week.expected;
+        week.rate = week.expected > 0 ? (week.performanceCollected / week.expected) * 100 : 0;
+        // Sort by performance deficit
+        week.details.sort((a: any, b: any) => (b.expected - b.performancePaid) - (a.expected - a.performancePaid));
     });
 
     return weeks;
-  }, [drivers, inflowViewMode]);
+  }, [drivers]);
 
   // PAGINATION FOR WEEKLY DATA (8 weeks per page, total 12 weeks means 2 pages)
-  const weeksPerPage = 8;
-  const paginatedWeeks = useMemo(() => {
-    const startIndex = (currentPage - 1) * weeksPerPage;
-    return allWeeklyFinancials.slice(startIndex, startIndex + weeksPerPage);
-  }, [allWeeklyFinancials, currentPage]);
-
-  const totalPages = Math.ceil(allWeeklyFinancials.length / weeksPerPage);
+  
 
   return (
     <div className="space-y-6">
@@ -528,122 +497,76 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         </div>
       )}
 
-      {/* --- WEEKLY INFLOW MONITORING (Merged from main tabs & Paginated) --- */}
+            {/* --- WEEKLY INFLOW MONITORING (Line Chart) --- */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-4">
           <div>
             <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
               <Activity className="w-5 h-5 text-blue-600" /> Weekly Inflow Analysis
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">Showing paginated 8-week segments of active cash-flow trends</p>
-          </div>
-          
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Logic Toggle */}
-            <div className="flex bg-gray-200 p-0.5 rounded-lg border border-gray-300">
-              <button 
-                onClick={() => setInflowViewMode('PERFORMANCE')}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${inflowViewMode === 'PERFORMANCE' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Performance
-              </button>
-              <button 
-                onClick={() => setInflowViewMode('CASHFLOW')}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${inflowViewMode === 'CASHFLOW' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Cash Flow
-              </button>
-            </div>
-            
-            {/* Page selectors */}
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg p-1 shadow-sm text-xs text-gray-600 font-medium">
-                <button 
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span>Page {currentPage} of {totalPages}</span>
-                <button 
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+            <p className="text-xs text-gray-400 mt-0.5">Tracking Expected Rental vs Performance vs Cash Flow over the last 12 weeks</p>
           </div>
         </div>
 
-        <div className="p-5 border-b border-gray-100 bg-blue-50/20 text-xs text-gray-500 font-medium leading-relaxed">
-          {inflowViewMode === 'PERFORMANCE' ? (
-            <span className="text-blue-800">📊 <b>Accrual Basis</b>: Tracks expected rents sorted by contract schedules versus matched rents paid. Ideal for tracking asset yields.</span>
-          ) : (
-            <span className="text-green-800">💸 <b>Cash Basis</b>: Tracks payments received in banks this exact calendar week regardless of rent dates. Ideal for cash liquidity checks.</span>
-          )}
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-600">
-            <thead className="bg-gray-50 text-[11px] uppercase font-bold text-gray-500 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3">Week Range</th>
-                <th className="px-6 py-3 text-center">Active Drivers</th>
-                <th className="px-6 py-3 text-right font-semibold">Expected Rental</th>
-                <th className="px-6 py-3 text-right text-black font-extrabold">Cash Collected</th>
-                <th className="px-6 py-3 text-right">Variance</th>
-                <th className="px-6 py-3 w-1/4">Collection Rate</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
-              {paginatedWeeks.map((week) => (
-                <tr key={week.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-semibold text-gray-900">{week.label}</div>
-                    <div className="text-[10px] uppercase text-gray-400 font-bold">Week {12 - week.id}</div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button 
-                      onClick={() => setSelectedWeekDetail(week)}
-                      className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 shadow-xs cursor-pointer underline decoration-blue-200 underline-offset-1 transition-all"
-                      title="View Breakdowns"
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      {week.activeDriverCount} Drivers
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-right font-semibold text-gray-500">
-                    {formatCurrency(week.expected)}
-                  </td>
-                  <td className="px-6 py-4 text-right font-black text-gray-900">
-                    {formatCurrency(week.collected)}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className={`font-mono font-bold text-xs ${week.variance >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                      {week.variance > 0 ? '+' : ''}{formatCurrency(week.variance)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-bold w-9 text-right text-gray-700">{Math.round(week.rate)}%</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-200">
-                        <div 
-                          className={`h-2 rounded-full transition-all ${
-                            week.rate >= 100 ? 'bg-emerald-500' : 
-                            week.rate >= 80 ? 'bg-amber-400' : 'bg-red-500'
-                          }`} 
-                          style={{ width: `${Math.min(100, week.rate)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="p-6">
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={[...allWeeklyFinancials].reverse()} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                <XAxis 
+                    dataKey="label" 
+                    tick={{ fontSize: 11, fill: '#6B7280', fontWeight: 'bold' }} 
+                    axisLine={false} 
+                    tickLine={false}
+                    dy={10}
+                />
+                <YAxis 
+                    tickFormatter={(value) => `RM ${(value / 1000).toFixed(1)}k`}
+                    tick={{ fontSize: 11, fill: '#6B7280', fontWeight: 'bold' }}
+                    axisLine={false}
+                    tickLine={false}
+                    dx={-10}
+                />
+                <Tooltip 
+                    formatter={(value) => formatCurrency(value)}
+                    labelStyle={{ fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend 
+                    wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 'bold' }}
+                    iconType="circle"
+                />
+                <Line 
+                    type="monotone" 
+                    dataKey="expected" 
+                    name="Expected Rental" 
+                    stroke="#9CA3AF" 
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    activeDot={{ r: 6 }} 
+                />
+                <Line 
+                    type="monotone" 
+                    dataKey="performanceCollected" 
+                    name="Performance" 
+                    stroke="#2563EB" 
+                    strokeWidth={3} 
+                    dot={{ r: 4, strokeWidth: 2 }}
+                    activeDot={{ r: 6, stroke: '#1D4ED8', strokeWidth: 2 }}
+                />
+                <Line 
+                    type="monotone" 
+                    dataKey="cashFlowCollected" 
+                    name="Cash InFlow" 
+                    stroke="#10B981" 
+                    strokeWidth={3} 
+                    dot={{ r: 4, strokeWidth: 2 }}
+                    activeDot={{ r: 6, stroke: '#059669', strokeWidth: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

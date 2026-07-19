@@ -100,7 +100,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   });
   
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'CARS' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST'>(() => {
+  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST'>(() => {
     try {
       const saved = localStorage.getItem('eca_admin_view_mode');
       return (saved as any) || 'ACTIVE';
@@ -1608,7 +1608,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           
           {userRole === 'admin' && (
             <>
-              <button onClick={() => setViewMode('CARS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'CARS' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CarIcon className="w-4 h-4" /> Fleet Management</button>
+              
               <button onClick={() => setViewMode('DRIVER_LIST')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DRIVER_LIST' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Users className="w-4 h-4" /> Driver List</button>
               <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
               <button onClick={() => setViewMode('RECONCILE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'RECONCILE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CheckCircle2 className="w-4 h-4" /> Bank Recon</button>
@@ -1618,114 +1618,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Main Table Section - unchanged */}
         <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
-          {viewMode === 'CARS' ? (
-             /* --- CARS VIEW --- */
-             <div>
-                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                    <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                        <CarIcon className="w-5 h-5 text-blue-600" /> Fleet Management
-                    </h2>
-                    <button 
-                        onClick={() => {
-                            setEditingCarId(null);
-                            setCarFormData({
-                                make: '',
-                                model: '',
-                                plateNumber: '',
-                                roadtaxExpiry: '',
-                                insuranceExpiry: '',
-                                inspectionExpiry: '',
-                                notes: ''
-                            });
-                            setIsCarModalOpen(true);
-                        }}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700 transition-colors"
-                    >
-                        <Plus className="w-4 h-4" /> Add New Car
-                    </button>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
-                            <tr>
-                                <th className="px-6 py-3">Car Details</th>
-                                <th className="px-6 py-3">Plate Number</th>
-                                <th className="px-6 py-3">Roadtax Expiry</th>
-                                <th className="px-6 py-3">Insurance Expiry</th>
-                                <th className="px-6 py-3">Inspection Expiry</th>
-                                <th className="px-6 py-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {cars.map(car => (
-                                <tr key={car.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-900">{car.make} {car.model}</div>
-                                        {car.notes && <div className="text-xs text-gray-500 mt-1">{car.notes}</div>}
-                                    </td>
-                                    <td className="px-6 py-4 font-mono font-bold text-blue-600">{car.plateNumber}</td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <Calendar className="w-4 h-4 text-gray-400" />
-                                            {car.roadtaxExpiry}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <Shield className="w-4 h-4 text-gray-400" />
-                                            {car.insuranceExpiry}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <Wrench className="w-4 h-4 text-gray-400" />
-                                            {car.inspectionExpiry}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button 
-                                                onClick={() => {
-                                                    setEditingCarId(car.id);
-                                                    setCarFormData({
-                                                        make: car.make,
-                                                        model: car.model,
-                                                        plateNumber: car.plateNumber,
-                                                        roadtaxExpiry: car.roadtaxExpiry,
-                                                        insuranceExpiry: car.insuranceExpiry,
-                                                        inspectionExpiry: car.inspectionExpiry,
-                                                        notes: car.notes || ''
-                                                    });
-                                                    setIsCarModalOpen(true);
-                                                }}
-                                                className="p-1 text-gray-400 hover:text-blue-600"
-                                            >
-                                                <Pencil className="w-4 h-4" />
-                                            </button>
-                                            <button 
-                                                onClick={() => {
-                                                    if (window.confirm(`Delete car ${car.plateNumber}?`)) {
-                                                        onDeleteCar(car.id);
-                                                    }
-                                                }}
-                                                className="p-1 text-gray-400 hover:text-red-600"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {cars.length === 0 && (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500 italic">No cars found in fleet.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-             </div>
-          ) : viewMode === 'ANALYTICS' && userRole === 'admin' ? (
+          {viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
                <AnalyticsView drivers={driverData} />
              </div>
