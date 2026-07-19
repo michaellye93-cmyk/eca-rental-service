@@ -11,12 +11,12 @@ interface DebtCollectionViewProps {
 const DebtCollectionView: React.FC<DebtCollectionViewProps> = ({ drivers, onLogPayment }) => {
   const [selectedDriverForPayment, setSelectedDriverForPayment] = useState<Driver | null>(null);
 
-  const [currentDateState, setCurrentDateState] = useState(new Date());
+  const [currentDateState, setCurrentDateState] = useState(new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })));
 
   React.useEffect(() => {
     // Refresh the current date every minute to catch day rollovers if app stays open
     const interval = setInterval(() => {
-      setCurrentDateState(new Date());
+      setCurrentDateState(new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })));
     }, 60000);
     return () => clearInterval(interval);
   }, []);

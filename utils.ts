@@ -371,7 +371,7 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new
       id: `${driver.id}_${i}`,
       driverId: driver.id,
       cycleIndex: i,
-      dueDate: invoiceDate.toISOString().split('T')[0],
+      dueDate: `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, '0')}-${String(invoiceDate.getDate()).padStart(2, '0')}`,
       amount: driver.rentalRate,
       amountPaid: amountPaidToThisInvoice,
       remainingBalance: invoicePrincipal > 0.01 ? invoicePrincipal : 0,
