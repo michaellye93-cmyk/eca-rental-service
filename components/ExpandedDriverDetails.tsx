@@ -46,7 +46,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
   const billingSchedule = React.useMemo(() => {
     const cycleDays = driver.rentalCycle === 'MONTHLY' ? 30 : 7;
     const items = [];
-    const dateCursor = new Date();
+    const dateCursor = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     
     // We render the last 6 cycles of billing schedules
     for (let i = 0; i < 6; i++) {
@@ -302,7 +302,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                           </span>
                         </div>
                         <p className="text-gray-400 font-medium font-mono mt-1 text-[11px]">
-                          Timestamp: {new Date(pt.date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })} at {new Date(pt.date).toLocaleTimeString('en-MY')}
+                          Timestamp: {new Date(pt.date + 'T00:00:00').toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })} at {new Date(pt.date + 'T00:00:00').toLocaleTimeString('en-MY')}
                         </p>
                       </div>
 

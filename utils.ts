@@ -1,9 +1,9 @@
 import { Driver, DriverMetrics, DriverStatus } from './types';
 
-export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new Date()): DriverMetrics => {
+export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }))): DriverMetrics => {
   const now = new Date(referenceDate);
   now.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
-  const startDate = new Date(driver.contractStartDate);
+  const startDate = new Date(driver.contractStartDate + 'T00:00:00');
   
   // Determine effective end date
   let effectiveEndDate = now;
@@ -11,7 +11,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   // 1. Cap at Contract End Date if exists (Ghost Record Logic)
   // Requirement: Exclude invoices dated exactly on the return date or after.
   if (driver.contractEndDate) {
-      const cEndDate = new Date(driver.contractEndDate);
+      const cEndDate = new Date(driver.contractEndDate + 'T00:00:00');
       // If the contract ended, we cap the effective end date.
       // We subtract 1 millisecond to ensure the invoice ON the end date is excluded (since we use <= comparison or math)
       // effectively making it strictly < contractEndDate
@@ -24,7 +24,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
 
   // 2. Logic: If driver is delisted, stop clock at delist date
   if (driver.isDelisted && driver.delistDate) {
-    const dDate = new Date(driver.delistDate);
+    const dDate = new Date(driver.delistDate + 'T00:00:00');
     // Same logic: Exclude invoice on the delist date
     dDate.setMilliseconds(dDate.getMilliseconds() - 1);
     
@@ -94,7 +94,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   // Clone payments to consume them (FIFO)
   // Sort by date ascending AND Filter by referenceDate
   let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: new Date(p.date), amount: p.amount + (p.serviceClaim || 0) }))
+    .map(p => ({ ...p, date: new Date(p.date + 'T00:00:00'), amount: p.amount + (p.serviceClaim || 0) }))
     .filter(p => p.date <= now) // Filter payments made after the reference date
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -234,8 +234,8 @@ export const analyzePaymentHabit = (driver: Driver) => {
   let count = 0;
 
   for (let i = 0; i < recentPayments.length - 1; i++) {
-    const d1 = new Date(recentPayments[i].date);
-    const d2 = new Date(recentPayments[i+1].date);
+    const d1 = new Date(recentPayments[i].date + 'T00:00:00');
+    const d2 = new Date(recentPayments[i+1].date + 'T00:00:00');
     const diffTime = Math.abs(d1.getTime() - d2.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     totalGapDays += diffDays;
@@ -258,12 +258,12 @@ export const analyzePaymentHabit = (driver: Driver) => {
 
 export const calculateMomentum = (driver: Driver) => {
     // 1. Sort Payments by Date Ascending
-    const payments = [...driver.paymentHistory].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const payments = [...driver.paymentHistory].sort((a,b) => new Date(a.date + 'T00:00:00').getTime() - new Date(b.date + 'T00:00:00').getTime());
     
     // Default safe values for new drivers
     if (payments.length === 0) return { avgLateness: 0, lastLateness: 0, velocity: 0, isSlipping: false, trend: 'STAGNANT', isPerfect: false };
 
-    const startDate = new Date(driver.contractStartDate);
+    const startDate = new Date(driver.contractStartDate + 'T00:00:00');
     
     // LOGIC: Map N-th payment transaction to N-th cycle due date
     const latenessData = payments.map((p, index) => {
@@ -275,7 +275,7 @@ export const calculateMomentum = (driver: Driver) => {
             expectedDate.setDate(startDate.getDate() + (index * 7));
         }
         
-        const actualDate = new Date(p.date);
+        const actualDate = new Date(p.date + 'T00:00:00');
         const diffTime = actualDate.getTime() - expectedDate.getTime();
         // Calculate days late (can be negative if paid early)
         return Math.ceil(diffTime / (1000 * 3600 * 24));
@@ -306,16 +306,16 @@ export const calculateMomentum = (driver: Driver) => {
 
 import { Invoice } from './types';
 
-export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new Date()): Invoice[] => {
+export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }))): Invoice[] => {
   const invoices: Invoice[] = [];
-  const startDate = new Date(driver.contractStartDate);
+  const startDate = new Date(driver.contractStartDate + 'T00:00:00');
   const refDate = new Date(referenceDate);
   refDate.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
   
   // Clone payments to consume them (FIFO)
   // Sort by date ascending AND Filter by referenceDate
   let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: new Date(p.date), amount: p.amount + (p.serviceClaim || 0) }))
+    .map(p => ({ ...p, date: new Date(p.date + 'T00:00:00'), amount: p.amount + (p.serviceClaim || 0) }))
     .filter(p => p.date <= refDate)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -330,13 +330,13 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new
 
     // Stop generating if contract effectively ended before this invoice
     if (driver.contractEndDate) {
-      const cEndDate = new Date(driver.contractEndDate);
+      const cEndDate = new Date(driver.contractEndDate + 'T00:00:00');
       cEndDate.setMilliseconds(cEndDate.getMilliseconds() - 1);
       if (invoiceDate > cEndDate) break;
     }
     
     if (driver.isDelisted && driver.delistDate) {
-      const dDate = new Date(driver.delistDate);
+      const dDate = new Date(driver.delistDate + 'T00:00:00');
       dDate.setMilliseconds(dDate.getMilliseconds() - 1);
       if (invoiceDate > dDate) break;
     }
@@ -387,7 +387,7 @@ export const getElapsedMonthEndDates = (): Date[] => {
   const startYear = 2026;
   const startMonth = 0; // January
   
-  const now = new Date();
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
   
   // Use Asia/Kuala_Lumpur year and month
   const klFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: 'numeric' });

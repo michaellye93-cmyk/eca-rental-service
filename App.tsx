@@ -90,7 +90,7 @@ const App: React.FC = () => {
                 serviceClaim: p.service_claim || 0,
                 paymentMethod: p.payment_method || 'BANK TRANSFER'
             }))
-            .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            .sort((a: any, b: any) => new Date(b.date + 'T00:00:00').getTime() - new Date(a.date + 'T00:00:00').getTime());
 
             const totalPaid = myPayments.reduce((sum: number, p: any) => sum + p.amount + (p.serviceClaim || 0), 0);
 
@@ -478,7 +478,7 @@ const App: React.FC = () => {
   };
 
   const handleDelistDriver = async (driverId: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
     try {
       const { error } = await supabase.from('drivers').update({ is_delisted: true, delist_date: today }).eq('id', driverId);
       if (error) throw error;

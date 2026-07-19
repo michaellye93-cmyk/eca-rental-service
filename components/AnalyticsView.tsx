@@ -9,7 +9,7 @@ interface AnalyticsViewProps {
 }
 
 const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
-  const today = new Date();
+  const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
   
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   
@@ -54,7 +54,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
   }, [drivers]);
 
   const currentMonthName = useMemo(() => {
-    return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   }, []);
 
   const currentMonthCollection = useMemo(() => {
@@ -153,22 +153,25 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
   // 5. Weekly Financial calculations (Monday to Sunday) - Taken from old dashboard segment
   const allWeeklyFinancials = useMemo(() => {
     const weeks: any[] = [];
-    const todayRef = new Date();
-    todayRef.setHours(0,0,0,0);
     
-    // Setup 12-Week Buckets
-    const currentDay = todayRef.getDay(); 
-    const diff = todayRef.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
-    const currentMonday = new Date(todayRef);
-    currentMonday.setDate(diff);
+    const klString = new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" });
+    const klDateLocal = new Date(klString);
+    const todayUTC = new Date(Date.UTC(klDateLocal.getFullYear(), klDateLocal.getMonth(), klDateLocal.getDate()));
+    
+    // Setup 12-Week Buckets using UTC
+    const currentDay = todayUTC.getUTCDay(); 
+    const diff = todayUTC.getUTCDate() - currentDay + (currentDay === 0 ? -6 : 1);
+    const currentMonday = new Date(todayUTC);
+    currentMonday.setUTCDate(diff);
 
     for (let i = 0; i < 12; i++) {
         const startOfWeek = new Date(currentMonday);
-        startOfWeek.setDate(currentMonday.getDate() - (i * 7));
-        startOfWeek.setHours(0,0,0,0);
+        startOfWeek.setUTCDate(currentMonday.getUTCDate() - (i * 7));
+        startOfWeek.setUTCHours(0,0,0,0);
+        
         const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23,59,59,999);
+        endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
+        endOfWeek.setUTCHours(23,59,59,999);
 
         weeks.push({
             id: i,
@@ -186,20 +189,20 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
     // Process Each Driver
     drivers.forEach(d => {
-        const contractStart = new Date(d.contractStartDate + 'T00:00:00');
+        const contractStart = new Date(d.contractStartDate + 'T00:00:00Z');
         let effectiveEnd: Date;
         
         if (d.contractEndDate) {
-            effectiveEnd = new Date(d.contractEndDate + 'T23:59:59.999');
+            effectiveEnd = new Date(d.contractEndDate + 'T23:59:59.999Z');
         } else {
             let durationDays = d.contractDuration * (d.rentalCycle === 'MONTHLY' ? 30 : 7);
             effectiveEnd = new Date(contractStart);
-            effectiveEnd.setDate(effectiveEnd.getDate() + durationDays);
-            effectiveEnd.setHours(23,59,59,999);
+            effectiveEnd.setUTCDate(effectiveEnd.getUTCDate() + durationDays);
+            effectiveEnd.setUTCHours(23,59,59,999);
         }
 
         if (d.isDelisted && d.delistDate) {
-             const delistDate = new Date(d.delistDate + 'T23:59:59.999');
+             const delistDate = new Date(d.delistDate + 'T23:59:59.999Z');
              if (delistDate < effectiveEnd) {
                  effectiveEnd = delistDate;
              }
@@ -254,15 +257,15 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 detail.performancePaid += paidForThisInvoice;
             }
 
-            if (d.rentalCycle === 'MONTHLY') invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-            else invoiceDate.setDate(invoiceDate.getDate() + 7);
+            if (d.rentalCycle === 'MONTHLY') invoiceDate.setUTCMonth(invoiceDate.getUTCMonth() + 1);
+            else invoiceDate.setUTCDate(invoiceDate.getUTCDate() + 7);
             safetyCounter++;
         }
 
         // CASH FLOW LOGIC (Bank Deposits)
         if (d.paymentHistory) {
             d.paymentHistory.forEach(p => {
-                const pDate = new Date(p.date + 'T00:00:00');
+                const pDate = new Date(p.date + 'T00:00:00Z');
                 const weekIndex = weeks.findIndex(w => pDate >= w.start && pDate <= w.end);
                 
                 if (weekIndex !== -1) {

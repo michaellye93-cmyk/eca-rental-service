@@ -242,7 +242,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nric: '',
     // contactNumber removed
     carPlate: '',
-    contractStartDate: new Date().toISOString().split('T')[0],
+    contractStartDate: new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }),
     contractEndDate: '',
     category: 'SEWABELI' as 'SEWABELI' | 'SEWA_BIASA',
     rentalCycle: 'WEEKLY' as 'WEEKLY' | 'MONTHLY',
@@ -280,7 +280,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       month: '2-digit',
       day: '2-digit'
     });
-    const parts = formatter.formatToParts(new Date());
+    const parts = formatter.formatToParts(new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })));
     const year = parts.find(p => p.type === 'year')?.value || '2026';
     const month = parts.find(p => p.type === 'month')?.value || '05';
     const day = parts.find(p => p.type === 'day')?.value || '27';
@@ -362,8 +362,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- Auto-Calculate Duration when Dates Change ---
   useEffect(() => {
     if (formData.contractStartDate && formData.contractEndDate) {
-      const start = new Date(formData.contractStartDate);
-      const end = new Date(formData.contractEndDate);
+      const start = new Date(formData.contractStartDate + 'T00:00:00');
+      const end = new Date(formData.contractEndDate + 'T00:00:00');
       
       if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start) {
         const diffTime = Math.abs(end.getTime() - start.getTime());
@@ -412,7 +412,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // 2. Historical Snapshot (7 Days Ago)
     // Script: Scan unpaid invoices from 7 days ago
-    const sevenDaysAgo = new Date();
+    const sevenDaysAgo = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(23, 59, 59, 999); // End of day to capture full day's state
     
@@ -426,12 +426,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const isDebtDecreasing = trendValue < 0;
 
     // 4. Debt Streak Calculation (3-Week Increase)
-    const fourteenDaysAgo = new Date();
+    const fourteenDaysAgo = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     const metrics14 = calculateDriverMetrics(d, fourteenDaysAgo);
     const debt14 = metrics14.principalOutstanding;
 
-    const twentyOneDaysAgo = new Date();
+    const twentyOneDaysAgo = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     twentyOneDaysAgo.setDate(twentyOneDaysAgo.getDate() - 21);
     const metrics21 = calculateDriverMetrics(d, twentyOneDaysAgo);
     const debt21 = metrics21.principalOutstanding;
@@ -474,7 +474,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- Debt Target & Urgency Queue Computations ---
   const todayNormalized = useMemo(() => {
-    const today = new Date();
+    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     today.setHours(0, 0, 0, 0);
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     return new Date(todayStr + 'T00:00:00');
@@ -583,20 +583,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }), [unpaidInvoices, yesterdayStart]);
 
   const formatDateLabel = (dateStr: string) => {
-    const d = new Date(dateStr);
+    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
     return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   // Calculate top 10 active drivers whose last paid was 8 or more days ago
   const habitualLateAlerts = useMemo(() => {
     const alerts: { driver: Driver; daysSinceLastPay: number }[] = [];
-    const todayRef = new Date();
+    const todayRef = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     todayRef.setHours(0,0,0,0);
 
     driverData.filter(d => !d.isDelisted).forEach(d => {
       const lastPayment = d.paymentHistory && d.paymentHistory.length > 0 ? d.paymentHistory[0] : null;
       if (lastPayment) {
-        const lastPaymentDate = new Date(lastPayment.date);
+        const lastPaymentDate = new Date(lastPayment.date + 'T00:00:00');
         lastPaymentDate.setHours(0,0,0,0);
         const diffTime = todayRef.getTime() - lastPaymentDate.getTime();
         const daysSinceLastPay = Math.round(diffTime / (1000 * 60 * 60 * 24));
@@ -609,7 +609,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       } else {
         // Rent started, no payment yet
-        const contractStartDate = new Date(d.contractStartDate);
+        const contractStartDate = new Date(d.contractStartDate + 'T00:00:00');
         contractStartDate.setHours(0,0,0,0);
         const diffTime = todayRef.getTime() - contractStartDate.getTime();
         const daysSinceStart = Math.round(diffTime / (1000 * 60 * 60 * 24));
@@ -744,7 +744,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     drivers.forEach(driver => {
       if (driver.paymentHistory) {
         driver.paymentHistory.forEach(payment => {
-            const date = new Date(payment.date);
+            const date = new Date(payment.date + 'T00:00:00');
             const monthKey = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
             breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount + (payment.serviceClaim || 0);
         });
@@ -838,7 +838,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const formatDateShort = (dateStr: string) => {
     if (!dateStr) return '-';
-    const d = new Date(dateStr);
+    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
     return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
   };
 
@@ -850,7 +850,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const maxCycleIndex = Math.max(0, driver.contractDuration - 1);
     const cycleIndex = Math.min(fullCycles, maxCycleIndex);
     
-    const startDate = new Date(driver.contractStartDate);
+    const startDate = new Date(driver.contractStartDate + 'T00:00:00');
     const nextDueDate = new Date(startDate);
     
     if (driver.rentalCycle === 'MONTHLY') {
@@ -862,7 +862,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return nextDueDate;
   };
 
-  const currentMonthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const currentMonthName = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const currentMonthCollection = getMonthlyCollectionBreakdown().find(b => b.month === currentMonthName)?.amount || 0;
 
   // --- Handlers ---
@@ -875,7 +875,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     handleScreenDriver(driver.id);
     setSelectedDriverForPayment(driver);
     setPaymentAmount(driver.rentalRate.toString());
-    setPaymentDate(new Date().toISOString().split('T')[0]); 
+    setPaymentDate(new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" })); 
     setPaymentMethod(null); // start empty
     setIsPaymentModalOpen(true);
   };
@@ -977,8 +977,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // AUTOMATED LOGIC: Sync Duration if End Date is set
     let finalDuration = formData.contractDuration;
     if (formData.contractStartDate && formData.contractEndDate) {
-        const start = new Date(formData.contractStartDate);
-        const end = new Date(formData.contractEndDate);
+        const start = new Date(formData.contractStartDate + 'T00:00:00');
+        const end = new Date(formData.contractEndDate + 'T00:00:00');
         const diffTime = Math.abs(end.getTime() - start.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
@@ -1025,11 +1025,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const renderPaymentSchedule = (driver: Driver) => {
     const schedule = [];
-    const startDate = new Date(driver.contractStartDate);
+    const startDate = new Date(driver.contractStartDate + 'T00:00:00');
     let remainingPayment = driver.totalAmountPaid;
-    const now = new Date();
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
     let effectiveEndDate = now;
-    if (driver.isDelisted && driver.delistDate) { effectiveEndDate = new Date(driver.delistDate); }
+    if (driver.isDelisted && driver.delistDate) { effectiveEndDate = new Date(driver.delistDate + 'T00:00:00'); }
 
     let anchorFound = false;
 
@@ -1620,11 +1620,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
           {viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <AnalyticsView drivers={driverData} />
+               <AnalyticsView drivers={driverData.filter(d => !d.isDelisted)} />
              </div>
           ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <BankReconciliation drivers={driverData} />
+               <BankReconciliation drivers={driverData.filter(d => !d.isDelisted)} />
              </div>
           ) : viewMode === 'DRIVER_LIST' && userRole === 'admin' ? (
              <div className="bg-white">
@@ -1696,8 +1696,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 return driverListSorted.map(driver => {
                                     let isNew = false;
                                     if (driver.contractStartDate) {
-                                      const start = new Date(driver.contractStartDate);
-                                      const now = new Date();
+                                      const start = new Date(driver.contractStartDate + 'T00:00:00');
+                                      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
                                       const diffTime = Math.abs(now.getTime() - start.getTime());
                                       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                       isNew = diffDays <= 30;
@@ -1865,10 +1865,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            const v = driver.velocityData;
                            const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
                            const lastPayment = driver.paymentHistory[0]; 
-                           const lastPaymentDate = lastPayment ? new Date(lastPayment.date) : null;
+                           const lastPaymentDate = lastPayment ? new Date(lastPayment.date + 'T00:00:00') : null;
                            let showLastPayWarning = false;
                            if (lastPaymentDate) {
-                               const today = new Date();
+                               const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
                                const diffTime = Math.abs(today.getTime() - lastPaymentDate.getTime());
                                const daysSinceLastPay = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
                                const threshold = driver.rentalCycle === 'MONTHLY' ? 30 : 7;
@@ -2227,7 +2227,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             ) : (
                                               <>
                                                 <div>
-                                                    <div className="text-[10px] text-gray-500">{new Date(tx.date).toLocaleDateString('en-GB')} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
+                                                    <div className="text-[10px] text-gray-500">{new Date(tx.date + 'T00:00:00').toLocaleDateString('en-GB')} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
                                                     <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
                                                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
                                                 </div>
@@ -2488,7 +2488,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <div className="text-xs text-gray-500 mt-1 uppercase tracking-wider">{inv.carPlate}</div>
                                     </td>
                                     <td className="px-6 py-4 font-medium text-gray-600">
-                                        {new Date(inv.dueDate).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        {new Date(inv.dueDate + 'T00:00:00').toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-500 mb-1">
