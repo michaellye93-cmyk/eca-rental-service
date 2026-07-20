@@ -2,7 +2,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Driver, DriverStatus, Car, FleetSnapshot } from '../types';
 import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance, generateDriverInvoices } from '../utils';
-import DebtCollectionView from './DebtCollectionView';
 import AnalyticsView from './AnalyticsView';
 import BankReconciliation from './BankReconciliation';
 import { 
@@ -100,7 +99,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   });
   
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'DEBT_COLLECTION' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST'>(() => {
+  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST'>(() => {
     try {
       const saved = localStorage.getItem('eca_admin_view_mode');
       return (saved as any) || 'ACTIVE';
@@ -1609,7 +1608,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {userRole === 'admin' && (
             <>
               
-              <button onClick={() => setViewMode('DEBT_COLLECTION')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DEBT_COLLECTION' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><TrendingDown className="w-4 h-4" /> Collection</button>
               <button onClick={() => setViewMode('DRIVER_LIST')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DRIVER_LIST' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Users className="w-4 h-4" /> Driver List</button>
               <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
               <button onClick={() => setViewMode('RECONCILE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'RECONCILE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CheckCircle2 className="w-4 h-4" /> Bank Recon</button>
@@ -1622,13 +1620,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
                <AnalyticsView drivers={driverData.filter(d => !d.isDelisted)} />
-             </div>
-          ) : viewMode === 'DEBT_COLLECTION' && userRole === 'admin' ? (
-             <div className="p-6 bg-gray-50/50">
-               <DebtCollectionView drivers={driverData.filter(d => !d.isDelisted)} onLogPayment={(driver) => {
-                 setLiveDriverForPayment(driver);
-                 setIsPaymentModalOpen(true);
-               }} />
              </div>
           ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
