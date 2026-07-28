@@ -253,11 +253,7 @@ const App: React.FC = () => {
             // Only trigger loading/auth check and route transition if we are currently on the LOGIN screen.
             // This prevents background token refreshes (e.g. from tab focuses) from unmounting the dashboard and resetting user state.
             if (currentView === 'LOGIN') {
-              const isOptimisticAdmin = session.user.email === 'REMOVED_ACCESS_ID@eca.com';
-              if (!isOptimisticAdmin) {
-                  // Only show splash screen for non-optimized users (like normal drivers or other staff)
-                  setIsAuthChecking(true);
-              }
+              setIsAuthChecking(true);
               fetchUserRole(session.user.id, session.user.email);
             }
           }
@@ -268,14 +264,6 @@ const App: React.FC = () => {
   }, [currentView]); // Add currentView dependency to safely redirect
 
   const fetchUserRole = async (userId: string, email?: string) => {
-    // 3. Admin Override Fix
-    if (email === 'REMOVED_ACCESS_ID@eca.com') {
-        setUserRole('admin');
-        setCurrentView('ADMIN');
-        setIsAuthChecking(false);
-        return;
-    }
-
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -316,34 +304,29 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAdminLogin = async (accessId: string) => {
-    // Helper: If user enters just "REMOVED_ACCESS_ID", append @eca.com
+  const handleAdminLogin = async (accessId: string, password?: string) => {
+    // Helper: If user enters just an ID without domain, append default domain
     let email = accessId;
     if (!email.includes('@')) {
       email = `${email}@eca.com`;
     }
 
-    // IMMEDIATE OVERRIDE: If it's the admin, set state BEFORE auth to prevent flicker
-    if (email === 'REMOVED_ACCESS_ID@eca.com') {
-        setUserRole('admin');
-        setCurrentView('ADMIN');
-        setIsAuthChecking(false);
+    if (!password) {
+        alert("Password is required");
+        return;
     }
 
-    // AUTHENTICATE with HARDCODED PASSWORD
+    // AUTHENTICATE
     const { error } = await supabase.auth.signInWithPassword({
       email,
-      password: "REMOVED_LEGACY_PASSWORD", 
+      password: password, 
     });
 
     if (error) {
       alert(`Login failed: ${error.message}`);
-      // Revert state if login actually failed
-      if (email === 'REMOVED_ACCESS_ID@eca.com') {
-          setUserRole(null);
-          setCurrentView('LOGIN');
-          setIsAuthChecking(false);
-      }
+      setUserRole(null);
+      setCurrentView('LOGIN');
+      setIsAuthChecking(false);
     }
     // Success is handled by onAuthStateChange
   };
