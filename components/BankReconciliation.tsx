@@ -619,7 +619,6 @@ const BankReconciliation: React.FC<BankReconciliationProps> = ({ drivers }) => {
         const unsolved: any[] = [];
         
         drivers.forEach(driver => {
-           if (driver.isDelisted) return;
            driver.paymentHistory.forEach(tx => {
                const isCashDeposit = tx.paymentMethod === 'CASH DEPOSIT';
                

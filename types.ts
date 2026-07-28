@@ -85,5 +85,5 @@ export interface Invoice {
   amount: number;
   amountPaid: number;
   remainingBalance: number;
-  status: 'PAID' | 'PARTIAL' | 'UNPAID';
+  status: 'PAID' | 'PARTIAL' | 'UNPAID' | 'CANCELLED' | 'FUTURE';
 }

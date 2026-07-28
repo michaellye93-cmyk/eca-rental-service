@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Driver } from '../types';
-import { generateDriverInvoices, formatCurrency } from '../utils';
+import { generateDriverInvoices, formatCurrency, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, ChevronLeft, ChevronRight, Eye, X, ShieldAlert, BadgeCheck, MessageSquareWarning } from 'lucide-react';
 
@@ -82,11 +82,9 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
       let serviceClaimsList: { id: string, driverName: string, carPlate: string, date: string, amount: number }[] = [];
 
       drivers.forEach(driver => {
-        if (driver.isDelisted) return;
-
-        // Current Month Inflow (Cash collected this month regardless of invoice)
+        // Current Month Inflow (Cash collected this month regardless of invoice or current delisted status)
         driver.paymentHistory?.forEach(payment => {
-          const pDate = new Date(payment.date);
+          const pDate = parseDate(payment.date);
           if (pDate >= startOfMonth && pDate <= endOfMonth) {
             currentMonthInflow += payment.amount;
             if (payment.serviceClaim && payment.serviceClaim > 0) {
@@ -102,24 +100,30 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           }
         });
 
-        // Snapshot Total Arrears at end of this month
-        const snapshotInvoices = generateDriverInvoices(driver, endOfMonth);
-        snapshotInvoices.forEach(inv => {
-          const dDate = new Date(inv.dueDate + 'T00:00:00');
-          if (dDate <= endOfMonth) {
-            snapshotTotalArrears += inv.remainingBalance;
-          }
-        });
+        // Check if driver was active during or up to this month for snapshot arrears
+        const delistStr = driver.isDelisted ? (driver.delistDate || driver.contractEndDate || driver.contractStartDate) : null;
+        const delistDate = delistStr ? parseDate(delistStr) : null;
 
-        // Performance Collection (Invoices issued IN this month, status as of today)
-        const currentInvoices = generateDriverInvoices(driver, today);
-        currentInvoices.forEach(inv => {
-          const dDate = new Date(inv.dueDate + 'T00:00:00');
-          if (dDate >= startOfMonth && dDate <= endOfMonth) {
-            currentMonthInvoicesIssued += inv.amount;
-            currentMonthInvoicesPaid += inv.amountPaid;
-          }
-        });
+        if (!delistDate || delistDate >= startOfMonth) {
+          // Snapshot Total Arrears at end of this month
+          const snapshotInvoices = generateDriverInvoices(driver, endOfMonth);
+          snapshotInvoices.forEach(inv => {
+            const dDate = parseDate(inv.dueDate);
+            if (dDate <= endOfMonth) {
+              snapshotTotalArrears += inv.remainingBalance;
+            }
+          });
+
+          // Performance Collection (Invoices issued IN this month)
+          const currentInvoices = generateDriverInvoices(driver, today);
+          currentInvoices.forEach(inv => {
+            const dDate = parseDate(inv.dueDate);
+            if (dDate >= startOfMonth && dDate <= endOfMonth) {
+              currentMonthInvoicesIssued += inv.amount;
+              currentMonthInvoicesPaid += inv.amountPaid;
+            }
+          });
+        }
       });
 
       return {
@@ -531,7 +535,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                     dx={-10}
                 />
                 <Tooltip 
-                    formatter={(value) => formatCurrency(value)}
+                    formatter={(value: any) => formatCurrency(Number(value))}
                     labelStyle={{ fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}
                     contentStyle={{ borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Driver, DriverStatus, PaymentTransaction } from '../types';
-import { formatCurrency } from '../utils';
+import { formatCurrency, parseDate } from '../utils';
 import { 
   Phone, 
   User, 
@@ -302,7 +302,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                           </span>
                         </div>
                         <p className="text-gray-400 font-medium font-mono mt-1 text-[11px]">
-                          Timestamp: {new Date(pt.date + 'T00:00:00').toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })} at {new Date(pt.date + 'T00:00:00').toLocaleTimeString('en-MY')}
+                          Timestamp: {parseDate(pt.date).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </p>
                       </div>
 

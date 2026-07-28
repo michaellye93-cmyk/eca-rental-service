@@ -1,9 +1,20 @@
 import { Driver, DriverMetrics, DriverStatus } from './types';
 
+export const parseDate = (dateVal: string | Date | number | null | undefined): Date => {
+  if (!dateVal) return new Date(NaN);
+  if (dateVal instanceof Date) return dateVal;
+  const str = String(dateVal).trim();
+  if (!str) return new Date(NaN);
+  if (str.length === 10 && !str.includes('T')) {
+    return new Date(str + 'T00:00:00');
+  }
+  return new Date(str);
+};
+
 export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }))): DriverMetrics => {
   const now = new Date(referenceDate);
   now.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
-  const startDate = new Date(driver.contractStartDate + 'T00:00:00');
+  const startDate = parseDate(driver.contractStartDate);
   
   // Determine effective end date
   let effectiveEndDate = now;
@@ -11,7 +22,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   // 1. Cap at Contract End Date if exists (Ghost Record Logic)
   // Requirement: Exclude invoices dated exactly on the return date or after.
   if (driver.contractEndDate) {
-      const cEndDate = new Date(driver.contractEndDate + 'T00:00:00');
+      const cEndDate = parseDate(driver.contractEndDate);
       // If the contract ended, we cap the effective end date.
       // We subtract 1 millisecond to ensure the invoice ON the end date is excluded (since we use <= comparison or math)
       // effectively making it strictly < contractEndDate
@@ -23,14 +34,14 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   }
 
   // 2. Logic: If driver is delisted, stop clock at delist date
-  if (driver.isDelisted && driver.delistDate) {
-    const dDate = new Date(driver.delistDate + 'T00:00:00');
-    // Same logic: Exclude invoice on the delist date
-    dDate.setMilliseconds(dDate.getMilliseconds() - 1);
-    
-    // If delisted BEFORE the current effective end date, cap it further
-    if (dDate < effectiveEndDate) {
+  if (driver.isDelisted) {
+    const delistStr = driver.delistDate || driver.contractEndDate || driver.contractStartDate;
+    if (delistStr) {
+      const dDate = parseDate(delistStr);
+      dDate.setMilliseconds(dDate.getMilliseconds() - 1);
+      if (dDate < effectiveEndDate) {
         effectiveEndDate = dDate;
+      }
     }
   }
   
@@ -94,7 +105,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new
   // Clone payments to consume them (FIFO)
   // Sort by date ascending AND Filter by referenceDate
   let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: new Date(p.date + 'T00:00:00'), amount: p.amount + (p.serviceClaim || 0) }))
+    .map(p => ({ ...p, date: parseDate(p.date), amount: p.amount + (p.serviceClaim || 0) }))
     .filter(p => p.date <= now) // Filter payments made after the reference date
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -234,8 +245,8 @@ export const analyzePaymentHabit = (driver: Driver) => {
   let count = 0;
 
   for (let i = 0; i < recentPayments.length - 1; i++) {
-    const d1 = new Date(recentPayments[i].date + 'T00:00:00');
-    const d2 = new Date(recentPayments[i+1].date + 'T00:00:00');
+    const d1 = parseDate(recentPayments[i].date);
+    const d2 = parseDate(recentPayments[i+1].date);
     const diffTime = Math.abs(d1.getTime() - d2.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     totalGapDays += diffDays;
@@ -258,12 +269,12 @@ export const analyzePaymentHabit = (driver: Driver) => {
 
 export const calculateMomentum = (driver: Driver) => {
     // 1. Sort Payments by Date Ascending
-    const payments = [...driver.paymentHistory].sort((a,b) => new Date(a.date + 'T00:00:00').getTime() - new Date(b.date + 'T00:00:00').getTime());
+    const payments = [...driver.paymentHistory].sort((a,b) => parseDate(a.date).getTime() - parseDate(b.date).getTime());
     
     // Default safe values for new drivers
     if (payments.length === 0) return { avgLateness: 0, lastLateness: 0, velocity: 0, isSlipping: false, trend: 'STAGNANT', isPerfect: false };
 
-    const startDate = new Date(driver.contractStartDate + 'T00:00:00');
+    const startDate = parseDate(driver.contractStartDate);
     
     // LOGIC: Map N-th payment transaction to N-th cycle due date
     const latenessData = payments.map((p, index) => {
@@ -275,7 +286,7 @@ export const calculateMomentum = (driver: Driver) => {
             expectedDate.setDate(startDate.getDate() + (index * 7));
         }
         
-        const actualDate = new Date(p.date + 'T00:00:00');
+        const actualDate = parseDate(p.date);
         const diffTime = actualDate.getTime() - expectedDate.getTime();
         // Calculate days late (can be negative if paid early)
         return Math.ceil(diffTime / (1000 * 3600 * 24));
@@ -308,14 +319,14 @@ import { Invoice } from './types';
 
 export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }))): Invoice[] => {
   const invoices: Invoice[] = [];
-  const startDate = new Date(driver.contractStartDate + 'T00:00:00');
+  const startDate = parseDate(driver.contractStartDate);
   const refDate = new Date(referenceDate);
   refDate.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
   
   // Clone payments to consume them (FIFO)
   // Sort by date ascending AND Filter by referenceDate
   let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: new Date(p.date + 'T00:00:00'), amount: p.amount + (p.serviceClaim || 0) }))
+    .map(p => ({ ...p, date: parseDate(p.date), amount: p.amount + (p.serviceClaim || 0) }))
     .filter(p => p.date <= refDate)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -330,15 +341,18 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new
 
     // Stop generating if contract effectively ended before this invoice
     if (driver.contractEndDate) {
-      const cEndDate = new Date(driver.contractEndDate + 'T00:00:00');
+      const cEndDate = parseDate(driver.contractEndDate);
       cEndDate.setMilliseconds(cEndDate.getMilliseconds() - 1);
       if (invoiceDate > cEndDate) break;
     }
     
-    if (driver.isDelisted && driver.delistDate) {
-      const dDate = new Date(driver.delistDate + 'T00:00:00');
-      dDate.setMilliseconds(dDate.getMilliseconds() - 1);
-      if (invoiceDate > dDate) break;
+    if (driver.isDelisted) {
+      const delistStr = driver.delistDate || driver.contractEndDate || driver.contractStartDate;
+      if (delistStr) {
+        const dDate = parseDate(delistStr);
+        dDate.setMilliseconds(dDate.getMilliseconds() - 1);
+        if (invoiceDate > dDate) break;
+      }
     }
 
     let invoicePrincipal = driver.rentalRate;
@@ -360,11 +374,13 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new
         }
     }
 
-    let status: 'PAID' | 'PARTIAL' | 'UNPAID' = 'UNPAID';
+    let status: 'PAID' | 'PARTIAL' | 'UNPAID' | 'FUTURE' | 'CANCELLED' = 'UNPAID';
     if (invoicePrincipal <= 0.01) {
       status = 'PAID';
     } else if (amountPaidToThisInvoice > 0) {
       status = 'PARTIAL';
+    } else if (invoiceDate > refDate) {
+      status = 'FUTURE';
     }
 
     invoices.push({
@@ -382,65 +398,6 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new
   return invoices;
 };
 
-export const getElapsedMonthEndDates = (): Date[] => {
-  const dates: Date[] = [];
-  const startYear = 2026;
-  const startMonth = 0; // January
-  
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
-  
-  // Use Asia/Kuala_Lumpur year and month
-  const klFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: 'numeric' });
-  const parts = klFormatter.formatToParts(now);
-  const klYear = parseInt(parts.find(p => p.type === 'year')?.value || '2026', 10);
-  const klMonth = parseInt(parts.find(p => p.type === 'month')?.value || '5', 10) - 1; // 0-indexed
-  
-  let currentY = startYear;
-  let currentM = startMonth;
-  
-  while (currentY < klYear || (currentY === klYear && currentM <= klMonth)) {
-    const lastDay = new Date(currentY, currentM + 1, 0); // last day of currentY/currentM month
-    const yearStr = lastDay.getFullYear();
-    const monthStr = String(lastDay.getMonth() + 1).padStart(2, '0');
-    const dayStr = String(lastDay.getDate()).padStart(2, '0');
-    
-    // Construct KL 23:59:00 timestamp
-    const snapshotISO = `${yearStr}-${monthStr}-${dayStr}T23:59:00+08:00`;
-    const snapshotDate = new Date(snapshotISO);
-    
-    if (snapshotDate <= now) {
-      dates.push(snapshotDate);
-    }
-    
-    currentM++;
-    if (currentM > 11) {
-      currentM = 0;
-      currentY++;
-    }
-  }
-  
-  return dates;
-};
 
-export const calculateSnapshotForDate = (drivers: Driver[], snapshotDate: Date) => {
-  let good = 0;
-  let mid = 0;
-  let bad = 0;
-  
-  drivers.forEach(d => {
-    const contractStart = new Date(d.contractStartDate);
-    if (contractStart > snapshotDate) return; // not active yet
-    
-    if (d.isDelisted && d.delistDate) {
-      const delist = new Date(d.delistDate);
-      if (delist <= snapshotDate) return; // already delisted by this snapshot date
-    }
-    
-    const metrics = calculateDriverMetrics(d, snapshotDate);
-    if (metrics.status === DriverStatus.GOOD) good++;
-    else if (metrics.status === DriverStatus.MID) mid++;
-    else if (metrics.status === DriverStatus.BAD) bad++;
-  });
-  
-  return { good, mid, bad };
-};
+
+

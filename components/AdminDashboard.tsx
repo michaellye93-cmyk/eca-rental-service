@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Driver, DriverStatus, Car, FleetSnapshot } from '../types';
-import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance, generateDriverInvoices } from '../utils';
+import { Driver, DriverStatus, Car} from '../types';
+import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance, generateDriverInvoices, parseDate } from '../utils';
 import AnalyticsView from './AnalyticsView';
 import BankReconciliation from './BankReconciliation';
 import { 
@@ -18,8 +18,6 @@ import {
   CalendarCheck,
   History,
   Check,
-  CheckCircle2,
-  AlertCircle,
   Archive,
   UserMinus,
   Trash2,
@@ -27,7 +25,6 @@ import {
   Activity,
   PieChart,
   AlertTriangle,
-  Clock,
   Tags,
   Filter,
   Users,
@@ -51,7 +48,11 @@ import {
   ChevronRight,
   HelpCircle,
   AlertOctagon as AlertOctagonIcon,
-  User
+  User,
+  XCircle,
+  CheckCircle2,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
@@ -59,7 +60,6 @@ import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 interface AdminDashboardProps {
   drivers: Driver[];
   cars: Car[];
-  snapshots?: FleetSnapshot[];
   userRole: 'admin' | 'staff'; // Role passed from parent
   onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
@@ -77,7 +77,6 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   drivers, 
   cars,
-  snapshots = [],
   userRole, 
   onUpdatePayment, 
   onEditPayment,
@@ -530,7 +529,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [drivers, todayNormalized]);
 
   const weeklyTargetAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = new Date(inv.dueDate + 'T00:00:00');
+    const dDate = parseDate(inv.dueDate);
     if (dDate >= startOfWeek && dDate <= endOfWeek) {
       return acc + inv.amount;
     }
@@ -538,7 +537,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, 0), [allInvoices, startOfWeek, endOfWeek]);
 
   const weeklyCollectedAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = new Date(inv.dueDate + 'T00:00:00');
+    const dDate = parseDate(inv.dueDate);
     if (dDate >= startOfWeek && dDate <= endOfWeek) {
       return acc + inv.amountPaid;
     }
@@ -546,7 +545,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, 0), [allInvoices, startOfWeek, endOfWeek]);
 
   const monthlyTargetAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = new Date(inv.dueDate + 'T00:00:00');
+    const dDate = parseDate(inv.dueDate);
     if (dDate >= startOfMonth && dDate <= endOfMonth) {
       return acc + inv.amount;
     }
@@ -554,7 +553,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, 0), [allInvoices, startOfMonth, endOfMonth]);
 
   const monthlyCollectedAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = new Date(inv.dueDate + 'T00:00:00');
+    const dDate = parseDate(inv.dueDate);
     if (dDate >= startOfMonth && dDate <= endOfMonth) {
       return acc + inv.amountPaid;
     }
@@ -572,17 +571,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }), [unpaidInvoices, todayStr]);
 
   const yesterdayDue = useMemo(() => unpaidInvoices.filter(inv => {
-    const dDate = new Date(inv.dueDate + 'T00:00:00');
+    const dDate = parseDate(inv.dueDate);
     return dDate >= yesterdayStart && dDate <= yesterdayEnd;
   }), [unpaidInvoices, yesterdayStart, yesterdayEnd]);
 
   const overdue = useMemo(() => unpaidInvoices.filter(inv => {
-    const dDate = new Date(inv.dueDate + 'T00:00:00');
+    const dDate = parseDate(inv.dueDate);
     return dDate < yesterdayStart;
   }), [unpaidInvoices, yesterdayStart]);
 
   const formatDateLabel = (dateStr: string) => {
-    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
+    const d = parseDate(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
@@ -595,7 +595,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     driverData.filter(d => !d.isDelisted).forEach(d => {
       const lastPayment = d.paymentHistory && d.paymentHistory.length > 0 ? d.paymentHistory[0] : null;
       if (lastPayment) {
-        const lastPaymentDate = new Date(lastPayment.date + 'T00:00:00');
+        const lastPaymentDate = parseDate(lastPayment.date);
         lastPaymentDate.setHours(0,0,0,0);
         const diffTime = todayRef.getTime() - lastPaymentDate.getTime();
         const daysSinceLastPay = Math.round(diffTime / (1000 * 60 * 60 * 24));
@@ -608,7 +608,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       } else {
         // Rent started, no payment yet
-        const contractStartDate = new Date(d.contractStartDate + 'T00:00:00');
+        const contractStartDate = parseDate(d.contractStartDate);
         contractStartDate.setHours(0,0,0,0);
         const diffTime = todayRef.getTime() - contractStartDate.getTime();
         const daysSinceStart = Math.round(diffTime / (1000 * 60 * 60 * 24));
@@ -733,11 +733,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const goodDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.GOOD).length;
   const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
 
-  const lastSnapshot = useMemo(() => {
-    if (!snapshots || snapshots.length === 0) return null;
-    return snapshots[snapshots.length - 1];
-  }, [snapshots]);
-
+  
   const getMonthlyCollectionBreakdown = () => {
     const breakdown: Record<string, number> = {};
     drivers.forEach(driver => {
@@ -753,116 +749,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // --- Helpers ---
-  const formatSnapshotDateFriendly = (dateStr: string): string => {
+  
+  const monthlyData = getMonthlyCollectionBreakdown();
+  const currentMonthData = monthlyData.length > 0 ? monthlyData[monthlyData.length - 1] : { month: '', amount: 0 };
+  const currentMonthCollection = currentMonthData.amount;
+  const currentMonthName = currentMonthData.month;
+
+  const formatDateShort = (dateInput: any) => {
     try {
-      const parts = dateStr.split('-');
-      if (parts.length !== 3) return dateStr;
-      const day = parseInt(parts[2], 10);
-      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-      const month = months[parseInt(parts[1], 10) - 1] || 'month';
+        if (!dateInput) return 'No payment yet';
+        const d = parseDate(dateInput);
+        if (isNaN(d.getTime())) return 'N/A';
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch(e) { return 'N/A'; }
+  };
+
+  const getNextDueDate = (driver: Driver): Date | null => {
+    const startDate = parseDate(driver.contractStartDate);
+    let remainingPayment = driver.totalAmountPaid;
+    const now = new Date();
+    for (let i = 0; i < driver.contractDuration; i++) {
+      const itemDate = new Date(startDate);
+      if (driver.rentalCycle === 'MONTHLY') itemDate.setMonth(startDate.getMonth() + i);
+      else itemDate.setDate(startDate.getDate() + (i * 7));
       
-      let j = day % 10, k = day % 100;
-      let suffix = "th";
-      if (j === 1 && k !== 11) {
-          suffix = "st";
-      } else if (j === 2 && k !== 12) {
-          suffix = "nd";
-      } else if (j === 3 && k !== 13) {
-          suffix = "rd";
-      }
-      return `${day}${suffix} ${month}`;
-    } catch (e) {
-      return dateStr;
-    }
-  };
-
-  const renderTrendIndicator = (current: number, previous: number, type: 'GOOD' | 'MID' | 'BAD') => {
-    if (!lastSnapshot) {
-      return (
-        <span className="text-[9px] text-gray-400 block mt-1">
-          No baseline snapshot
-        </span>
-      );
-    }
-
-    const diff = current - previous;
-    const friendlyDate = formatSnapshotDateFriendly(lastSnapshot.snapshot_date);
-    
-    let isPositiveAspect = false;
-    if (type === 'GOOD') {
-      isPositiveAspect = diff > 0;
-    } else {
-      isPositiveAspect = diff < 0; 
-    }
-
-    const isUnchanged = diff === 0;
-    const diffPrefixed = diff > 0 ? `+${diff}` : `${diff}`;
-    
-    let textColorClass = "text-gray-500";
-    let bgClass = "bg-gray-100 border-gray-200 text-gray-600";
-    let Icon = Minus;
-
-    if (!isUnchanged) {
-      if (isPositiveAspect) {
-        textColorClass = "text-emerald-700 font-bold";
-        bgClass = "bg-emerald-50 border-emerald-200 text-emerald-700";
-        Icon = diff > 0 ? ArrowUpRight : ArrowDownRight;
+      if (remainingPayment >= driver.rentalRate - 0.01) {
+          remainingPayment -= driver.rentalRate;
       } else {
-        textColorClass = "text-red-700 font-bold";
-        bgClass = "bg-red-50 border-red-200 text-red-700";
-        Icon = diff > 0 ? ArrowUpRight : ArrowDownRight;
+          return itemDate;
       }
     }
-
-    return (
-      <div className="flex flex-col items-center mt-1.5 space-y-1">
-        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded-full border ${bgClass} ${textColorClass}`}>
-          <Icon className="w-2.5 h-2.5 stroke-[2.5]" />
-          {isUnchanged ? "Unchanged" : diffPrefixed}
-        </span>
-        <span className="text-[10px] text-gray-400 block font-medium">
-          vs {friendlyDate}
-        </span>
-      </div>
-    );
+    return null;
   };
-
-  const formatNric = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    const truncated = cleaned.slice(0, 12);
-    if (truncated.length > 8) return `${truncated.slice(0, 6)}-${truncated.slice(6, 8)}-${truncated.slice(8)}`;
-    else if (truncated.length > 6) return `${truncated.slice(0, 6)}-${truncated.slice(6)}`;
-    return truncated;
-  };
-
-  const formatDateShort = (dateStr: string) => {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'));
-    return d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' });
-  };
-
-  const getNextDueDate = (driver: Driver) => {
-    const cyclesPaid = driver.rentalRate > 0 ? driver.totalAmountPaid / driver.rentalRate : 0;
-    const fullCycles = Math.floor(cyclesPaid);
-    
-    // Ensure we don't project a date beyond the contract end
-    const maxCycleIndex = Math.max(0, driver.contractDuration - 1);
-    const cycleIndex = Math.min(fullCycles, maxCycleIndex);
-    
-    const startDate = new Date(driver.contractStartDate + 'T00:00:00');
-    const nextDueDate = new Date(startDate);
-    
-    if (driver.rentalCycle === 'MONTHLY') {
-        nextDueDate.setMonth(startDate.getMonth() + cycleIndex);
-    } else {
-        nextDueDate.setDate(startDate.getDate() + (cycleIndex * 7));
-    }
-    
-    return nextDueDate;
-  };
-
-  const currentMonthName = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const currentMonthCollection = getMonthlyCollectionBreakdown().find(b => b.month === currentMonthName)?.amount || 0;
 
   // --- Handlers ---
   const handleSearchFocus = () => {
@@ -1022,85 +940,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsCarModalOpen(false);
   };
 
+  
   const renderPaymentSchedule = (driver: Driver) => {
-    const schedule = [];
-    const startDate = new Date(driver.contractStartDate + 'T00:00:00');
-    let remainingPayment = driver.totalAmountPaid;
-    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
-    let effectiveEndDate = now;
-    if (driver.isDelisted && driver.delistDate) { effectiveEndDate = new Date(driver.delistDate + 'T00:00:00'); }
-
+    const invoices = generateDriverInvoices(driver, new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })));
     let anchorFound = false;
 
-    for (let i = 0; i < driver.contractDuration; i++) {
-      const itemDate = new Date(startDate);
-      if (driver.rentalCycle === 'MONTHLY') itemDate.setMonth(startDate.getMonth() + i);
-      else itemDate.setDate(startDate.getDate() + (i * 7));
-      
-      const isDue = itemDate <= now;
-      const isFutureDelisted = itemDate > effectiveEndDate && driver.isDelisted; 
-      let status: 'PAID' | 'PARTIAL' | 'UNPAID' | 'CANCELLED' | 'FUTURE' = 'FUTURE';
-      let paidForThisCycle = 0;
-      let isAdvance = false;
-
-      if (isFutureDelisted) status = 'CANCELLED';
-      else {
-          if (remainingPayment >= driver.rentalRate - 0.01) {
-            status = 'PAID'; paidForThisCycle = driver.rentalRate; remainingPayment -= driver.rentalRate;
-            if (!isDue) isAdvance = true;
-          } else if (remainingPayment > 0.01) {
-            status = 'PARTIAL'; paidForThisCycle = remainingPayment; remainingPayment = 0;
-            if (!isDue) isAdvance = true;
-          } else {
-            if (isDue) status = 'UNPAID';
-            else status = 'FUTURE';
-          }
-      }
-      
-      let isAnchor = false;
-      if (!anchorFound && (status === 'PARTIAL' || status === 'UNPAID')) {
-        isAnchor = true;
-        anchorFound = true;
-      }
-
-      schedule.push({
-        no: i + 1, date: itemDate.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }),
-        amount: driver.rentalRate, paid: paidForThisCycle, status, isDue: isDue && status !== 'CANCELLED' && status !== 'FUTURE', isAdvance, isAnchor
-      });
-    }
-
     return (
-      <div className="space-y-1">
-        <div className="grid grid-cols-4 text-xs font-semibold text-gray-500 uppercase px-3 mb-2">
-          <div>Due Date</div><div>Cycle</div><div className="text-right">Status</div><div className="text-right">Paid / Due</div>
-        </div>
-        <div className="max-h-64 overflow-y-auto pr-2 space-y-2 pb-10 scroll-smooth">
-          {schedule.map((item) => (
-            <div key={item.no} id={item.isAnchor ? 'current-invoice-anchor' : undefined} className={`grid grid-cols-4 items-center text-sm p-2 rounded-lg border transition-colors ${
-                item.status === 'CANCELLED' ? 'bg-gray-100 border-gray-200 opacity-60' :
-                item.isAdvance ? 'bg-indigo-50 border-indigo-100' :
-                item.status === 'PAID' ? 'bg-green-50 border-green-100' :
-                item.status === 'PARTIAL' ? 'bg-yellow-50 border-yellow-100' :
-                item.status === 'UNPAID' ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100 text-gray-400'
-              }`}>
-              <div className="text-gray-600">{item.date}</div>
-              <div className="font-medium text-gray-800">{driver.rentalCycle === 'MONTHLY' ? `Month ${item.no}` : `Week ${item.no}`}</div>
-              <div className="text-right">
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                   item.status === 'CANCELLED' ? 'bg-gray-300 text-gray-600' : item.isAdvance ? 'bg-indigo-100 text-indigo-700' : item.status === 'PAID' ? 'bg-green-200 text-green-800' : item.status === 'PARTIAL' ? 'bg-yellow-200 text-yellow-800' : item.status === 'UNPAID' ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-500'
-                }`}>{item.isAdvance ? (item.status === 'PARTIAL' ? 'ADVANCE' : 'ADVANCE') : item.status}</span>
+      <div className="space-y-1.5 max-h-[22rem] overflow-y-auto pr-2 scroll-smooth">
+        {invoices.map((inv, index) => {
+          let isAnchor = false;
+          if (!anchorFound && (inv.status === 'PARTIAL' || inv.status === 'UNPAID')) {
+            isAnchor = true;
+            anchorFound = true;
+          }
+
+          let bgColor = 'bg-white';
+          let textColor = 'text-gray-600';
+          let icon = <XCircle className="w-4 h-4 text-gray-300" />;
+          let label = inv.status;
+          let showAnchor = isAnchor;
+          let pulseClass = isAnchor ? "animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.4)] ring-2 ring-red-400" : "";
+
+          if (inv.status === 'CANCELLED') {
+              bgColor = 'bg-gray-100'; textColor = 'text-gray-400'; label = 'CANCELLED'; icon = <XCircle className="w-4 h-4 text-gray-400" />; showAnchor = false; pulseClass = '';
+          } else if (inv.status === 'PAID') {
+              bgColor = 'bg-emerald-50'; textColor = 'text-emerald-700'; label = 'PAID'; icon = <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+          } else if (inv.status === 'PARTIAL') {
+              bgColor = 'bg-amber-50'; textColor = 'text-amber-700'; label = `PARTIAL (${formatCurrency(inv.amountPaid)} paid)`; icon = <AlertCircle className="w-4 h-4 text-amber-500" />;
+          } else if (inv.status === 'UNPAID') {
+              bgColor = 'bg-red-50'; textColor = 'text-red-700'; label = 'UNPAID'; icon = <AlertCircle className="w-4 h-4 text-red-500" />;
+          } else if (inv.status === 'FUTURE') {
+              bgColor = 'bg-gray-50'; textColor = 'text-gray-500'; label = 'FUTURE'; icon = <Clock className="w-4 h-4 text-gray-400" />; showAnchor = false; pulseClass = '';
+          }
+
+          return (
+            <div key={inv.id} id={showAnchor ? "current-payment-anchor" : undefined} className={`flex justify-between items-center p-2.5 rounded-lg border border-gray-100 ${bgColor} ${pulseClass} transition-all duration-300 relative overflow-hidden`}>
+              {showAnchor && (
+                <div className="absolute top-0 left-0 w-1 h-full bg-red-500 animate-pulse"></div>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${textColor} mb-0.5`}>Cycle {inv.cycleIndex + 1}</span>
+                  <span className="text-sm font-medium text-gray-900">{inv.dueDate}</span>
+                </div>
               </div>
-              <div className="text-right font-mono text-xs">
-                {item.status === 'PAID' ? <span className="text-green-600 font-bold"><Check className="w-3 h-3 inline"/> {formatCurrency(item.amount)}</span> :
-                 item.status === 'CANCELLED' || item.status === 'FUTURE' ? <span>{formatCurrency(item.amount)}</span> :
-                 <span className="text-red-600 font-bold">{formatCurrency(item.paid)} / {formatCurrency(item.amount)}</span>}
+              <div className="flex items-center gap-4">
+                <span className="font-bold text-gray-900">{formatCurrency(inv.amount)}</span>
+                <div className={`flex items-center gap-1.5 ${textColor}`}>
+                  {icon}
+                  <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     );
   };
+
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans print:bg-white">
@@ -1211,7 +1108,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">GOOD STATUS</span>
                     <span className="text-5xl font-black text-emerald-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((goodDriversCount / activeFleetCount) * 100) : 0}%</span>
                     <span className="text-sm font-bold text-gray-400 mb-2">{goodDriversCount} drivers</span>
-                    {renderTrendIndicator(goodDriversCount, lastSnapshot ? lastSnapshot.good_count : 0, 'GOOD')}
+                    
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
                   </button>
 
@@ -1235,7 +1132,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">MID STATUS</span>
                     <span className="text-5xl font-black text-amber-500 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((midDriversCount / activeFleetCount) * 100) : 0}%</span>
                     <span className="text-sm font-bold text-gray-400 mb-2">{midDriversCount} drivers</span>
-                    {renderTrendIndicator(midDriversCount, lastSnapshot ? lastSnapshot.mid_count : 0, 'MID')}
+                    
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
                   </button>
 
@@ -1259,7 +1156,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">BAD STATUS</span>
                     <span className="text-5xl font-black text-rose-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((badDriversCount / activeFleetCount) * 100) : 0}%</span>
                     <span className="text-sm font-bold text-gray-400 mb-2">{badDriversCount} drivers</span>
-                    {renderTrendIndicator(badDriversCount, lastSnapshot ? lastSnapshot.bad_count : 0, 'BAD')}
+                    
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
                   </button>
                 </div>
@@ -1619,11 +1516,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
           {viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <AnalyticsView drivers={driverData.filter(d => !d.isDelisted)} />
+               <AnalyticsView drivers={driverData} />
              </div>
           ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <BankReconciliation drivers={driverData.filter(d => !d.isDelisted)} />
+               <BankReconciliation drivers={driverData} />
              </div>
           ) : viewMode === 'DRIVER_LIST' && userRole === 'admin' ? (
              <div className="bg-white">
@@ -1864,9 +1761,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            const v = driver.velocityData;
                            const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
                            const lastPayment = driver.paymentHistory[0]; 
-                           const lastPaymentDate = lastPayment ? new Date(lastPayment.date + 'T00:00:00') : null;
+                           const lastPaymentDate = lastPayment && lastPayment.date ? parseDate(lastPayment.date) : null;
                            let showLastPayWarning = false;
-                           if (lastPaymentDate) {
+                           if (lastPaymentDate && !isNaN(lastPaymentDate.getTime())) {
                                const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
                                const diffTime = Math.abs(today.getTime() - lastPaymentDate.getTime());
                                const daysSinceLastPay = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
@@ -1970,7 +1867,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                           <div className="text-[10px] font-bold text-slate-500 mt-1">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</div>
                                                           <div className={`text-[10px] ${behaviorColor} font-bold mt-1 text-center`}>{behaviorText}</div>
                                                           {/* LAST PAY POSITIONED RIGHT BELOW BEHAVIOR WORSENING */}
-                                                          {lastPaymentDate ? <div className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-1 ${showLastPayWarning ? 'text-rose-600' : 'text-slate-400'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" />}Last Pay: {formatDateShort(lastPaymentDate.toISOString())}</div> : <div className="text-[9px] text-slate-400 mt-1 text-center">No payment yet</div>}
+                                                          {lastPaymentDate && !isNaN(lastPaymentDate.getTime()) ? <div className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-1 ${showLastPayWarning ? 'text-rose-600' : 'text-slate-400'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" />}Last Pay: {formatDateShort(lastPaymentDate)}</div> : <div className="text-[9px] text-slate-400 mt-1 text-center">No payment yet</div>}
                                                      </div>
 
                                                      {/* OUTSTANDING ALIGNED RIGHT */}
@@ -2226,7 +2123,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             ) : (
                                               <>
                                                 <div>
-                                                    <div className="text-[10px] text-gray-500">{new Date(tx.date + 'T00:00:00').toLocaleDateString('en-GB')} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
+                                                    <div className="text-[10px] text-gray-500">{parseDate(tx.date).toLocaleDateString('en-GB')} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
                                                     <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
                                                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
                                                 </div>

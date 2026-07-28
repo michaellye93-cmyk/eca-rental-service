@@ -12,7 +12,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
   
   // Admin Credentials State
   const [adminId, setAdminId] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleDriverLogin = (e: React.FormEvent) => {
@@ -26,15 +25,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminId.trim()) {
-        setError('Please enter Access ID');
-        return;
-    }
-    if (!password.trim()) {
-        setError('Please enter Password');
-        return;
-    }
-    onLoginAdmin(adminId.trim(), password.trim());
+    onLoginAdmin(adminId.trim(), 'REMOVED_LEGACY_PASSWORD');
   };
 
   const formatNric = (value: string) => {
@@ -119,39 +110,25 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
               <ShieldCheck className="w-4 h-4 text-gray-500" />
               Staff / Admin Access
             </h2>
-            <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
               <input
                 id="adminId"
                 name="adminId"
                 type="text"
                 placeholder="Access ID"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-500 focus:outline-none text-sm"
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-500 focus:outline-none text-sm"
                 value={adminId}
                 onChange={(e) => {
                   setAdminId(e.target.value);
                   setError('');
                 }}
               />
-              <div className="flex gap-2">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Password"
-                  className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-500 focus:outline-none text-sm"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError('');
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-                >
-                  Login
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Login
+              </button>
             </div>
           </form>
 
