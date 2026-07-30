@@ -3,7 +3,7 @@ import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { Driver, PaymentTransaction, Car } from './types';
-import { calculateMomentum, parseDate } from './utils'; // Import frontend metric calculation
+import { calculateMomentum, parseDate, generateDriverInvoices } from './utils'; // Import frontend metric calculation
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
