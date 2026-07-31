@@ -1811,7 +1811,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            }
                            // totalOutstandingLimit legacy cleared
                            // duplicate progressPercent cleared
-                           const nextDueStr = nextDue.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
+                           const nextDueStr = nextDue && !isNaN(nextDue.getTime()) ? nextDue.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
                            const isRiskyAndSlipping = (m.status === DriverStatus.BAD || m.status === DriverStatus.MID) && v.isSlipping;
                            let behaviorText = 'Consistent Habit';
                            let behaviorColor = 'text-gray-400';
@@ -2384,7 +2384,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <div className="text-xs text-gray-500 mt-1 uppercase tracking-wider">{inv.carPlate}</div>
                                     </td>
                                     <td className="px-6 py-4 font-medium text-gray-600">
-                                        {new Date(inv.dueDate + 'T00:00:00').toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        {(() => { const d = parseDate(inv.dueDate); return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'; })()}
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-500 mb-1">

@@ -44,9 +44,11 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
     drivers.forEach(driver => {
       if (driver.paymentHistory) {
         driver.paymentHistory.forEach(payment => {
-          const date = new Date(payment.date);
-          const monthKey = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-          breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount + (payment.serviceClaim || 0);
+          const date = parseDate(payment.date);
+          if (date && !isNaN(date.getTime())) {
+            const monthKey = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount + (payment.serviceClaim || 0);
+          }
         });
       }
     });
