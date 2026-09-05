@@ -27,5 +27,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["supabase/functions"]
+  "include": ["App.tsx", "index.tsx", "components/**/*.tsx", "constants.ts", "types.ts", "utils.ts", "supabaseClient.ts", "vite.config.ts"],
+  "exclude": ["supabase/functions", "node_modules", "dist"]
 }

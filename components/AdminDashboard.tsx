@@ -957,7 +957,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           let bgColor = 'bg-white';
           let textColor = 'text-gray-600';
           let icon = <XCircle className="w-4 h-4 text-gray-300" />;
-          let label = inv.status;
+          let label: string = inv.status;
           let showAnchor = isAnchor;
           let pulseClass = isAnchor ? "animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.4)] ring-2 ring-red-400" : "";
 

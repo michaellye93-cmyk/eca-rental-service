@@ -1161,7 +1161,7 @@ try {
     <div className="space-y-6 print:space-y-0">
       <div className="mb-6 print:hidden">
         <h2 className="text-2xl font-bold text-[#111827]">Bank Reconciliation</h2>
-        <p className="text-[#6b7280] text-sm mt-1">AI-powered bank statement matching with Gemini 3.0 Flash</p>
+        <p className="text-[#6b7280] text-sm mt-1">AI-powered bank statement matching with {import.meta.env.VITE_AI_PROVIDER === 'openai' ? 'OpenAI' : 'Gemini 3.0 Flash'}</p>
       </div>
 
       <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm mb-6 print:hidden">
@@ -1241,7 +1241,7 @@ try {
       {isLoading && (
         <div className="flex flex-col items-center justify-center p-16 bg-[#ffffff] rounded-xl shadow-sm border border-[#e5e7eb]">
           <Loader className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-          <h3 className="text-lg font-semibold text-[#1f2937] tracking-tight">Gemini AI is parsing statement transactions...</h3>
+          <h3 className="text-lg font-semibold text-[#1f2937] tracking-tight">{import.meta.env.VITE_AI_PROVIDER === 'openai' ? 'OpenAI' : 'Gemini AI'} is parsing statement transactions...</h3>
           <p className="text-[#6b7280] text-sm mt-2 text-center max-w-sm">
             Extracting tabular data and matching against outstanding driver balances via Supabase Edge Functions.
           </p>

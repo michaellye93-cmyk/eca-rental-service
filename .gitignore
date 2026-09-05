@@ -23,7 +23,19 @@ dist-ssr
 *.sln
 *.sw?
 
+# Local verified tool identities and protected scratch artifacts
+.local-tools/
+
 # Environment variables
 .env
 .env.local
 .env.*
+!.env.example
+!**/.env.example
+.vercel/
+
+# Machine-specific Codex configuration and earlier local planning artifacts
+.codex/
+.superpowers/
+docs/superpowers/
+scripts/safety/

@@ -1,7 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
+import { extractStatement } from "./openai.ts";
+import { extractGeminiStatement } from "./gemini.ts";
 
+const AI_PROVIDER = Deno.env.get("AI_PROVIDER") ?? "gemini";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL");
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -61,69 +66,16 @@ Deno.serve(async (req) => {
               throw new Error("JSON file must contain an array of transactions or transactions field");
           }
       } else {
-          const arrayBuffer = await file.arrayBuffer();
-          const base64File = encodeBase64(new Uint8Array(arrayBuffer));
-          const mimeType = file.type;
-
-          console.log(`Processing file: size=${arrayBuffer.byteLength}, mime=${mimeType}`);
-
-          // Use Gemini 3.1 Pro model (or latest preview) to read visual statement
-          const modelName = "gemini-3.1-pro-preview";
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
-
-          const response = await fetch(geminiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: "Read the following bank statement visually. Return a JSON object containing two main keys: 'summary' and 'transactions'. Under 'summary', locate and extract: 'beginning_balance' (numeric float, the Beginning Balance of the statement as of start date), 'total_deposits_amount' (numeric float, the total amount of Deposits/Credits/Plus), 'total_deposits_count' (numeric integer, the total count of Deposits/Credits/Plus), 'total_withdrawals_amount' (numeric float, the total amount of Withdrawals/Debits/Minus), 'total_withdrawals_count' (numeric integer, the total count of Withdrawals/Debits/Minus), and 'ending_balance' (numeric float, the Ending Balance of the statement as of end date). Under 'transactions', return ONLY a structured JSON array of DEPOSIT (incoming money / Credit / CR) transactions. VERY IMPORTANT: Do NOT extract, process, or include any DR / Debit / Withdrawal / money-out transactions in this 'transactions' array. Completely ignore and skip all rows that represent money leaving the account. For each and every DEPOSIT / CREDIT transaction, you must extract: trans_date (converted to YYYY-MM-DD for processing), display_date (DD-MM-YYYY EXACTLY as shown in image), branch_description, sender_name, reference_1, reference_2, ref_num, amount_dr (always null since we ignore withdrawals), amount_cr (numeric float representing the deposit/credit amount), balance (numeric float representing the running balance on that row), amount (numeric float representing the deposit/credit amount), and reference (a combined string of reference_1 + reference_2 if available). Make sure to capture every single deposit/credit without skipping any. Only output raw JSON object, no markdown blocks.",
-                    },
-                    {
-                      inline_data: {
-                        mime_type: mimeType,
-                        data: base64File,
-                      },
-                    },
-                  ],
-                },
-              ],
-              generationConfig: {
-                response_mime_type: "application/json",
-              }
-            }),
-          });
-
-          if (!response.ok) {
-              const err = await response.text();
-              throw new Error("Gemini API Error: " + err);
+          if (AI_PROVIDER !== "gemini" && AI_PROVIDER !== "openai") {
+            throw new Error("AI_PROVIDER must be 'gemini' or 'openai'.");
           }
-
-          const aiData = await response.json();
-          const resultText = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
-          
-          if (!resultText) {
-              throw new Error("Failed to parse Gemini response");
-          }
-
-          const parsed = JSON.parse(resultText);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-              if (parsed.transactions && Array.isArray(parsed.transactions)) {
-                  batchTransactions = parsed.transactions;
-              } else {
-                  batchTransactions = [];
-              }
-              if (parsed.summary) {
-                  summary = parsed.summary;
-              }
-          } else if (Array.isArray(parsed)) {
-              batchTransactions = parsed;
-          }
+          const parsed = AI_PROVIDER === "openai"
+            ? await extractStatement(file, { apiKey: OPENAI_API_KEY, model: OPENAI_MODEL })
+            : await extractGeminiStatement(file, { apiKey: GEMINI_API_KEY, model: GEMINI_MODEL });
+          batchTransactions = parsed.transactions;
+          summary = parsed.summary;
       }
     }
-
     let deposits: any[] = [];
     let withdrawals: any[] = [];
 
