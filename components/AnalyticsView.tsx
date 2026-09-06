@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Driver } from '../types';
+import TerminationReport from './TerminationReport';
 import { generateDriverInvoices, formatCurrency, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, ChevronLeft, ChevronRight, Eye, X, ShieldAlert, BadgeCheck, MessageSquareWarning } from 'lucide-react';
@@ -313,6 +314,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
   return (
     <div className="space-y-6">
+      <TerminationReport />
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Financial Analytics & Operations</h2>

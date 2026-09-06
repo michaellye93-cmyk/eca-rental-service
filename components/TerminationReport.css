@@ -1,0 +1,15 @@
+@media print {
+  body.printing-termination-report > :not(:has(.termination-report)),
+  body.printing-termination-report :has(.termination-report) > :not(.termination-report):not(:has(.termination-report)) { display: none !important; }
+  body.printing-termination-report :has(.termination-report) { position: static !important; height: auto !important; min-height: 0 !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; border: 0 !important; }
+  body.printing-termination-report .termination-report { width: 100%; background: white; padding: 0; }
+  body.printing-termination-report .termination-no-print { display: none !important; }
+  body.printing-termination-report .termination-evidence[hidden] { display: block !important; }
+  body.printing-termination-report .termination-driver { box-shadow: none; overflow: visible; margin-bottom: 8mm; }
+  body.printing-termination-report .termination-driver + .termination-driver { break-before: page; }
+  body.printing-termination-report .termination-report tr,
+  body.printing-termination-report .termination-report aside { break-inside: avoid; }
+  body.printing-termination-report .termination-report h4,
+  body.printing-termination-report .termination-report h5 { break-after: avoid; }
+  body.printing-termination-report .termination-report .overflow-x-auto { overflow: visible; }
+}
