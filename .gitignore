@@ -34,6 +34,20 @@ dist-ssr
 !**/.env.example
 .vercel/
 
+# Supabase CLI links, temporary connection metadata and local migration backups
+supabase/.temp/
+supabase/.backup/
+supabase/.ignore/
+
+# Private credentials and database exports belong outside source control
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.backup
+*.sql.gz
+
 # Machine-specific Codex configuration and earlier local planning artifacts
 .codex/
 .superpowers/
