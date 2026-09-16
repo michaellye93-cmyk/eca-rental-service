@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import {fileURLToPath} from 'node:url';
+export async function verifyInsurancePremiumRules({page,read,finance,screenshots}){
+ const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Insurance');
+ sheet.addRow(['Car Plate','Premium (RM)','Coverage Start','Coverage End','RESPONSIBLITY','Cost Type']);
+ sheet.addRow(['ABC123',0,'2028-01-01','2028-12-31','ECA PAID','Insurance']);
+ sheet.addRow(['DAILY123',0,{formula:'IF(D3="","",EDATE(D3,-12)+1)'},null,'OWNER PAID','Insurance']);
+ sheet.addRow(['DAILY123',1500,'2029-01-01','2029-12-31','OWNER PAID','Insurance']);
+ sheet.addRow(['UNKNOWN',999,null,null,'UNKNOWN','Road Tax']);
+ await finance.locator('input[type=file]').setInputFiles({name:'premium-rules.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(await book.xlsx.writeBuffer())});
+ const dialog=page.getByRole('dialog',{name:'Review premium-rules.xlsx',exact:true});
+ const stat=label=>dialog.locator('.finance-total').filter({has:page.getByText(label,{exact:true})});
+ await dialog.waitFor();assert.match(await stat('Records').innerText(),/3/);assert.match(await stat('Total ECA Premium').innerText(),/0\.00/);
+ assert.match(await stat('Future ECA renewal responsibility').innerText(),/1/);assert.match(await stat('Owner Paid / No ECA Cost').innerText(),/1/);assert.match(await stat('Review Items').innerText(),/1/);
+ assert.equal(await dialog.getByRole('button',{name:'Approve and post',exact:true}).isDisabled(),false);
+ assert.match(await dialog.innerText(),/Vehicle is marked Owner Paid but an insurance premium has been entered\. Please review\./);
+ await page.screenshot({path:fileURLToPath(new URL('insurance-premium-review.png',screenshots)),fullPage:true});
+ await dialog.getByRole('button',{name:'Approve and post',exact:true}).click();await dialog.waitFor({state:'hidden'});
+ let data=await read();const owner=data.insurance.find(p=>p.plate_key==='DAILY123'&&p.coverage_start===null);
+ assert.equal(owner.premium,0);assert.equal(owner.payment_date,null);
+ await page.getByLabel('Existing record',{exact:true}).selectOption(owner.id);
+ assert.equal(await page.getByLabel('Coverage start',{exact:true}).getAttribute('required'),null);
+ assert.match(await finance.locator('form').innerText(),/Owner Paid \/ No ECA Cost/);
+ await page.getByLabel('Responsibility',{exact:true}).selectOption('ECA_PAID');
+ assert.match(await finance.locator('form').innerText(),/Future ECA Renewal Responsibility/);
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.waitForFunction(()=>document.querySelector('select[aria-label="Vehicle"]')?.value==='');
+ data=await read();assert.equal(data.insurance.find(p=>p.id===owner.id).responsibility,'ECA_PAID');assert.equal(data.insurance.find(p=>p.id===owner.id).coverage_start,null);
+ await page.getByLabel('Existing record',{exact:true}).selectOption(owner.id);
+ await page.getByLabel('Premium (RM)',{exact:true}).fill('2400');
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();assert.equal(await page.getByLabel('Coverage start',{exact:true}).evaluate(el=>el.validity.valueMissing),true);
+ assert.equal((await read()).insurance.find(p=>p.id===owner.id).premium,0);
+ await page.getByLabel('Coverage start',{exact:true}).fill('2030-01-01');await page.getByLabel('Coverage end',{exact:true}).fill('2030-12-31');
+ assert.match(await finance.locator('form').innerText(),/Finance cash outflow:.*2,400\.00.*2030-01-01/);
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.waitForFunction(()=>document.querySelector('select[aria-label="Vehicle"]')?.value==='');
+ data=await read();const updated=data.insurance.find(p=>p.id===owner.id);assert.equal(updated.premium,2400);assert.equal(updated.payment_date,'2030-01-01');assert.equal(updated.coverage_end,'2030-12-31');
+ console.log('PASS insurance matrix UI: canonical premium and legacy responsibility header; filtered non-insurance rows; six review metrics; owner-paid blank Excel formula imports/posts with null dates and zero cash cost; owner-positive Needs Review; update future record to a dated premium with derived cash date.');
+}

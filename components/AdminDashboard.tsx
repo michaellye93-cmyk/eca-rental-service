@@ -4,6 +4,7 @@ import { Driver, DriverStatus, Car} from '../types';
 import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance, generateDriverInvoices, parseDate } from '../utils';
 import AnalyticsView from './AnalyticsView';
 import BankReconciliation from './BankReconciliation';
+const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 import { 
   LogOut, 
   TrendingUp, 
@@ -98,7 +99,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   });
   
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST'>(() => {
+  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST' | 'FINANCE'>(() => {
     try {
       const saved = localStorage.getItem('eca_admin_view_mode');
       return (saved as any) || 'ACTIVE';
@@ -1508,13 +1509,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button onClick={() => setViewMode('DRIVER_LIST')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DRIVER_LIST' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Users className="w-4 h-4" /> Driver List</button>
               <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
               <button onClick={() => setViewMode('RECONCILE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'RECONCILE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CheckCircle2 className="w-4 h-4" /> Bank Recon</button>
+              <button onClick={() => setViewMode('FINANCE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'FINANCE' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><DollarSign className="w-4 h-4" /> Finance</button>
             </>
           )}
         </div>
 
         {/* Main Table Section - unchanged */}
         <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
-          {viewMode === 'ANALYTICS' && userRole === 'admin' ? (
+          {viewMode === 'FINANCE' && userRole === 'admin' ? (
+            <React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense>
+          ) : viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
                <AnalyticsView drivers={driverData} />
              </div>

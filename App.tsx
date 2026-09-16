@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -7,6 +7,7 @@ import { calculateMomentum, parseDate, generateDriverInvoices } from './utils'; 
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
+import { signInWithAccessId } from './services/accessIdAuth';
 
 const App: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -21,6 +22,13 @@ const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const authGeneration = useRef(0);
+  const currentViewRef = useRef(currentView);
+  const authenticatedUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
 
   // --- Data Fetching ---
   const fetchDriversAndPayments = async (silent: boolean = false) => {
@@ -153,60 +161,7 @@ const App: React.FC = () => {
     return () => { isMounted = false; };
   };
 
-  // --- Auth & Session Management ---
-  useEffect(() => {
-    // 1. Check active session on mount
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.warn("Session check error:", error);
-        // If refresh token is invalid, force logout to clear stale state
-        if (error.message && (error.message.includes("Refresh Token") || error.message.includes("refresh_token_not_found"))) {
-           supabase.auth.signOut();
-           setSession(null);
-           setCurrentView('LOGIN');
-        }
-        setIsAuthChecking(false);
-      } else {
-        setSession(session);
-        if (session) {
-          fetchUserRole(session.user.id, session.user.email);
-        } else {
-          setIsAuthChecking(false);
-        }
-      }
-    });
-
-    // 2. Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED') {
-        setSession(null);
-        setUserRole(null);
-        if (currentView === 'ADMIN') {
-          setCurrentView('LOGIN');
-        }
-        setIsAuthChecking(false);
-        return;
-      }
-
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setSession(session);
-          if (session) {
-            // Only trigger loading/auth check and route transition if we are currently on the LOGIN screen.
-            // This prevents background token refreshes (e.g. from tab focuses) from unmounting the dashboard and resetting user state.
-            if (currentView === 'LOGIN') {
-              setIsAuthChecking(true);
-              fetchUserRole(session.user.id, session.user.email);
-            }
-          }
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [currentView]); // Add currentView dependency to safely redirect
-
-  const fetchUserRole = async (userId: string, email?: string) => {
+  const fetchUserRole = useCallback(async (userId: string, generation: number) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -214,21 +169,95 @@ const App: React.FC = () => {
         .eq('id', userId)
         .single();
 
-      if (error) {
-        console.error('Error fetching profile:', error);
-        setUserRole('staff'); // Default to restricted if profile fetch fails but auth succeeded
-        setCurrentView('ADMIN');
-      } else if (data) {
-        setUserRole(data.role as 'admin' | 'staff');
-        setCurrentView('ADMIN'); // Auto-navigate to Admin Dashboard
+      if (generation !== authGeneration.current) return;
+      if (error || !data || (data.role !== 'admin' && data.role !== 'staff')) {
+        throw error || new Error('A valid profile role is required.');
       }
+      setUserRole(data.role);
+      setCurrentView('ADMIN');
     } catch (e) {
+      if (generation !== authGeneration.current) return;
       console.error('Profile fetch exception', e);
-      setUserRole('staff');
+      setSession(null);
+      setUserRole(null);
+      setCurrentView('LOGIN');
+      void supabase.auth.signOut();
     } finally {
-      setIsAuthChecking(false);
+      if (generation === authGeneration.current) setIsAuthChecking(false);
     }
-  };
+  }, []);
+
+  // --- Auth & Session Management ---
+  useEffect(() => {
+    let isActive = true;
+    const refreshRoleAfterAuthEvent = (nextSession: Session) => {
+      const userChanged = authenticatedUserIdRef.current !== nextSession.user.id;
+      const shouldResolveRole =
+        userChanged || currentViewRef.current === 'LOGIN';
+
+      authenticatedUserIdRef.current = nextSession.user.id;
+      if (!shouldResolveRole) return;
+
+      const generation = ++authGeneration.current;
+      setIsAuthChecking(true);
+      window.setTimeout(() => {
+        if (isActive && generation === authGeneration.current) {
+          void fetchUserRole(nextSession.user.id, generation);
+        }
+      }, 0);
+    };
+
+    const restoreSession = async () => {
+      const generation = authGeneration.current;
+      const { data: { session: restoredSession }, error: sessionError } = await supabase.auth.getSession();
+      if (!isActive || generation !== authGeneration.current) return;
+      if (sessionError) {
+        authGeneration.current++;
+        console.warn('Session check error:', sessionError);
+        setSession(null);
+        setUserRole(null);
+        authenticatedUserIdRef.current = null;
+        setCurrentView('LOGIN');
+        setIsAuthChecking(false);
+        void supabase.auth.signOut();
+        return;
+      }
+
+      setSession(restoredSession);
+      if (restoredSession) {
+        refreshRoleAfterAuthEvent(restoredSession);
+      } else {
+        setIsAuthChecking(false);
+      }
+    };
+
+    void restoreSession();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED') {
+        authGeneration.current++;
+        authenticatedUserIdRef.current = null;
+        setSession(null);
+        setUserRole(null);
+        setCurrentView('LOGIN');
+        setIsAuthChecking(false);
+        return;
+      }
+
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && nextSession) {
+        setSession(nextSession);
+        // Supabase calls are deferred so the auth callback can finish cleanly.
+        refreshRoleAfterAuthEvent(nextSession);
+      }
+    });
+
+    return () => {
+      isActive = false;
+      authGeneration.current++;
+      subscription.unsubscribe();
+    };
+  }, [fetchUserRole]);
 
   useEffect(() => {
     fetchDriversAndPayments();
@@ -247,32 +276,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAdminLogin = async (accessId: string, password?: string) => {
-    const cleanAccessId = (accessId || '').trim();
-    const cleanPassword = (password || '').trim();
-
-    // Direct access for password 'REMOVED_LEGACY_PASSWORD', empty password, or default internal access
-    if (!cleanPassword || cleanPassword === 'REMOVED_LEGACY_PASSWORD' || cleanAccessId === 'admin' || !cleanAccessId) {
-      setUserRole('admin');
-      setCurrentView('ADMIN');
-      return;
-    }
-
-    let email = cleanAccessId;
-    if (!email.includes('@')) {
-      email = `${email}@eca.com`;
-    }
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: cleanPassword, 
-    });
-
-    if (error) {
-      // Smooth fallback to admin access for internal application
-      setUserRole('admin');
-      setCurrentView('ADMIN');
-    }
+  const handleAdminLogin = async (accessId: string) => {
+    await signInWithAccessId(accessId);
   };
 
   const handleLogout = async () => {

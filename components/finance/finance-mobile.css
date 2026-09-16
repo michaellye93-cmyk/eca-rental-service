@@ -1,0 +1,138 @@
+@media (max-width: 600px) {
+  .min-h-screen:has(.finance-workspace) > .sticky {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .min-h-screen:has(.finance-workspace) > .sticky > .flex {
+    flex-wrap: wrap;
+    gap: 12px;
+    max-width: 100%;
+  }
+  .finance-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .finance-section-heading .finance-link,
+  .finance-section-heading .finance-secondary {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  body:has(.finance-workspace) .w-fit {
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  body:has(.finance-workspace) header {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+/* Keep navigation, data tables and form controls within the Finance viewport. */
+.finance-workspace,
+.finance-workspace * {
+  box-sizing: border-box;
+}
+.finance-content,
+.finance-panel,
+.finance-field,
+.finance-dialog,
+.finance-preview-stats,
+.finance-summary-grid {
+  min-width: 0;
+}
+.finance-field input,
+.finance-field select {
+  width: 100%;
+  min-width: 0;
+}
+.finance-dialog h2 {
+  font-size: 23px;
+  overflow-wrap: anywhere;
+}
+.finance-dialog-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.finance-close-section p,
+.finance-message {
+  overflow-wrap: anywhere;
+}
+.finance-section-title {
+  flex-wrap: wrap;
+}
+.finance-audit-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  font-size: 12px;
+}
+.finance-audit-controls dt {
+  color: var(--f-muted);
+}
+.finance-audit-controls dd {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.finance-audit summary,
+.finance-mapping summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 12px 0;
+}
+.finance-checklist h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+.finance-checklist p {
+  font-size: 13px;
+  color: var(--f-muted);
+  margin-top: 12px;
+}
+.finance-dialog-actions label {
+  font-size: 13px;
+}
+.finance-workspace button:focus-visible,
+.finance-click-row:focus-visible,
+.finance-workspace summary:focus-visible {
+  outline: 2px solid var(--f-accent);
+  outline-offset: 3px;
+}
+.finance-table th:not(:first-child),
+.finance-table td:not(:first-child) {
+  text-align: right;
+}
+@media (max-width: 600px) {
+  .finance-nav {
+    overflow: visible;
+    flex-wrap: wrap;
+  }
+  .finance-more {
+    margin-left: 0;
+  }
+  .finance-tabs {
+    overflow-x: auto;
+  }
+  .finance-tabs button {
+    flex-shrink: 0;
+  }
+  .finance-section-action {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .finance-audit-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .finance-close-actions {
+    justify-content: flex-start;
+  }
+  .finance-preview-stats .finance-total {
+    min-width: 0;
+  }
+}
