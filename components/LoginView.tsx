@@ -4,7 +4,7 @@ import { ShieldCheck } from 'lucide-react';
 
 interface LoginViewProps {
   onLoginDriver: (nric: string) => void;
-  onLoginAdmin: (accessId: string, password?: string) => void;
+  onLoginAdmin: (accessId: string) => Promise<void>;
 }
 
 const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) => {
@@ -13,6 +13,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
   // Admin Credentials State
   const [adminId, setAdminId] = useState('');
   const [error, setError] = useState('');
+  const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
 
   const handleDriverLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,9 +24,23 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
     onLoginDriver(nric.trim());
   };
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLoginAdmin(adminId.trim(), 'REMOVED_LEGACY_PASSWORD');
+    const accessId = adminId.trim();
+    if (!accessId) {
+      setError('Enter your Access ID.');
+      return;
+    }
+
+    setError('');
+    setIsAdminLoggingIn(true);
+    try {
+      await onLoginAdmin(accessId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to sign in. Please try again.');
+    } finally {
+      setIsAdminLoggingIn(false);
+    }
   };
 
   const formatNric = (value: string) => {
@@ -125,9 +140,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
               />
               <button
                 type="submit"
+                disabled={isAdminLoggingIn}
                 className="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
               >
-                Login
+                {isAdminLoggingIn ? 'Logging in…' : 'Login'}
               </button>
             </div>
           </form>

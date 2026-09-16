@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import {fileURLToPath} from 'node:url';
+import {expectFitsViewport} from './finance-ux-browser-checks.mjs';
+export async function verifySharedOpex({page,navigate,finance,read,screenshots}){
+ const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Shared Opex');
+ sheet.addRow(['Frequency','Start Month','End Month','Expense Date','Category','Description','Amount (RM)','Business Unit','Payee','Source','Notes']);
+ sheet.addRow(['Monthly Recurring','Aug-2026','Aug-2026',null,'Office Rental','Office rent',2800,'CORPORATE / SHARED','Fixture landlord','Fixture workbook','Recurring import']);
+ sheet.addRow(['Monthly Recurring','Sep-2026',null,null,'Salary','September payroll',500]);
+ const upload={name:'shared-recurring.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(await book.xlsx.writeBuffer())};
+ const dialog=page.getByRole('dialog',{name:'Review shared-recurring.xlsx',exact:true});
+ const shared=()=>page.locator('section').filter({has:page.getByRole('heading',{name:'Shared / corporate opex',exact:true})});
+ const before=await read();await navigate('Month Close');await shared().locator('input[type=file]').setInputFiles(upload);
+ await dialog.waitFor();assert.match(await dialog.innerText(),/2,800\.00/);assert.match(await dialog.innerText(),/1 recurring row is outside/);assert.match(await dialog.innerText(),/Monthly recurring/);
+ assert.equal(await dialog.getByRole('button',{name:'Approve and post',exact:true}).isDisabled(),false);
+ await page.screenshot({path:fileURLToPath(new URL('shared-recurring-preview.png',screenshots)),fullPage:true});
+ await page.setViewportSize({width:390,height:844});await expectFitsViewport(page,dialog);await page.screenshot({path:fileURLToPath(new URL('shared-recurring-mobile.png',screenshots)),fullPage:true});await page.setViewportSize({width:1440,height:1080});
+ await dialog.getByRole('button',{name:'Approve and post',exact:true}).click();await dialog.waitFor({state:'hidden'});
+ let data=await read();assert.equal(data.expenses.length,before.expenses.length+1);const rent=data.expenses.find(row=>row.supplier==='Fixture landlord');assert.equal(rent.billing_date,null);assert.equal(rent.amount,2800);assert.equal(rent.start_month,'2026-08-01');assert.equal(rent.notes,'Recurring import');
+ await navigate('Expenses');await page.getByRole('button',{name:'Shared Opex',exact:true}).click();await page.getByLabel('Existing record',{exact:true}).selectOption(rent.id);
+ const date=page.getByLabel('Expense Date (optional)',{exact:true});assert.equal(await date.inputValue(),'');assert.equal(await date.getAttribute('required'),null);
+ await page.getByLabel('Amount',{exact:true}).fill('2801');await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.waitForFunction(()=>document.querySelector('select')&&[...document.querySelectorAll('select')].some(el=>el.querySelector('option')?.textContent==='New expense…'&&el.value===''));
+ data=await read();assert.equal(data.expenses.find(row=>row.id===rent.id).amount,2801);assert.equal(data.expenses.find(row=>row.id===rent.id).billing_date,null);
+ await navigate('Overview');assert.match(await finance().innerText(),/2,552\.24/);
+ await page.getByLabel('Reporting month',{exact:true}).fill('2026-09');await navigate('Month Close');await shared().locator('input[type=file]').setInputFiles(upload);
+ await dialog.waitFor();assert.match(await dialog.innerText(),/500\.00/);assert.doesNotMatch(await dialog.innerText(),/2,800\.00/);assert.equal(await dialog.getByRole('button',{name:'Approve and post',exact:true}).isDisabled(),false);
+ await dialog.getByRole('button',{name:'Approve and post',exact:true}).click();await dialog.waitFor({state:'hidden'});
+ data=await read('2026-09-01');assert.equal(data.expenses.length,1);assert.equal(data.expenses[0].category,'Salary');assert.equal(data.expenses[0].amount,500);assert.equal(data.expenses[0].billing_date,null);
+ assert.equal((await read()).expenses.find(row=>row.id===rent.id).amount,2801);
+ console.log('PASS recurring Shared Opex: Aug-only RM2800 imports without Expense Date, excluded-month count, amount edit keeps null date and metadata, correct P&L, same workbook posts September RM500 only, desktop/mobile.');
+}
