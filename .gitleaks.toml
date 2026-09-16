@@ -1,0 +1,10 @@
+title = "ECA public source secret checks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "legacy-access-identifier"
+description = "Access IDs are credentials and must not appear in source or fixtures"
+regex = '''(?i)\beca(?:admin|staff)[a-z0-9]{2,}\b'''
+keywords = ["ecaadmin", "ecastaff"]
