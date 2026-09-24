@@ -165,38 +165,6 @@ export const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-export const analyzePaymentHabit = (driver: Driver) => {
-  if (!driver.paymentHistory || driver.paymentHistory.length < 2) {
-    return { type: 'NEW', label: 'New / No Data', color: 'bg-gray-100 text-gray-600' };
-  }
-
-  const recentPayments = driver.paymentHistory.slice(0, 3);
-  let totalGapDays = 0;
-  let count = 0;
-
-  for (let i = 0; i < recentPayments.length - 1; i++) {
-    const d1 = parseDate(recentPayments[i].date);
-    const d2 = parseDate(recentPayments[i+1].date);
-    const diffTime = Math.abs(d1.getTime() - d2.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    totalGapDays += diffDays;
-    count++;
-  }
-
-  const avgInterval = count > 0 ? totalGapDays / count : 0;
-  
-  const targetInterval = driver.rentalCycle === 'MONTHLY' ? 30 : 7;
-  const buffer = driver.rentalCycle === 'MONTHLY' ? 5 : 2; // Allow +X days slip
-
-  if (avgInterval > (targetInterval * 2)) {
-    return { type: 'ERRATIC', label: 'Erratic Payer', color: 'bg-purple-100 text-purple-700 border-purple-200' };
-  }
-  if (avgInterval > (targetInterval + buffer)) {
-    return { type: 'LATE_CYCLE', label: 'Habitual Late', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-  }
-  return { type: 'CONSISTENT', label: 'Consistent', color: 'bg-blue-50 text-blue-700 border-blue-200' };
-};
-
 export const calculateMomentum = (driver: Driver) => {
     // 1. Sort Payments by Date Ascending
     const payments = [...driver.paymentHistory].sort((a,b) => parseDate(a.date).getTime() - parseDate(b.date).getTime());

@@ -1,22 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { Driver, DriverStatus, PaymentTransaction } from '../types';
+import { Driver } from '../types';
 import { formatCurrency, formatDate, latestInvoices } from '../utils';
 import { 
   Phone, 
   User, 
-  MapPin, 
   Calendar, 
   FileText, 
-  CheckCircle2, 
   Clock, 
-  AlertCircle, 
   DollarSign, 
   Upload, 
   File, 
-  Trash2, 
-  ExternalLink,
-  MessageSquare,
-  ShieldAlert,
   X
 } from 'lucide-react';
 
@@ -243,7 +236,6 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
           ) : (
             <div className="relative border-l border-gray-200 pl-4 ml-3 space-y-6">
               {driver.paymentHistory.map((pt, index) => {
-                const isUploadedIdx = `tx-manual-${pt.id}` || pt.id;
                 const uploadedData = receipts[pt.id] || receipts[`tx-manual-${pt.id}`];
                 
                 return (

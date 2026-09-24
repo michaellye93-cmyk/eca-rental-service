@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, CheckCircle, AlertCircle, Download, FileText, Loader } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
+import { UploadCloud, CheckCircle, AlertCircle, Download, Loader } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Driver } from '../types';
 
@@ -1520,19 +1519,6 @@ try {
                       original_index
                   };
               }).filter((t) => t !== null && (t.is_deposit ? (t.amount_cr || t.amount || 0) > 0 : (t.amount_dr || t.amount || 0) > 0));
-
-              const parseDateForSort = (dateStr) => {
-                  if (!dateStr) return 0;
-                  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-                      return new Date(dateStr).getTime();
-                  }
-                  const dmyMatch = dateStr.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-                  if (dmyMatch) {
-                      return new Date(`${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`).getTime();
-                  }
-                  const t = Date.parse(dateStr);
-                  return isNaN(t) ? 0 : t;
-              };
 
               processedTxs.sort((a, b) => {
                   return (a.original_index ?? 0) - (b.original_index ?? 0);

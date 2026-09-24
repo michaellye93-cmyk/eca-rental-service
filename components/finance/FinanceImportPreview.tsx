@@ -1,5 +1,5 @@
 import { formatCurrency } from "../../utils";
-import React, { useState } from "react";
+import { useState } from "react";
 import { insuranceStatus } from "../../services/finance/insurance";
 import type {
   FieldMapping,

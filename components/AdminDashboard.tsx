@@ -1,24 +1,20 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Driver, DriverStatus } from '../types';
-import { calculateDriverMetrics, formatCurrency, formatDate, formatNric, analyzePaymentHabit, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
+import { calculateDriverMetrics, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
 import AnalyticsView from './AnalyticsView';
 import BankReconciliation from './BankReconciliation';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
-import { 
-  LogOut, 
-  TrendingUp, 
-  AlertOctagon, 
-  Search, 
-  Phone, 
+import {
+  LogOut,
+  TrendingUp,
+  Search,
   DollarSign,
-  Plus,
   X,
   UserPlus,
   Pencil,
   CalendarCheck,
   History,
-  Check,
   Archive,
   UserMinus,
   Trash2,
@@ -26,36 +22,19 @@ import {
   Activity,
   PieChart,
   AlertTriangle,
-  Tags,
   Filter,
   Users,
-  Eye,
   TrendingDown,
-  ArrowRight,
-  Minus,
-  Star,
   Siren,
-  ArrowUpRight,
-  ArrowDownRight,
-  Info,
-  Lock,
   Shield,
-  ShieldAlert,
   ChevronUp,
   ChevronDown,
-  Car as CarIcon,
-  Wrench,
-  FileText,
   ChevronRight,
-  HelpCircle,
-  AlertOctagon as AlertOctagonIcon,
-  User,
   XCircle,
   CheckCircle2,
   AlertCircle,
   Clock
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 
 interface AdminDashboardProps {
@@ -83,6 +62,25 @@ const contractCyclesBetween = (startDate: string, endDate: string, cycle: Driver
   return Math.ceil(days / (cycle === 'MONTHLY' ? 30 : 7));
 };
 
+/** A text setting remembered in this browser under `key`; falls back when storage is empty or unavailable. */
+function usePersistedState<T extends string>(key: string, fallback: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T | null) || fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('LocalStorage error:', e);
+    }
+  }, [key, value]);
+  return [value, setValue];
+}
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   drivers,
   userRole,
@@ -95,90 +93,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onRefresh
 }) => {
-  const [searchTerm, setSearchTerm] = useState<string>(() => {
-    try {
-      return localStorage.getItem('eca_admin_search_term') || '';
-    } catch {
-      return '';
-    }
-  });
-  
-  const [viewMode, setViewMode] = useState<'ACTIVE' | 'DELISTED' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST' | 'FINANCE'>(() => {
-    try {
-      const saved = localStorage.getItem('eca_admin_view_mode');
-      return (saved as any) || 'ACTIVE';
-    } catch {
-      return 'ACTIVE';
-    }
-  });
-  
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'GOOD' | 'MID' | 'BAD'>(() => {
-    try {
-      const saved = localStorage.getItem('eca_admin_status_filter');
-      return (saved as any) || 'ALL';
-    } catch {
-      return 'ALL';
-    }
-  });
-  
+  // Search, tab and filters are remembered in this browser between visits.
+  const [searchTerm, setSearchTerm] = usePersistedState<string>('eca_admin_search_term', '');
+  const [viewMode, setViewMode] = usePersistedState<'ACTIVE' | 'DELISTED' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST' | 'FINANCE'>('eca_admin_view_mode', 'ACTIVE');
+  const [statusFilter, setStatusFilter] = usePersistedState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('eca_admin_status_filter', 'ALL');
+  const [selectedTagFilter, setSelectedTagFilter] = usePersistedState<string>('eca_admin_selected_tag_filter', 'ALL');
+
   const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'OVERDUE'>('ALL');
-  
+
   const [expandedDriverIds, setExpandedDriverIds] = useState<string[]>([]);
   const [highlightedDriverId, setHighlightedDriverId] = useState<string | null>(null);
-  
-  const [selectedTagFilter, setSelectedTagFilter] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('eca_admin_selected_tag_filter');
-      return saved || 'ALL';
-    } catch {
-      return 'ALL';
-    }
-  });
 
   const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
   const [driverListSortConfig, setDriverListSortConfig] = useState<{ key: 'CATEGORY' | 'NAME' | null, direction: 'asc' | 'desc' | null }>({ key: null, direction: null });
 
-  // Persistence hooks
-  useEffect(() => {
-    try {
-      localStorage.setItem('eca_admin_search_term', searchTerm);
-    } catch (e) {
-      console.warn('LocalStorage error:', e);
-    }
-  }, [searchTerm]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('eca_admin_view_mode', viewMode);
-    } catch (e) {
-      console.warn('LocalStorage error:', e);
-    }
-  }, [viewMode]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('eca_admin_status_filter', statusFilter);
-    } catch (e) {
-      console.warn('LocalStorage error:', e);
-    }
-  }, [statusFilter]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('eca_admin_urgency_filter', urgencyFilter);
-    } catch (e) {
-      console.warn('LocalStorage error:', e);
-    }
-  }, [urgencyFilter]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('eca_admin_selected_tag_filter', selectedTagFilter);
-    } catch (e) {
-      console.warn('LocalStorage error:', e);
-    }
-  }, [selectedTagFilter]);
-  
   const handleSort = (key: 'RISK_STATUS' | 'OUTSTANDING') => {
     let direction: 'asc' | 'desc' = 'desc';
     if (sortConfig.key === key && sortConfig.direction === 'desc') {
@@ -315,14 +243,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  // --- UI Refresh: Trigger Global State Refresh on Mount ---
-  // REMOVED: This causes a flicker on login because it triggers the global loading state.
-  // The data is already fetched in App.tsx on initial load.
-  /*
-  useEffect(() => {
-      onRefresh();
-  }, []);
-  */
 
   // --- Auto-Calculate Duration when Dates Change ---
   useEffect(() => {
@@ -338,8 +258,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const activeBalance = { baseValue: metrics.principalOutstanding, accruedInterest: metrics.penaltyAmount };
     const recoveryBaseline = calculateDriverMetrics(d, RECOVERY_BASELINE_DATE).principalOutstanding;
 
-    // Habit analysis
-    const habit = analyzePaymentHabit(d);
     
     // Performance Velocity from SQL View
     const velocity = d.performanceVelocity || 0;
@@ -395,7 +313,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         metrics,
         activeBalance, // Exposed for UI
         recoveryBaseline,
-        habit,
         velocityData: {
             velocity,
             isSlipping,
@@ -661,7 +578,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
     });
-  }, [driverData, viewMode, searchTerm, selectedTagFilter, sortConfig, statusFilter]);
+  }, [driverData, viewMode, searchTerm, selectedTagFilter, sortConfig, statusFilter, urgencyFilter, mustCollectToday, yesterdayDue, overdue]);
 
   // Summary Stats
   const badDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.BAD).length;
@@ -1503,7 +1420,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            let valueText = '';
                            let progressPercent = 0;
                            let barColorClass = 'bg-gray-300';
-                           let isNegativeProgress = false;
                            if (baselineOutstanding > 0) {
                                if (currentOutstanding < baselineOutstanding) {
                                    const restoredAmount = baselineOutstanding - currentOutstanding;
@@ -1514,7 +1430,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                } else if (currentOutstanding > baselineOutstanding) {
                                    const addedDebt = currentOutstanding - baselineOutstanding;
                                    progressPercent = (addedDebt / baselineOutstanding) * 105; // allow some visibility scale
-                                   isNegativeProgress = true;
                                    labelText = 'Slipped';
                                    valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(baselineOutstanding)}`;
                                    barColorClass = 'bg-rose-500';
@@ -1527,18 +1442,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            } else if (currentOutstanding > 0) {
                                const addedDebt = currentOutstanding;
                                progressPercent = 100;
-                               isNegativeProgress = true;
                                labelText = 'Slipped';
                                valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(driver.rentalRate)}`;
                                barColorClass = 'bg-rose-500';
                            }
                            const nextDueStr = formatDate(nextDue, 'N/A');
-                           const isRiskyAndSlipping = (m.status === DriverStatus.BAD || m.status === DriverStatus.MID) && v.isSlipping;
                            let behaviorText = 'Consistent Habit';
                            let behaviorColor = 'text-gray-400';
                            if (v.isSlipping) { behaviorText = 'Behavior Worsening'; behaviorColor = 'text-red-600 font-bold'; } 
                            else if (v.isRecovering) { behaviorText = 'Habit Improving'; behaviorColor = 'text-green-600 font-medium'; }
-                           const tooltipText = `This driver paid ${Math.round(v.lastLateness)} days late, which is ${Math.round(v.velocity)} days slower than their usual ${Math.round(v.avgLateness)}-day habit. Contact them to prevent further slippage.`;
 
                         return (
                            <React.Fragment key={driver.id}>
@@ -1918,7 +1830,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                           {invoicePopupData.invoices.map((inv: any) => {
-                             const isFull = inv.remainingBalance <= 0.01;
                              return (
                                 <tr key={inv.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4">

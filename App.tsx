@@ -18,7 +18,7 @@ const App: React.FC = () => {
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
 
   // Auth State
-  const [session, setSession] = useState<Session | null>(null);
+  const [, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const authGeneration = useRef(0);

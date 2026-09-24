@@ -3,7 +3,7 @@ import type { Driver, DriverWithMetrics, Invoice } from '../types';
 import TerminationReport from './TerminationReport';
 import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, formatDate, kualaLumpurNow, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
-import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, ChevronLeft, ChevronRight, Eye, X, ShieldAlert, BadgeCheck, MessageSquareWarning } from 'lucide-react';
+import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, X, ShieldAlert, BadgeCheck } from 'lucide-react';
 
 interface AnalyticsViewProps {
   drivers: DriverWithMetrics[];
