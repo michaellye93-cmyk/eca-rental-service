@@ -2,9 +2,11 @@
 import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { formatNric } from '../utils';
+import { ConfirmDialog } from './Dialog';
 
 interface LoginViewProps {
-  onLoginDriver: (nric: string) => void;
+  /** Returns false when no driver has this NRIC. */
+  onLoginDriver: (nric: string) => boolean;
   onLoginAdmin: (accessId: string) => Promise<void>;
 }
 
@@ -15,6 +17,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
   const [adminId, setAdminId] = useState('');
   const [error, setError] = useState('');
   const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const handleDriverLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +25,9 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
       setError('Please enter your NRIC');
       return;
     }
-    onLoginDriver(nric.trim());
+    if (!onLoginDriver(nric.trim())) {
+      setError('Driver not found. Please check your NRIC.');
+    }
   };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -146,19 +151,28 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
           
           <div className="text-center mt-8">
             <button 
-                onClick={() => {
-                    // Emergency Reset
-                    if(window.confirm("This will clear all session data and reload the app. Continue?")) {
-                        localStorage.clear();
-                        sessionStorage.clear();
-                        window.location.reload();
-                    }
-                }}
+                type="button"
+                onClick={() => setConfirmReset(true)}
                 className="text-xs text-gray-500 hover:text-red-500 underline transition-colors"
             >
                 Reset App
             </button>
           </div>
+          {confirmReset && (
+            // Emergency reset: clears this browser's saved session and settings, then reloads
+            <ConfirmDialog
+              title="Reset App"
+              confirmLabel="Reset and reload"
+              onCancel={() => setConfirmReset(false)}
+              onConfirm={() => {
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.reload();
+              }}
+            >
+              <p>This clears everything this app has saved in this browser (sign-in, filters, tabs and any receipts uploaded here), then reloads the page.</p>
+            </ConfirmDialog>
+          )}
         </div>
       </div>
     </div>

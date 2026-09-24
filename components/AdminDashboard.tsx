@@ -36,14 +36,15 @@ import {
   Clock
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
+import Dialog, { ConfirmDialog } from './Dialog';
 
 interface AdminDashboardProps {
   drivers: Driver[];
   userRole: 'admin' | 'staff'; // Role passed from parent
   onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
-  onCreateDriver: (driver: Driver) => void;
-  onUpdateDriver: (driver: Driver) => void;
+  onCreateDriver: (driver: Driver) => Promise<void>;
+  onUpdateDriver: (driver: Driver) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
   onLogout: () => void;
@@ -153,6 +154,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Confirmation Modal State
   const [driverToDelist, setDriverToDelist] = useState<Driver | null>(null);
+  const [driverToDelete, setDriverToDelete] = useState<Driver | null>(null);
+
+  // Messages shown inside the forms when an entry needs fixing
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [editTxError, setEditTxError] = useState<string | null>(null);
+  const [driverFormError, setDriverFormError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDriverForPayment, setSelectedDriverForPayment] = useState<Driver | null>(null);
@@ -622,34 +629,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPaymentAmount(driver.rentalRate.toString());
     setPaymentDate(kualaLumpurToday());
     setPaymentMethod(null); // start empty
+    setPaymentError(null);
     setIsPaymentModalOpen(true);
+  };
+
+  const closePaymentModal = () => {
+    setIsPaymentModalOpen(false);
+    setPaymentError(null);
+    setEditingTxId(null);
+    setEditTxError(null);
   };
 
   const handleDelistClick = (driver: Driver) => { setDriverToDelist(driver); };
   const confirmDelist = () => { if (driverToDelist) { onDelistDriver(driverToDelist.id); setDriverToDelist(null); } };
+  const confirmDelete = () => { if (driverToDelete) { onDeleteDriver(driverToDelete.id); setDriverToDelete(null); } };
   
   const handleSubmitPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDriverForPayment) return;
     const amount = parseFloat(paymentAmount) || 0;
     const serviceClaim = parseFloat(serviceClaimAmount) || 0;
-    if (isNaN(amount) || amount < 0) { alert("Invalid amount."); return; }
-    if (!paymentDate) { alert("Select date."); return; }
+    if (isNaN(amount) || amount < 0) { setPaymentError('Enter an amount of RM 0 or more.'); return; }
+    if (!paymentDate) { setPaymentError('Choose the payment date.'); return; }
     
     let finalMethod = paymentMethod;
     if (!finalMethod) {
         if (amount === 0 && serviceClaim > 0) {
             finalMethod = 'CLAIM';
         } else {
-            alert("Please select either BANK TRANSFER or CASH DEPOSIT."); return;
+            setPaymentError('Choose Bank Transfer or Cash Deposit.'); return;
         }
     }
     
+    setPaymentError(null);
     onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod);
     setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null);
   };
 
   const handleStartEditTx = (tx: any) => {
+    setEditTxError(null);
     setEditingTxId(tx.id);
     setEditAmount(tx.amount.toString());
     setEditServiceClaim((tx.serviceClaim || 0).toString());
@@ -669,13 +687,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const amountNum = parseFloat(editAmount);
     const serviceClaimNum = parseFloat(editServiceClaim) || 0;
     if (isNaN(amountNum) || amountNum < 0) {
-      alert("Invalid payment amount.");
+      setEditTxError('Enter an amount of RM 0 or more.');
       return;
     }
     if (!editDate) {
-      alert("Please specify a valid payment date.");
+      setEditTxError('Choose the payment date.');
       return;
     }
+    setEditTxError(null);
     if (onEditPayment) {
       onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER');
     }
@@ -683,7 +702,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditPaymentMethod(null);
   };
 
-  const handleOpenCreateModal = () => { setEditingId(null); setFormData(initialFormState); setTagInput(''); setIsDriverModalOpen(true); };
+  const handleOpenCreateModal = () => { setEditingId(null); setFormData(initialFormState); setTagInput(''); setDriverFormError(null); setIsDriverModalOpen(true); };
   
   const handleOpenEditModal = (driver: Driver) => {
     handleScreenDriver(driver.id);
@@ -704,6 +723,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       tags: driver.tags || []
     });
     setTagInput('');
+    setDriverFormError(null);
     setIsDriverModalOpen(true);
   };
 
@@ -717,7 +737,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleDriverFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.nric || !formData.carPlate) { alert("Missing fields."); return; }
+    if (!formData.name || !formData.nric || !formData.carPlate) { setDriverFormError('Fill in the full name, NRIC and plate number.'); return; }
     
     // AUTOMATED LOGIC: Sync Duration if End Date is set
     const finalDuration = contractCyclesBetween(formData.contractStartDate, formData.contractEndDate, formData.rentalCycle) ?? formData.contractDuration;
@@ -730,11 +750,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (!originalDriver) return;
         await onUpdateDriver({ ...originalDriver, ...submissionData });
       } else {
-        if (drivers.some(d => d.nric === formData.nric)) { alert("NRIC exists."); return; }
+        if (drivers.some(d => d.nric === formData.nric)) { setDriverFormError('A driver with this NRIC already exists.'); return; }
         await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
       }
       // Immediate Refresh on Update
       await onRefresh();
+      setDriverFormError(null);
       setIsDriverModalOpen(false); setFormData(initialFormState);
     } catch (e) {
       // Error handled by parent, keep modal open
@@ -1566,7 +1587,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                           </button>
                                                           <div className="flex items-center gap-1 text-slate-500 shrink-0">
                                                               <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="hover:text-slate-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><Pencil className="w-3.5 h-3.5" /></button>
-                                                              {viewMode === 'ACTIVE' ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="hover:text-rose-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><UserMinus className="w-3.5 h-3.5" /></button> : <button type="button" onClick={() => { if(window.confirm('Delete?')) onDeleteDriver(driver.id); }} aria-label={`Delete ${driver.name}`} title="Delete driver" className="hover:text-rose-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><Trash2 className="w-3.5 h-3.5" /></button>}
+                                                              {viewMode === 'ACTIVE' ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="hover:text-rose-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><UserMinus className="w-3.5 h-3.5" /></button> : <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="hover:text-rose-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><Trash2 className="w-3.5 h-3.5" /></button>}
                                                           </div>
                                                      </div>
                                                  </div>
@@ -1597,298 +1618,261 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
          )}
       </div>
 
-                {/* Driver Modal */}
-                {isDriverModalOpen && (
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
-                            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                                <h2 className="text-xl font-bold text-gray-900">{editingId ? "Edit Driver Profile" : "Add Driver Profile"}</h2>
-                                <button type="button" onClick={() => setIsDriverModalOpen(false)} title="Close" aria-label="Close" className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
-                            </div>
-                            <form onSubmit={handleDriverFormSubmit} className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Full Name</label>
-                                    <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Driver Full Name" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
-                                    <input type="email" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Email (Optional)" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Address</label>
-                                    <textarea className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={2} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Driver Address"></textarea>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">NRIC</label>
-                                        <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => setFormData({...formData, nric: formatNric(e.target.value)})} placeholder="NRIC Number" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Plate Number</label>
-                                        <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" value={formData.carPlate} onChange={e => setFormData({...formData, carPlate: e.target.value})} placeholder="ABC 1234" />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Category</label>
-                                        <select className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as 'SEWABELI' | 'SEWA_BIASA'})}>
-                                            <option value="SEWABELI">SEWABELI</option>
-                                            <option value="SEWA_BIASA">SEWA BIASA</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Rent per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'} (RM)</label>
-                                        <input required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.rentalRate} onChange={e => setFormData({...formData, rentalRate: Number(e.target.value)})} min="0" step="0.01" />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Start Date</label>
-                                        <input required type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractStartDate} onChange={e => setFormData({...formData, contractStartDate: e.target.value})} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Duration ({formData.rentalCycle === 'MONTHLY' ? 'months' : 'weeks'})</label>
-                                        <input required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractDuration} onChange={e => setFormData({...formData, contractDuration: Number(e.target.value)})} min="1" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">End Date</label>
-                                        <input type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractEndDate} onChange={e => setFormData({...formData, contractEndDate: e.target.value})} />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Tags (Press Enter)</label>
-                                    <div className="flex gap-2">
-                                        <input type="text" list="existing-tags" className="flex-1 border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. SUN" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(e); } }} />
-                                        <datalist id="existing-tags">
-                                            {Array.from(new Set(drivers.flatMap(d => d.tags || []))).sort().map(tag => <option key={tag} value={tag} />)}
-                                        </datalist>
-                                        <button type="button" onClick={handleAddTag} className="bg-slate-800 text-white px-3 py-2 rounded text-sm font-bold hover:bg-slate-700 shrink-0">Add Tag</button>
-                                    </div>
-                                    {formData.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mt-3">
-                                            {formData.tags.map(tag => (
-                                                <span key={tag} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-200 flex items-center gap-1">
-                                                    {tag} <button type="button" onClick={() => handleRemoveTag(tag)} aria-label={`Remove tag ${tag}`} className="hover:text-red-500"><X className="w-3 h-3" /></button>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                                    <button type="button" onClick={() => setIsDriverModalOpen(false)} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                    <button type="submit" className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">{editingId ? "Save Changes" : "Create Driver"}</button>
-                                </div>
-                            </form>
-                        </div>
+      {/* Driver form */}
+      {isDriverModalOpen && (
+        <Dialog title={editingId ? 'Edit Driver Profile' : 'Add Driver Profile'} onClose={() => setIsDriverModalOpen(false)}>
+          <form onSubmit={handleDriverFormSubmit} className="p-6 space-y-4">
+            <div>
+              <label htmlFor="driver-name" className="block text-sm font-bold text-gray-700 mb-1">Full Name</label>
+              <input id="driver-name" required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Driver Full Name" />
+            </div>
+            <div>
+              <label htmlFor="driver-email" className="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
+              <input id="driver-email" type="email" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Email (Optional)" />
+            </div>
+            <div>
+              <label htmlFor="driver-address" className="block text-sm font-bold text-gray-700 mb-1">Address</label>
+              <textarea id="driver-address" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={2} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Driver Address"></textarea>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="driver-nric" className="block text-sm font-bold text-gray-700 mb-1">NRIC</label>
+                <input id="driver-nric" required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => setFormData({...formData, nric: formatNric(e.target.value)})} placeholder="NRIC Number" />
+              </div>
+              <div>
+                <label htmlFor="driver-plate" className="block text-sm font-bold text-gray-700 mb-1">Plate Number</label>
+                <input id="driver-plate" required type="text" className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" value={formData.carPlate} onChange={e => setFormData({...formData, carPlate: e.target.value})} placeholder="ABC 1234" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="driver-category" className="block text-sm font-bold text-gray-700 mb-1">Category</label>
+                <select id="driver-category" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as 'SEWABELI' | 'SEWA_BIASA'})}>
+                  <option value="SEWABELI">SEWABELI</option>
+                  <option value="SEWA_BIASA">SEWA BIASA</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="driver-rate" className="block text-sm font-bold text-gray-700 mb-1">Rent per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'} (RM)</label>
+                <input id="driver-rate" required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.rentalRate} onChange={e => setFormData({...formData, rentalRate: Number(e.target.value)})} min="0" step="0.01" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="driver-start" className="block text-sm font-bold text-gray-700 mb-1">Start Date</label>
+                <input id="driver-start" required type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractStartDate} onChange={e => setFormData({...formData, contractStartDate: e.target.value})} />
+              </div>
+              <div>
+                <label htmlFor="driver-duration" className="block text-sm font-bold text-gray-700 mb-1">Duration ({formData.rentalCycle === 'MONTHLY' ? 'months' : 'weeks'})</label>
+                <input id="driver-duration" required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractDuration} onChange={e => setFormData({...formData, contractDuration: Number(e.target.value)})} min="1" />
+              </div>
+              <div>
+                <label htmlFor="driver-end" className="block text-sm font-bold text-gray-700 mb-1">End Date</label>
+                <input id="driver-end" type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractEndDate} onChange={e => setFormData({...formData, contractEndDate: e.target.value})} />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="driver-tag" className="block text-sm font-bold text-gray-700 mb-1">Tags (Press Enter)</label>
+              <div className="flex gap-2">
+                <input id="driver-tag" type="text" list="existing-tags" className="flex-1 min-w-0 border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. SUN" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(e); } }} />
+                <datalist id="existing-tags">
+                  {Array.from(new Set(drivers.flatMap(d => d.tags || []))).sort().map(tag => <option key={tag} value={tag} />)}
+                </datalist>
+                <button type="button" onClick={handleAddTag} className="bg-slate-800 text-white px-3 py-2 rounded text-sm font-bold hover:bg-slate-700 shrink-0">Add Tag</button>
+              </div>
+              {formData.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {formData.tags.map(tag => (
+                    <span key={tag} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-200 flex items-center gap-1">
+                      {tag} <button type="button" onClick={() => handleRemoveTag(tag)} aria-label={`Remove tag ${tag}`} className="hover:text-red-500"><X className="w-3 h-3" aria-hidden="true" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            {driverFormError && <p role="alert" className="text-sm font-medium text-rose-600">{driverFormError}</p>}
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button type="button" onClick={() => setIsDriverModalOpen(false)} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+              <button type="submit" className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">{editingId ? "Save Changes" : "Create Driver"}</button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+
+      {/* Delist confirmation */}
+      {driverToDelist && (
+        <ConfirmDialog title="Delist Driver" confirmLabel="Confirm Delist" onConfirm={confirmDelist} onCancel={() => setDriverToDelist(null)}>
+          <p>Are you sure you want to delist <strong>{driverToDelist.name}</strong>? This will mark them as inactive and freeze their active balance.</p>
+        </ConfirmDialog>
+      )}
+
+      {/* Delete confirmation */}
+      {driverToDelete && (
+        <ConfirmDialog title="Delete Driver" confirmLabel="Delete Driver" onConfirm={confirmDelete} onCancel={() => setDriverToDelete(null)}>
+          <p>Permanently delete <strong>{driverToDelete.name}</strong> ({driverToDelete.carPlate})?</p>
+          <p>This also deletes {driverToDelete.paymentHistory.length === 1 ? 'their 1 payment record' : `all ${driverToDelete.paymentHistory.length} of their payment records`}. It can't be undone.</p>
+        </ConfirmDialog>
+      )}
+
+      {/* Payment window: record a payment (first on phones), the rent schedule and recent payments */}
+      {isPaymentModalOpen && liveDriverForPayment && (
+        <Dialog title="Driver Payment Panel" description={`For ${liveDriverForPayment.name}`} size="lg" onClose={closePaymentModal}>
+          <div className="p-4 sm:p-6 flex flex-col lg:flex-row-reverse gap-6">
+            <div className="lg:w-96 lg:shrink-0">
+              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm lg:sticky lg:top-0">
+                <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
+                  <DollarSign className="w-4 h-4 text-blue-600" aria-hidden="true" /> Record New Payment
+                </h3>
+                <form onSubmit={handleSubmitPayment} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="payment-amount" className="text-xs font-bold text-gray-500 uppercase">Amount (RM)</label>
+                      <input id="payment-amount" type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
                     </div>
-                )}
-
-                {/* Delist Confirmation Modal */}
-                {driverToDelist && (
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-                            <div className="p-6">
-                                <div className="flex items-center gap-3 text-rose-600 mb-4">
-                                    <AlertTriangle className="w-8 h-8 shrink-0" />
-                                    <h2 className="text-xl font-bold text-gray-900">Delist Driver</h2>
-                                </div>
-                                <p className="text-sm text-gray-600 mb-6">
-                                    Are you sure you want to delist <strong>{driverToDelist.name}</strong>? This will mark them as inactive and freeze their active balance.
-                                </p>
-                                <div className="flex justify-end gap-3">
-                                    <button onClick={() => setDriverToDelist(null)} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                    <button onClick={confirmDelist} className="px-5 py-2 bg-rose-600 text-white text-sm font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm">Confirm Delist</button>
-                                </div>
-                            </div>
-                        </div>
+                    <div>
+                      <label htmlFor="payment-claim" className="text-xs font-bold text-gray-500 uppercase">Claim (RM)</label>
+                      <input id="payment-claim" type="number" value={serviceClaimAmount} onChange={(e) => setServiceClaimAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
                     </div>
-                )}
-
-                {/* Payment Modal */}
-                {isPaymentModalOpen && liveDriverForPayment && (
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
-                          <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                              <div>
-                                  <h2 className="text-xl font-bold text-gray-900">Driver Payment Panel</h2>
-                                  <p className="text-sm text-gray-500">For {liveDriverForPayment.name}</p>
-                              </div>
-                              <button type="button" onClick={() => setIsPaymentModalOpen(false)} title="Close" aria-label="Close" className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-6 h-6 text-gray-500" /></button>
-                          </div>
-                          
-                          <div className="flex-1 overflow-y-auto p-6 flex gap-6">
-                              <div className="flex-1 space-y-6">
-                                  <div className="bg-white border border-gray-200 rounded-xl p-6">
-                                      <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                          <CalendarCheck className="w-4 h-4 text-emerald-600" /> Invoice Schedule
-                                      </h3>
-                                      {renderPaymentSchedule(liveDriverForPayment)}
-                                  </div>
-
-                                  <div className="bg-white border border-gray-200 rounded-xl p-6">
-                                      <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center justify-between">
-                                          <div className="flex items-center gap-2">
-                                            <History className="w-4 h-4 text-blue-600" /> Recent 10 Transactions
-                                          </div>
-                                          <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">Staff Log</span>
-                                      </h3>
-                                      <div className="space-y-1.5 max-h-[22rem] overflow-y-auto pr-2 scroll-smooth">
-                                        {(liveDriverForPayment?.paymentHistory || []).slice(0,10).map((tx: any) => (
-                                          <div key={tx.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-100">
-                                            {editingTxId === tx.id ? (
-                                              <div className="w-full space-y-1">
-                                                <div className="flex gap-2">
-                                                  <div className="flex-1">
-                                                    <label className="text-[9px] font-bold text-gray-500 uppercase">Amount</label>
-                                                    <input type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs" />
-                                                  </div>
-                                                  <div className="flex-1">
-                                                    <label className="text-[9px] font-bold text-gray-500 uppercase">Claim</label>
-                                                    <input type="number" value={editServiceClaim} onChange={e => setEditServiceClaim(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs" />
-                                                  </div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                  <div className="flex-1">
-                                                    <label className="text-[9px] font-bold text-gray-500 uppercase">Date</label>
-                                                    <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs" />
-                                                  </div>
-                                                  <div className="flex-1">
-                                                    <label className="text-[9px] font-bold text-gray-500 uppercase block mb-0.5">Method</label>
-                                                    {(parseFloat(editAmount || '0') === 0 && parseFloat(editServiceClaim || '0') > 0) ? (
-                                                      <div className="w-full p-1 border border-amber-200 bg-amber-50 text-amber-700 rounded text-xs font-bold text-center">CLAIM</div>
-                                                    ) : (
-                                                      <select value={editPaymentMethod || 'BANK TRANSFER'} onChange={e => setEditPaymentMethod(e.target.value as any)} className="w-full p-1 border border-gray-300 rounded text-xs">
-                                                        <option value="BANK TRANSFER">Bank Transfer</option>
-                                                        <option value="CASH DEPOSIT">Cash Deposit</option>
-                                                      </select>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                                <div className="flex gap-2 justify-end pt-1">
-                                                  <button onClick={handleCancelEditTx} className="text-[10px] text-gray-600 bg-gray-200 hover:bg-gray-300 px-2 py-0.5 rounded transition-colors">Cancel</button>
-                                                  <button onClick={() => handleSaveEditTx(tx.id)} className="text-[10px] text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5 rounded transition-colors">Save</button>
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <>
-                                                <div>
-                                                    <div className="text-[10px] text-gray-500">{formatDate(tx.date)} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
-                                                    <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
-                                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
-                                                </div>
-                                                <button onClick={() => handleStartEditTx(tx)} className="text-[10px] text-blue-600 font-semibold hover:bg-blue-50 px-2 py-1.5 rounded transition-colors bg-white border border-blue-100">Edit payment</button>
-                                              </>
-                                            )}
-                                          </div>
-                                        ))}
-                                      </div>
-                                  </div>
-                              </div>
-
-                              <div className="w-96 shrink-0">
-                                  <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm sticky top-0">
-                                      <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 border-b border-gray-100 pb-2">
-                                          <DollarSign className="w-4 h-4 text-blue-600" /> Record New Payment
-                                      </h3>
-                                      <form onSubmit={handleSubmitPayment} className="space-y-4">
-                                          <div className="grid grid-cols-2 gap-4">
-                                              <div>
-                                                  <label className="text-[10px] font-bold text-gray-500 uppercase">Amount (RM)</label>
-                                                  <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
-                                              </div>
-                                              <div>
-                                                  <label className="text-[10px] font-bold text-gray-500 uppercase">Claim (RM)</label>
-                                                  <input type="number" value={serviceClaimAmount} onChange={(e) => setServiceClaimAmount(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
-                                              </div>
-                                          </div>
-                                          
-                                          <div>
-                                              <label className="text-[10px] font-bold text-gray-500 uppercase">Payment Date</label>
-                                              <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
-                                          </div>
-                                          
-                                          <div>
-                                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Payment Method</label>
-                                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                              {(parseFloat(paymentAmount || '0') === 0 && parseFloat(serviceClaimAmount || '0') > 0) ? (
-                                                <div className="col-span-2 p-2 rounded border bg-amber-50 border-amber-200 text-amber-700 font-bold text-center">
-                                                  Claim Only (Auto)
-                                                </div>
-                                              ) : (
-                                                <>
-                                                  <button type="button" onClick={() => setPaymentMethod('BANK TRANSFER')} className={`p-2 rounded border ${paymentMethod === 'BANK TRANSFER' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Bank Transfer</button>
-                                                  <button type="button" onClick={() => setPaymentMethod('CASH DEPOSIT')} className={`p-2 rounded border ${paymentMethod === 'CASH DEPOSIT' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Cash Deposit</button>
-                                                </>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div className="flex gap-3 pt-4 border-t border-gray-100">
-                                              <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                                              <button type="submit" className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Confirm</button>
-                                          </div>
-                                      </form>
-                                  </div>
-                              </div>
-                          </div>
-                      </div>
-                    </div>
-                )}
-      {/* Invoice Details Popup Modal */}
-      {invoicePopupData && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                  <div>
-                      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                          <Activity className="w-5 h-5 text-orange-600" /> {invoicePopupData.title}
-                      </h2>
-                      <p className="text-sm text-gray-500">Showing {invoicePopupData.invoices.length} invoices</p>
                   </div>
-                  <button type="button" onClick={() => setInvoicePopupData(null)} title="Close" aria-label="Close" className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
+
+                  <div>
+                    <label htmlFor="payment-date" className="text-xs font-bold text-gray-500 uppercase">Payment Date</label>
+                    <input id="payment-date" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
+                  </div>
+
+                  <div role="group" aria-labelledby="payment-method-label">
+                    <span id="payment-method-label" className="text-xs font-bold text-gray-500 uppercase block mb-2">Payment Method</span>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {(parseFloat(paymentAmount || '0') === 0 && parseFloat(serviceClaimAmount || '0') > 0) ? (
+                        <div className="col-span-2 p-2 rounded border bg-amber-50 border-amber-200 text-amber-700 font-bold text-center">
+                          Claim Only (Auto)
+                        </div>
+                      ) : (
+                        <>
+                          <button type="button" aria-pressed={paymentMethod === 'BANK TRANSFER'} onClick={() => setPaymentMethod('BANK TRANSFER')} className={`p-2 rounded border ${paymentMethod === 'BANK TRANSFER' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Bank Transfer</button>
+                          <button type="button" aria-pressed={paymentMethod === 'CASH DEPOSIT'} onClick={() => setPaymentMethod('CASH DEPOSIT')} className={`p-2 rounded border ${paymentMethod === 'CASH DEPOSIT' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Cash Deposit</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {paymentError && <p role="alert" className="text-sm font-medium text-rose-600">{paymentError}</p>}
+
+                  <div className="flex gap-3 pt-4 border-t border-gray-100">
+                    <button type="button" onClick={closePaymentModal} className="flex-1 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                    <button type="submit" className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Confirm</button>
+                  </div>
+                </form>
               </div>
-              
-              <div className="flex-1 overflow-auto">
-                  <table className="w-full text-left text-sm">
-                      <thead className="bg-gray-100 text-xs uppercase font-bold text-gray-500 sticky top-0">
-                          <tr>
-                              <th className="px-6 py-3">Driver / Car</th>
-                              <th className="px-6 py-3">Due Date</th>
-                              <th className="px-6 py-3">Paid / Due</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                          {invoicePopupData.invoices.map((inv: any) => {
-                             return (
-                                <tr key={inv.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-900">{inv.driverName}</div>
-                                        <div className="text-xs text-gray-500 mt-1 uppercase tracking-wider">{inv.carPlate}</div>
-                                    </td>
-                                    <td className="px-6 py-4 font-medium text-gray-600">
-                                        {formatDate(inv.dueDate, 'N/A')}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-sm font-medium text-gray-500 mb-1">
-                                            {formatCurrency(inv.amountPaid)} / {formatCurrency(inv.amount)}
-                                        </div>
-                                        <div className="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                            <div className="h-full bg-orange-500" style={{ width: `${Math.min(100, Math.max(0, (inv.amountPaid / inv.amount) * 100))}%` }}></div>
-                                        </div>
-                                    </td>
-                                </tr>
-                             );
-                          })}
-                          {invoicePopupData.invoices.length === 0 && (
-                              <tr>
-                                  <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic">No invoices found.</td>
-                              </tr>
-                          )}
-                      </tbody>
-                  </table>
+            </div>
+
+            <div className="flex-1 min-w-0 space-y-6">
+              <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
+                <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <CalendarCheck className="w-4 h-4 text-emerald-600" aria-hidden="true" /> Invoice Schedule
+                </h3>
+                {renderPaymentSchedule(liveDriverForPayment)}
               </div>
-           </div>
-        </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
+                <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-blue-600" aria-hidden="true" /> Recent 10 Transactions
+                  </span>
+                  <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">Staff Log</span>
+                </h3>
+                <div className="space-y-1.5 max-h-[22rem] overflow-y-auto pr-2 scroll-smooth">
+                  {(liveDriverForPayment?.paymentHistory || []).slice(0,10).map((tx: any) => (
+                    <div key={tx.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+                      {editingTxId === tx.id ? (
+                        <div className="w-full space-y-1">
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label htmlFor={`edit-amount-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase">Amount</label>
+                              <input id={`edit-amount-${tx.id}`} type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs" />
+                            </div>
+                            <div className="flex-1">
+                              <label htmlFor={`edit-claim-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase">Claim</label>
+                              <input id={`edit-claim-${tx.id}`} type="number" value={editServiceClaim} onChange={e => setEditServiceClaim(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label htmlFor={`edit-date-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase">Date</label>
+                              <input id={`edit-date-${tx.id}`} type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs" />
+                            </div>
+                            <div className="flex-1">
+                              <label htmlFor={`edit-method-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase block mb-0.5">Method</label>
+                              {(parseFloat(editAmount || '0') === 0 && parseFloat(editServiceClaim || '0') > 0) ? (
+                                <div id={`edit-method-${tx.id}`} className="w-full p-1 border border-amber-200 bg-amber-50 text-amber-700 rounded text-xs font-bold text-center">CLAIM</div>
+                              ) : (
+                                <select id={`edit-method-${tx.id}`} value={editPaymentMethod || 'BANK TRANSFER'} onChange={e => setEditPaymentMethod(e.target.value as any)} className="w-full p-1 border border-gray-300 rounded text-xs">
+                                  <option value="BANK TRANSFER">Bank Transfer</option>
+                                  <option value="CASH DEPOSIT">Cash Deposit</option>
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                          {editTxError && <p role="alert" className="text-xs font-medium text-rose-600">{editTxError}</p>}
+                          <div className="flex gap-2 justify-end pt-1">
+                            <button type="button" onClick={handleCancelEditTx} className="text-xs text-gray-600 bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded transition-colors">Cancel</button>
+                            <button type="button" onClick={() => handleSaveEditTx(tx.id)} className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors">Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <div className="text-xs text-gray-500">{formatDate(tx.date)} <span className="font-mono text-xs bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
+                            <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
+                            <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
+                          </div>
+                          <button type="button" onClick={() => handleStartEditTx(tx)} className="text-xs text-blue-600 font-semibold hover:bg-blue-50 px-2 py-1.5 rounded transition-colors bg-white border border-blue-100">Edit payment</button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Invoice list for a collection card */}
+      {invoicePopupData && (
+        <Dialog title={invoicePopupData.title} description={`Showing ${invoicePopupData.invoices.length} invoices`} size="lg" onClose={() => setInvoicePopupData(null)}>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-100 text-xs uppercase font-bold text-gray-500 sticky top-0">
+              <tr>
+                <th className="px-6 py-3">Driver / Car</th>
+                <th className="px-6 py-3">Due Date</th>
+                <th className="px-6 py-3">Paid / Due</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {invoicePopupData.invoices.map((inv: any) => (
+                <tr key={inv.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-gray-900">{inv.driverName}</div>
+                    <div className="text-xs text-gray-500 mt-1 uppercase tracking-wider">{inv.carPlate}</div>
+                  </td>
+                  <td className="px-6 py-4 font-medium text-gray-600">{formatDate(inv.dueDate, 'N/A')}</td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-medium text-gray-500 mb-1">{formatCurrency(inv.amountPaid)} / {formatCurrency(inv.amount)}</div>
+                    <div className="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-orange-500" style={{ width: `${Math.min(100, Math.max(0, (inv.amountPaid / inv.amount) * 100))}%` }}></div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {invoicePopupData.invoices.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic">No invoices found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Dialog>
       )}
 
         </div>

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
+import { useModalBehavior } from "../Dialog";
 
 export default function FinanceDialog({
   title,
@@ -10,44 +11,8 @@ export default function FinanceDialog({
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLElement>(null),
-    close = useRef<HTMLButtonElement>(null),
-    latestClose = useRef(onClose);
-  latestClose.current = onClose;
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    close.current?.focus();
-    const keyboard = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        latestClose.current();
-      }
-      if (event.key !== "Tab") return;
-      const controls = (
-        Array.from(
-          dialog.current?.querySelectorAll(
-            'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
-          ) ?? [],
-        ) as HTMLElement[]
-      ).filter((el) => el.getClientRects().length > 0);
-      const first = controls[0],
-        last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    window.addEventListener("keydown", keyboard);
-    return () => {
-      window.removeEventListener("keydown", keyboard);
-      document.body.style.overflow = overflow;
-      if (previous?.isConnected) previous.focus();
-    };
-  }, []);
+    close = useRef<HTMLButtonElement>(null);
+  useModalBehavior(dialog, close, onClose);
   return (
     <div
       className="finance-dialog-backdrop"

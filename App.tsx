@@ -8,6 +8,7 @@ import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
+import Notice, { type NoticeMessage } from './components/Notice';
 
 const App: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -24,6 +25,10 @@ const App: React.FC = () => {
   const authGeneration = useRef(0);
   const currentViewRef = useRef(currentView);
   const authenticatedUserIdRef = useRef<string | null>(null);
+
+  // Save errors and confirmations shown in a message bar instead of browser alert boxes
+  const [notice, setNotice] = useState<NoticeMessage | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   useEffect(() => {
     currentViewRef.current = currentView;
@@ -243,15 +248,14 @@ const App: React.FC = () => {
 
   // --- Login Handlers ---
 
-  const handleDriverLogin = (nric: string) => {
+  /** Opens the driver's own dashboard; returns false when no driver has this NRIC (the login card says so). */
+  const handleDriverLogin = (nric: string): boolean => {
     const cleanedLoginNric = nric.replace(/\D/g, '');
     const driver = drivers.find(d => (d.nric || '').replace(/\D/g, '') === cleanedLoginNric);
-    if (driver) {
-      setActiveDriverId(driver.id);
-      setCurrentView('DRIVER');
-    } else {
-      alert('Driver not found. Please check your NRIC.');
-    }
+    if (!driver) return false;
+    setActiveDriverId(driver.id);
+    setCurrentView('DRIVER');
+    return true;
   };
 
   const handleAdminLogin = async (accessId: string) => {
@@ -324,7 +328,7 @@ const App: React.FC = () => {
          await syncDriverInvoicesToDb(syncDriver);
       }
     } catch (err: any) {
-      alert(`Error saving payment: ${err.message}`);
+      setNotice({ type: 'error', text: `Payment not saved: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
@@ -362,7 +366,7 @@ const App: React.FC = () => {
       if (error) throw error;
       await fetchDriversAndPayments(true);
     } catch (err: any) {
-      alert(`Error updating payment record: ${err.message}`);
+      setNotice({ type: 'error', text: `Payment not updated: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
@@ -389,7 +393,8 @@ const App: React.FC = () => {
       if (error) throw error;
       await fetchDriversAndPayments(true);
     } catch (err: any) {
-      alert(`Error creating driver: ${err.message}`);
+      setNotice({ type: 'error', text: `Driver not created: ${err.message}` });
+      throw err; // keeps the form open with the details still filled in
     }
   };
 
@@ -414,8 +419,8 @@ const App: React.FC = () => {
       if (error) throw error;
       await fetchDriversAndPayments(true);
     } catch (err: any) {
-      alert(`Error updating driver: ${err.message}`);
-      throw err;
+      setNotice({ type: 'error', text: `Driver not saved: ${err.message}` });
+      throw err; // keeps the form open with the details still filled in
     }
   };
 
@@ -426,7 +431,7 @@ const App: React.FC = () => {
       if (error) throw error;
       await fetchDriversAndPayments(true);
     } catch (err: any) {
-      alert(`Error delisting driver: ${err.message}`);
+      setNotice({ type: 'error', text: `Driver not delisted: ${err.message}` });
     }
   };
 
@@ -437,9 +442,9 @@ const App: React.FC = () => {
       const { error: driverError } = await supabase.from('drivers').delete().eq('id', driverId);
       if (driverError) throw driverError;
       await fetchDriversAndPayments(true);
-      alert('Driver profile deleted.');
+      setNotice({ type: 'success', text: 'Driver and their payment records deleted.' });
     } catch (err: any) {
-      alert(`Error deleting driver: ${err.message}`);
+      setNotice({ type: 'error', text: `Driver not deleted: ${err.message}` });
     }
   };
 
@@ -514,18 +519,21 @@ const App: React.FC = () => {
 
   if (currentView === 'ADMIN') {
     return (
-      <AdminDashboard 
-        drivers={drivers}
-                userRole={userRole || 'staff'} // Default to staff safety if null
-        onUpdatePayment={handleUpdatePayment}
-        onEditPayment={handleEditPayment}
-        onCreateDriver={handleCreateDriver}
-        onUpdateDriver={handleUpdateDriver}
-        onDelistDriver={handleDelistDriver}
-        onDeleteDriver={handleDeleteDriver}
-        onLogout={handleLogout}
-        onRefresh={() => fetchDriversAndPayments(true)}
-      />
+      <>
+        <AdminDashboard
+          drivers={drivers}
+          userRole={userRole || 'staff'} // Default to staff safety if null
+          onUpdatePayment={handleUpdatePayment}
+          onEditPayment={handleEditPayment}
+          onCreateDriver={handleCreateDriver}
+          onUpdateDriver={handleUpdateDriver}
+          onDelistDriver={handleDelistDriver}
+          onDeleteDriver={handleDeleteDriver}
+          onLogout={handleLogout}
+          onRefresh={() => fetchDriversAndPayments(true)}
+        />
+        <Notice notice={notice} onDismiss={dismissNotice} />
+      </>
     );
   }
 
