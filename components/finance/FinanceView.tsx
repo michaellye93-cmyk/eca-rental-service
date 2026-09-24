@@ -1111,18 +1111,11 @@ function Expenses({
         <SectionHeading
           title={groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
           detail={groups.find((x) => x[0] === tab)?.[2]}
-          action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : tab === "Vehicle Direct Cost" ? "vehicle_expenses" : "company_expenses", visible)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
+          action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : "vehicle_expenses", visible)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
               disabled={disabled}
               label="Upload Excel"
               onFile={(file) =>
-                onFile(
-                  tab === "Workshop Billing"
-                    ? "WORKSHOP"
-                    : tab === "Vehicle Direct Cost"
-                      ? "vehicle_expense"
-                      : "corporate_expense",
-                  file,
-                )
+                onFile(tab === "Workshop Billing" ? "WORKSHOP" : "vehicle_expense", file)
               }
             /></div>}
         />

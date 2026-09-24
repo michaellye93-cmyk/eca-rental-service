@@ -157,13 +157,9 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = kua
   };
 };
 
-export const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-MY', {
-    style: 'currency',
-    currency: 'MYR',
-    minimumFractionDigits: 2
-  }).format(amount);
-};
+const ringgit = new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR', minimumFractionDigits: 2 });
+
+export const formatCurrency = (amount: number) => ringgit.format(amount);
 
 export const calculateMomentum = (driver: Driver) => {
     // 1. Sort Payments by Date Ascending

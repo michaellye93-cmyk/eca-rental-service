@@ -10,8 +10,8 @@ interface AnalyticsViewProps {
 }
 
 const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
-  // Fixed while this screen is open, so the six-month history is only rebuilt when the data changes.
-  const today = useMemo(() => kualaLumpurNow(), []);
+  // Re-read with each data load, so the six-month history is rebuilt only when the data changes.
+  const today = useMemo(() => kualaLumpurNow(), [drivers]);
 
   const [selectedMonth, setSelectedMonth] = useState<string>('');
 
@@ -504,7 +504,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 cursor={{ fill: '#f3f4f6' }}
                 formatter={(value: number, name: string) => [
                   name === 'Collection Rate' ? `${value}%` : formatCurrency(value), 
-                  name === 'collected' ? 'Amount Collected' : name === 'unpaid' ? 'Amount Unpaid' : 'Collection Rate'
+                  name === 'Collected' ? 'Amount Collected' : name === 'Unpaid' ? 'Amount Unpaid' : 'Collection Rate'
                 ]}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />

@@ -797,7 +797,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button onClick={onLogout} aria-label="Log out" title="Log out" className="text-gray-400 hover:text-white flex items-center gap-2 text-sm transition-colors p-2 sm:p-0">
-            <LogOut className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Logout</span>
+            <LogOut className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Log out</span>
           </button>
         </div>
       </div>
