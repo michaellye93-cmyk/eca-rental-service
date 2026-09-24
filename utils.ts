@@ -294,6 +294,65 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
   return weeks;
 };
 
+/** Whole calendar days from `from` to `to` (negative when `to` is earlier). */
+const daysBetween = (from: Date, to: Date): number =>
+  Math.round((new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() - new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) / DAY_MS);
+
+export interface CollectionQueues {
+  /** Oldest unpaid rent is due today. */
+  dueToday: Set<string>;
+  /** Oldest unpaid rent was due 1 to 3 days ago. */
+  late1to3: Set<string>;
+  /** Oldest unpaid rent was due 4 or more days ago. */
+  late4plus: Set<string>;
+  /** No payment for 8 or more days (or none since a contract that started 8 or more days ago). */
+  noPayment8plus: Set<string>;
+}
+
+/**
+ * The follow-up queue for active drivers, from the shared rent schedule. Each driver sits in one lateness
+ * group, set by their oldest rent still unpaid on the reference day; the no-payment flag is separate.
+ */
+export const buildCollectionQueues = (drivers: Driver[], referenceDate: Date = kualaLumpurNow()): CollectionQueues => {
+  const queues: CollectionQueues = { dueToday: new Set(), late1to3: new Set(), late4plus: new Set(), noPayment8plus: new Set() };
+  const referenceEnd = endOfDay(referenceDate);
+  for (const driver of drivers) {
+    if (driver.isDelisted) continue;
+    const oldestUnpaid = generateDriverInvoices(driver, referenceDate)
+      .find(invoice => invoice.remainingBalance > 0.01 && parseDate(invoice.dueDate) <= referenceEnd);
+    if (oldestUnpaid) {
+      const daysLate = daysBetween(parseDate(oldestUnpaid.dueDate), referenceDate);
+      if (daysLate <= 0) queues.dueToday.add(driver.id);
+      else if (daysLate <= 3) queues.late1to3.add(driver.id);
+      else queues.late4plus.add(driver.id);
+    }
+    const lastPaid = (driver.paymentHistory || []).reduce<Date | null>((latest, payment) => {
+      const date = parseDate(payment.date);
+      return !isNaN(date.getTime()) && (!latest || date > latest) ? date : latest;
+    }, null);
+    const quietSince = lastPaid ?? parseDate(driver.contractStartDate);
+    if (!isNaN(quietSince.getTime()) && daysBetween(quietSince, referenceDate) >= 8) queues.noPayment8plus.add(driver.id);
+  }
+  return queues;
+};
+
+/** Rent of active drivers falling due between `from` and `to` (inclusive days), and how much of it has been paid. */
+export const rentDueAndPaid = (drivers: Driver[], from: Date, to: Date, referenceDate: Date = kualaLumpurNow()): { due: number; paid: number } => {
+  let due = 0;
+  let paid = 0;
+  for (const driver of drivers) {
+    if (driver.isDelisted) continue;
+    for (const invoice of generateDriverInvoices(driver, referenceDate)) {
+      const date = parseDate(invoice.dueDate);
+      if (date >= from && date <= to) {
+        due += invoice.amount;
+        paid += invoice.amountPaid;
+      }
+    }
+  }
+  return { due, paid };
+};
+
 /** Recorded contract length implied by the start and end dates (months approximated as 30 days). */
 export const contractCyclesBetween = (startDate: string, endDate: string, cycle: Driver['rentalCycle']): number | null => {
   const start = new Date(startDate + 'T00:00:00');
