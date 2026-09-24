@@ -60,7 +60,7 @@ interface DialogProps {
   size?: keyof typeof widths;
 }
 
-/** A pop-up window for the fleet screens. Clicking outside does not close it, so typed entries are never lost. */
+/** A pop-up window for the fleet screens. A stray click outside does not close it (Escape and the close buttons do). */
 export default function Dialog({ title, description, onClose, children, size = 'md' }: DialogProps) {
   const dialog = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);

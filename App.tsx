@@ -248,6 +248,7 @@ const App: React.FC = () => {
     setCurrentView('LOGIN');
     setActiveDriverId(null);
     setUserRole(null);
+    setNotice(null);
   };
 
   // --- CRUD Operations (Passed to AdminDashboard) ---

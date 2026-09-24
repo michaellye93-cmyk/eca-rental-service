@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Driver, DriverStatus } from '../types';
+import { Driver, DriverMetrics, DriverStatus } from '../types';
 import { buildCollectionQueues, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
@@ -109,6 +109,8 @@ const SECTION_FROM_STORED: Record<string, Section> = {
   RECONCILE: 'RECONCILE',
   FINANCE: 'FINANCE',
 };
+const sectionFromStored = (stored: string | null): Section | null =>
+  stored !== null && Object.hasOwn(SECTION_FROM_STORED, stored) ? SECTION_FROM_STORED[stored] : null;
 
 const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'DRIVERS', label: 'Drivers', Icon: Users },
@@ -180,6 +182,34 @@ function SummaryStat({ label, value, detail, progress, hint }: { label: string; 
 
 const shareOf = ({ due, paid }: { due: number; paid: number }) => (due > 0 ? paid / due : 0);
 
+type ListSort = { key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT'; direction: 'asc' | 'desc' };
+const DEFAULT_LIST_SORT: ListSort = { key: 'DEFAULT', direction: 'desc' };
+const STATUS_PRIORITY = { [DriverStatus.BAD]: 3, [DriverStatus.MID]: 2, [DriverStatus.GOOD]: 1 };
+
+/** The driver list's order: by risk, by outstanding, or by default (worsening payers first, then risk and cycles owed). */
+function compareForList(
+  a: { metrics: DriverMetrics; activeBalance: { baseValue: number }; velocityData: { isSlipping: boolean; velocity: number } },
+  b: { metrics: DriverMetrics; activeBalance: { baseValue: number }; velocityData: { isSlipping: boolean; velocity: number } },
+  sort: ListSort,
+): number {
+  if (sort.key === 'RISK_STATUS') {
+    const diff = STATUS_PRIORITY[b.metrics.status] - STATUS_PRIORITY[a.metrics.status];
+    if (diff !== 0) return sort.direction === 'desc' ? diff : -diff;
+    return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
+  }
+  if (sort.key === 'OUTSTANDING') {
+    const diff = b.activeBalance.baseValue - a.activeBalance.baseValue;
+    if (diff !== 0) return sort.direction === 'desc' ? diff : -diff;
+    return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
+  }
+  // Default: worsening payers first, then by how much worse, then risk, then cycles owed
+  if (a.velocityData.isSlipping && !b.velocityData.isSlipping) return -1;
+  if (!a.velocityData.isSlipping && b.velocityData.isSlipping) return 1;
+  if (b.velocityData.velocity !== a.velocityData.velocity) return b.velocityData.velocity - a.velocityData.velocity;
+  if (STATUS_PRIORITY[a.metrics.status] !== STATUS_PRIORITY[b.metrics.status]) return STATUS_PRIORITY[b.metrics.status] - STATUS_PRIORITY[a.metrics.status];
+  return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
+}
+
 /** Contact-details order: by name or category when chosen, otherwise the list's own order. */
 function sortForDetails<T extends Driver>(rows: T[], config: { key: 'CATEGORY' | 'NAME' | null; direction: 'asc' | 'desc' | null }): T[] {
   if (!config.key || !config.direction) return rows;
@@ -207,11 +237,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   // Search, tab and filters are remembered in this browser between visits.
   const [searchTerm, setSearchTerm] = usePersistedState<string>('eca_admin_search_term', '');
-  // Before the Drivers section, the saved tab could be ACTIVE, DELISTED or DRIVER_LIST; read it once to carry that over.
+  // The tab saved before the Drivers section (ACTIVE, DELISTED, DRIVER_LIST, ...) is read once to carry it over and
+  // never written again, so an older version of the app still finds a value it understands.
   const [legacyView] = useState<string | null>(() => {
     try { return localStorage.getItem('eca_admin_view_mode'); } catch { return null; }
   });
-  const [section, setSection] = usePersistedState<Section>('eca_admin_view_mode', 'DRIVERS', stored => SECTION_FROM_STORED[stored] ?? null);
+  const [section, setSection] = usePersistedState<Section>('eca_admin_section', sectionFromStored(legacyView) ?? 'DRIVERS', sectionFromStored);
   const [driverScope, setDriverScope] = usePersistedState<'ACTIVE' | 'DELISTED'>('eca_admin_driver_scope', legacyView === 'DELISTED' ? 'DELISTED' : 'ACTIVE', stored => stored === 'ACTIVE' || stored === 'DELISTED' ? stored : null);
   const [listView, setListView] = usePersistedState<'COLLECTIONS' | 'DETAILS'>('eca_admin_driver_list_view', legacyView === 'DRIVER_LIST' ? 'DETAILS' : 'COLLECTIONS', stored => stored === 'COLLECTIONS' || stored === 'DETAILS' ? stored : null);
   // Staff see the Drivers section only, and contact details are for admins
@@ -224,7 +255,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [expandedDriverIds, setExpandedDriverIds] = useState<string[]>([]);
 
-  const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState<ListSort>(DEFAULT_LIST_SORT);
   const [driverListSortConfig, setDriverListSortConfig] = useState<{ key: 'CATEGORY' | 'NAME' | null, direction: 'asc' | 'desc' | null }>({ key: null, direction: null });
 
   const handleSort = (key: 'RISK_STATUS' | 'OUTSTANDING') => {
@@ -271,8 +302,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (isPaymentModalOpen && liveDriverForPayment) {
       setTimeout(() => {
+        // Scroll only the schedule list, so the payment form (first on phones) stays in view
         const anchor = document.getElementById('current-payment-anchor');
-        if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const list = anchor?.parentElement;
+        if (anchor && list) {
+          const offset = anchor.getBoundingClientRect().top - list.getBoundingClientRect().top;
+          list.scrollTo({ top: list.scrollTop + offset - (list.clientHeight - anchor.clientHeight) / 2, behavior: 'smooth' });
+        }
       }, 150);
     }
   }, [isPaymentModalOpen, liveDriverForPayment?.id]);
@@ -492,6 +528,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     NO_PAYMENT_8: queues.noPayment8plus,
   };
 
+  // Analytics and Bank Recon receive all drivers in the list's default order (Bank Recon's matching keeps the first
+  // of equally good candidates, so the order is part of its behaviour).
+  const driversInDefaultOrder = useMemo(() => [...driverData].sort((a, b) => compareForList(a, b, DEFAULT_LIST_SORT)), [driverData]);
+
   // Drivers in the chosen scope, before the other filters
   const scopeDrivers = useMemo(() => driverData.filter(d => driverScope === 'DELISTED' ? d.isDelisted : !d.isDelisted), [driverData, driverScope]);
 
@@ -525,42 +565,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     // 4. Sorting (on a copy, so the shared driver list keeps its order)
-    return [...result].sort((a, b) => {
-      if (sortConfig.key === 'RISK_STATUS') {
-        const statusPriority = { [DriverStatus.BAD]: 3, [DriverStatus.MID]: 2, [DriverStatus.GOOD]: 1 };
-        const diff = statusPriority[b.metrics.status] - statusPriority[a.metrics.status];
-        if (diff !== 0) {
-          return sortConfig.direction === 'desc' ? diff : -diff;
-        }
-        return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
-      }
-
-      if (sortConfig.key === 'OUTSTANDING') {
-        const diff = b.activeBalance.baseValue - a.activeBalance.baseValue;
-        if (diff !== 0) {
-          return sortConfig.direction === 'desc' ? diff : -diff;
-        }
-        return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
-      }
-
-      // Default Sorting
-      // Priority 1: Worsened (Slipping) drivers at the top
-      if (a.velocityData.isSlipping && !b.velocityData.isSlipping) return -1;
-      if (!a.velocityData.isSlipping && b.velocityData.isSlipping) return 1;
-
-      // Priority 2: Higher velocity (more positive) is worse
-      if (b.velocityData.velocity !== a.velocityData.velocity) {
-          return b.velocityData.velocity - a.velocityData.velocity;
-      }
-
-      // Priority 3: BAD Status > Habitual Late > Cycles Owed
-      const statusPriority = { [DriverStatus.BAD]: 3, [DriverStatus.MID]: 2, [DriverStatus.GOOD]: 1 };
-      
-      if (statusPriority[a.metrics.status] !== statusPriority[b.metrics.status]) {
-        return statusPriority[b.metrics.status] - statusPriority[a.metrics.status];
-      }
-      return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
-    });
+    return [...result].sort((a, b) => compareForList(a, b, sortConfig));
   }, [scopeDrivers, driverScope, searchTerm, selectedTagFilter, sortConfig, statusFilter, urgencyFilter, queues]);
 
   // Summary counts
@@ -571,7 +576,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     MID: scopeDrivers.filter(d => d.metrics.status === DriverStatus.MID).length,
     BAD: scopeDrivers.filter(d => d.metrics.status === DriverStatus.BAD).length,
   };
-  const screenedActiveCount = driverData.filter(d => !d.isDelisted && screenedDriverIds.includes(d.id)).length;
+  const screenedCount = screenedDriverIds.length;
   const filtersActive = statusFilter !== 'ALL' || urgencyFilter !== 'ALL' || selectedTagFilter !== 'ALL' || searchTerm !== '';
   const resetFilters = () => {
     setStatusFilter('ALL');
@@ -805,7 +810,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <SummaryStat label="This week" value={formatCurrency(weekTotals.paid)} detail={`of ${formatCurrency(weekTotals.due)} due`} progress={shareOf(weekTotals)} hint={`Rent due ${formatDate(startOfWeek)} – ${formatDate(endOfWeek)} and paid so far`} />
                 <SummaryStat label="This month" value={formatCurrency(monthTotals.paid)} detail={`of ${formatCurrency(monthTotals.due)} due`} progress={shareOf(monthTotals)} hint={`Rent due in ${startOfMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} and paid so far`} />
                 <SummaryStat label="Active drivers" value={String(activeFleetCount)} detail={`${delistedCount} delisted`} />
-                <SummaryStat label="Screened today" value={`${screenedActiveCount} / ${activeFleetCount}`} progress={activeFleetCount ? screenedActiveCount / activeFleetCount : 0} hint="Resets at midnight, Malaysia time" />
+                <SummaryStat label="Screened today" value={`${screenedCount} / ${activeFleetCount}`} progress={activeFleetCount ? screenedCount / activeFleetCount : 0} hint="Resets at midnight, Malaysia time" />
               </section>
             )}
 
@@ -966,7 +971,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 /* Collections list */
                 <div className="p-2 sm:p-3">
                   {/* Column headings and sorting (on phones, just the sort buttons) */}
-                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_14rem_18rem_11rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
+                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
                     <span className="hidden lg:block lg:pl-10">Driver</span>
                     <span className="lg:hidden">Sort</span>
                     <button type="button" aria-pressed={sortConfig.key === 'RISK_STATUS'} onClick={() => handleSort('RISK_STATUS')} className="flex items-center justify-center gap-1 rounded px-2 py-1 border border-gray-200 lg:border-0 lg:px-3 uppercase font-bold tracking-wider hover:text-gray-800 transition-colors">
@@ -1034,7 +1039,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <li key={driver.id} id={`driver-row-${driver.id}`}>
                           <div className="relative bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
                             <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1.5 rounded-l-lg ${m.status === 'GOOD' ? 'bg-emerald-500' : m.status === 'MID' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
-                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_14rem_18rem_11rem] lg:items-center lg:gap-0">
+                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] lg:items-center lg:gap-0">
                               {/* Driver */}
                               <div className="flex items-start gap-2 min-w-0 lg:pr-4">
                                 <button
@@ -1110,7 +1115,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               {/* Actions */}
                               <div className="flex items-center gap-2 lg:justify-center lg:border-l lg:border-slate-100 lg:pl-3">
-                                <button type="button" onClick={() => handleOpenPaymentModal(driver)} aria-label={`Record payment for ${driver.name}`} className="flex-1 lg:flex-none min-h-11 lg:min-h-0 px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1 transition-colors">
+                                <button type="button" onClick={() => handleOpenPaymentModal(driver)} aria-label={`Record payment for ${driver.name}`} className="flex-1 lg:flex-none min-h-11 lg:min-h-0 px-3 lg:px-2.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1 transition-colors">
                                   <span className="font-bold text-xs">RM</span> Payment
                                 </button>
                                 <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-4 h-4" aria-hidden="true" /></button>
@@ -1146,11 +1151,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense></ScreenLoadBoundary>
             ) : activeSection === 'ANALYTICS' ? (
               <div className="p-6 bg-gray-50/50">
-                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
+                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driversInDefaultOrder} /></React.Suspense></ScreenLoadBoundary>
               </div>
             ) : (
               <div className="p-6 bg-gray-50/50">
-                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
+                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driversInDefaultOrder} /></React.Suspense></ScreenLoadBoundary>
               </div>
             )}
           </div>
@@ -1239,7 +1244,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             {editingId && drivers.find(d => d.id === editingId)?.rentalCycle !== formData.rentalCycle && (
               <p role="note" className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                Changing the rental cycle moves every due date for this driver and recalculates their balance from the contract start.
+                Changing the rental cycle moves every due date for this driver and recalculates their balance from the contract start. Check that the rent and duration above are per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'}.
               </p>
             )}
             {driverFormError && <p role="alert" className="text-sm font-medium text-rose-600">{driverFormError}</p>}
@@ -1262,7 +1267,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {driverToDelete && (
         <ConfirmDialog title="Delete Driver" confirmLabel="Delete Driver" onConfirm={confirmDelete} onCancel={() => setDriverToDelete(null)}>
           <p>Permanently delete <strong>{driverToDelete.name}</strong> ({driverToDelete.carPlate})?</p>
-          <p>This also deletes {driverToDelete.paymentHistory.length === 1 ? 'their 1 payment record' : `all ${driverToDelete.paymentHistory.length} of their payment records`}. It can't be undone.</p>
+          <p>{driverToDelete.paymentHistory.length === 0 ? 'They have no payment records.' : `This also deletes ${driverToDelete.paymentHistory.length === 1 ? 'their 1 payment record' : `all ${driverToDelete.paymentHistory.length} of their payment records`}.`} It can't be undone.</p>
         </ConfirmDialog>
       )}
 
