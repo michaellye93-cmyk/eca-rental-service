@@ -81,6 +81,30 @@ function usePersistedState<T extends string>(key: string, fallback: T): [T, Reac
   return [value, setValue];
 }
 
+/**
+ * Wraps a screen that loads on demand. If its code can't be fetched (for example the app was updated while
+ * this page was open), show a reload prompt instead of letting React clear the whole page.
+ */
+class ScreenLoadBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div role="alert" className="p-6 text-sm text-gray-700">
+        This section couldn't load, possibly because the app was just updated.{' '}
+        <button type="button" onClick={() => window.location.reload()} className="font-semibold text-blue-600 underline">
+          Reload the page
+        </button>
+      </div>
+    );
+  }
+}
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   drivers,
   userRole,
@@ -1157,14 +1181,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Main Table Section - unchanged */}
         <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
           {viewMode === 'FINANCE' && userRole === 'admin' ? (
-            <React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense>
+            <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense></ScreenLoadBoundary>
           ) : viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driverData} /></React.Suspense>
+               <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
              </div>
           ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driverData} /></React.Suspense>
+               <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
              </div>
           ) : viewMode === 'DRIVER_LIST' && userRole === 'admin' ? (
              <div className="bg-white">
