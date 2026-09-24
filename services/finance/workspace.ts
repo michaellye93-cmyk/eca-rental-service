@@ -1,6 +1,7 @@
 import { normalizePlate } from './calculations.ts';
 import { parseInsuranceSheet, type InsuranceSummary } from './insuranceImport.ts';
 import { readFinanceWorkbook } from './imports.ts';
+import { parseCorporateSheet } from './corporateImport.ts';
 import type { FinanceInput, QualityIssue } from '../../types/finance.ts';
 import { parseExpenseRows, parseInsuranceRows, parseOtherIncomeRows, parseRecurringCostRows, parseVehicleRows, parseWorkshopRows, selectImportSheet, type SafeImportDestination } from './safeImports.ts';
 
@@ -32,9 +33,12 @@ export async function previewSectionWorkbook(buffer: ArrayBuffer, filename: stri
     return { rows: normalized as unknown as Record<string, unknown>[], issues: parsed.issues as QualityIssue[], filename, total_rows: normalized.length, total_amount: normalized.reduce((sum, row) => sum + Number(row.monthly_amount ?? 0), 0) };
   }
   if (kind === 'corporate_expense') {
-    const parsed = parseExpenseRows(sheet, { expectedMonth: selected });
-    const normalized = parsed.rows.map(row => ({ ...row, record_id: row.id, finance_month: selected, billing_date: row.expense_date, payment_source: 'Corporate Opex', supplier: row.payee, description: row.notes }));
-    return { rows: normalized, issues: parsed.issues as QualityIssue[], filename, total_rows: normalized.length, total_amount: normalized.reduce((sum, row) => sum + Number(row.amount ?? 0), 0) };
+    // Operation Fix Cost sheets use the corporate parser (approved category spellings, recurring rows outside the
+    // selected month skipped); Record IDs from exported workbooks still come from the safe parser.
+    const parsed = parseCorporateSheet(sheet, selected);
+    const identities = new Map(parseExpenseRows(sheet).rows.map(row => [row.source_row, row.id]));
+    const normalized = parsed.rows.map(row => { const id = identities.get(row.source_row); return id ? { ...row, record_id: id } : row; });
+    return { rows: normalized as unknown as Record<string, unknown>[], issues: parsed.issues, filename, total_rows: normalized.length, total_amount: parsed.total_amount, skipped_rows: parsed.skipped_rows };
   }
   if (kind === 'workshop') {
     const parsed = parseWorkshopRows(sheet, { expectedMonth: selected, impliedCategory: 'Service & Maintenance' });
