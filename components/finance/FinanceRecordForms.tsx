@@ -1,3 +1,4 @@
+import { formatCurrency } from "../../utils";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import FinanceDialog from "./FinanceDialog";
 import { insuranceProblems, insuranceStatus, insuranceCashOutflow, ownerPremiumReview, validInsuranceDate } from "../../services/finance/insurance";
@@ -54,10 +55,6 @@ const businessUnits: BusinessUnit[] = [
   "SAMBUNG BAYAR",
 ];
 const normalStatuses = ["Active", "Inactive"];
-const money = new Intl.NumberFormat("en-MY", {
-  style: "currency",
-  currency: "MYR",
-});
 
 type ExpenseProps = {
   input: FinanceInput;
@@ -274,7 +271,7 @@ export function ExpenseForm({
               value={recordKey(record, `expense-${index}`)}
             >
               {record.billing_date ?? "Monthly recurring"} · {record.category} ·{" "}
-              {money.format(record.amount)}
+              {formatCurrency(record.amount)}
             </option>
           ))}
         </select>
@@ -384,7 +381,7 @@ export function ExpenseForm({
       <button className="finance-primary" disabled={locked}>
         {selected ? "Save changes" : "Save expense"}
       </button>
-      {recurring && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${recurring.category} for ${money.format(recurring.amount)} from ${recurring.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this expense"); if (reason?.trim()) void onCancel(recurring, reason.trim()); }}>Delete expense</button>}
+      {recurring && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${recurring.category} for ${formatCurrency(recurring.amount)} from ${recurring.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this expense"); if (reason?.trim()) void onCancel(recurring, reason.trim()); }}>Delete expense</button>}
     </form>
   );
 }
@@ -699,7 +696,7 @@ export function RecurringForm({ input, month, disabled, onSave, initialId, onCan
               value={recordKey(cost, `cost-${index}`)}
             >
               {vehicleName(input.vehicles, cost.plate_key)} · {cost.cost_type} ·{" "}
-              {money.format(cost.monthly_amount)}
+              {formatCurrency(cost.monthly_amount)}
             </option>
           ))}
         </select>
@@ -804,12 +801,12 @@ export function RecurringForm({ input, month, disabled, onSave, initialId, onCan
             type="button"
             className="finance-secondary"
             disabled={locked}
-            onClick={() => { if (window.confirm(`Stop ${original.cost_type} at ${money.format(original.monthly_amount)} per month? The selected end month remains included; later open months stop contributing and closed reports stay unchanged.`)) setEnding(true); }}
+            onClick={() => { if (window.confirm(`Stop ${original.cost_type} at ${formatCurrency(original.monthly_amount)} per month? The selected end month remains included; later open months stop contributing and closed reports stay unchanged.`)) setEnding(true); }}
           >
             End cost
           </button>
         )}
-        {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${original.cost_type} at ${money.format(original.monthly_amount)} from open calculations for ${original.start_month.slice(0, 7)} through ${original.end_month?.slice(0, 7) ?? "ongoing"}? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this monthly cost"); if (reason?.trim()) void onCancel("recurring_cost", original, reason.trim()); }}>Delete cost</button>}
+        {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${original.cost_type} at ${formatCurrency(original.monthly_amount)} from open calculations for ${original.start_month.slice(0, 7)} through ${original.end_month?.slice(0, 7) ?? "ongoing"}? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this monthly cost"); if (reason?.trim()) void onCancel("recurring_cost", original, reason.trim()); }}>Delete cost</button>}
         {ending && (
           <>
             <button
@@ -920,7 +917,7 @@ export function InsuranceForm({ input, month, disabled, onSave, initialId, onCan
               value={recordKey(policy, `policy-${index}`)}
             >
               {vehicleName(input.vehicles, policy.plate_key)} ·{" "}
-              {policy.coverage_start} · {money.format(policy.premium)}
+              {policy.coverage_start} · {formatCurrency(policy.premium)}
             </option>
           ))}
         </select>
@@ -1000,13 +997,13 @@ export function InsuranceForm({ input, month, disabled, onSave, initialId, onCan
         </Field>
       </div>
       <p className="finance-muted-action">
-        Selected-month ECA allocation: {money.format(allocation)}
+        Selected-month ECA allocation: {formatCurrency(allocation)}
       </p>
       <p className="finance-muted-action">OWNER PAID is excluded from ECA costs. Add each renewal as a new policy to retain earlier premiums and coverage.</p>
       {values.responsibility && values.premium !== "" && <p className="finance-muted-action"><strong>{insuranceStatus(preview)}</strong></p>}
       {values.responsibility === "OWNER_PAID" && Number(values.premium) > 0 && <p className="finance-message is-warning" role="status">{ownerPremiumReview}</p>}
       {values.responsibility === "ECA_PAID" && Number(values.premium) === 0 && values.premium !== "" && <p className="finance-muted-action">Update this record when the renewal premium and coverage are known.</p>}
-      <p className="finance-muted-action">Finance cash outflow: {money.format(cashOutflow.amount)}{cashOutflow.date ? ` · ${cashOutflow.date}${input.calculation_version === 1 ? "" : " (same as Coverage Start)"}` : ""}</p>
+      <p className="finance-muted-action">Finance cash outflow: {formatCurrency(cashOutflow.amount)}{cashOutflow.date ? ` · ${cashOutflow.date}${input.calculation_version === 1 ? "" : " (same as Coverage Start)"}` : ""}</p>
       <ErrorLine error={error} />
       <Pending pending={pending} />
       <button className="finance-primary" disabled={locked}>
@@ -1021,7 +1018,7 @@ export function InsuranceForm({ input, month, disabled, onSave, initialId, onCan
           setValues({...blankPolicy(), plate_key: original.plate_key, coverage_start: start?.toISOString().slice(0, 10) ?? ""});
         }}>Add renewal</button>
       )}
-      {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete this ${money.format(original.premium)} policy covering ${original.coverage_start ?? "no start date"} through ${original.coverage_end ?? "no end date"}? It stops contributing to open-month calculations; closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this insurance policy"); if (reason?.trim()) void onCancel("insurance", original, reason.trim()); }}>Delete policy</button>}
+      {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete this ${formatCurrency(original.premium)} policy covering ${original.coverage_start ?? "no start date"} through ${original.coverage_end ?? "no end date"}? It stops contributing to open-month calculations; closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this insurance policy"); if (reason?.trim()) void onCancel("insurance", original, reason.trim()); }}>Delete policy</button>}
     </form>
   );
 }

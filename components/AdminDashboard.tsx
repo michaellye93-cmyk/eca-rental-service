@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Driver, DriverStatus } from '../types';
-import { calculateDriverMetrics, formatCurrency, formatNric, analyzePaymentHabit, generateDriverInvoices, getNextDueDate, kualaLumpurNow, parseDate } from '../utils';
+import { calculateDriverMetrics, formatCurrency, formatDate, formatNric, analyzePaymentHabit, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
 import AnalyticsView from './AnalyticsView';
 import BankReconciliation from './BankReconciliation';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -238,7 +238,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nric: '',
     // contactNumber removed
     carPlate: '',
-    contractStartDate: kualaLumpurNow().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }),
+    contractStartDate: kualaLumpurToday(),
     contractEndDate: '',
     category: 'SEWABELI' as 'SEWABELI' | 'SEWA_BIASA',
     rentalCycle: 'WEEKLY' as 'WEEKLY' | 'MONTHLY',
@@ -260,23 +260,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
   const [screeningDate, setScreeningDate] = useState<string>('');
 
-  const getKualaLumpurTodayDateString = (): string => {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Kuala_Lumpur',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    const parts = formatter.formatToParts(kualaLumpurNow());
-    const year = parts.find(p => p.type === 'year')?.value || '2026';
-    const month = parts.find(p => p.type === 'month')?.value || '05';
-    const day = parts.find(p => p.type === 'day')?.value || '27';
-    return `${year}-${month}-${day}`;
-  };
-
   // Load screened status today
   useEffect(() => {
-    const todayStr = getKualaLumpurTodayDateString();
+    const todayStr = kualaLumpurToday();
     setScreeningDate(todayStr);
     
     try {
@@ -301,7 +287,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Periodic timezone date change checking & refresh
   useEffect(() => {
     const interval = setInterval(() => {
-      const todayStr = getKualaLumpurTodayDateString();
+      const todayStr = kualaLumpurToday();
       if (screeningDate && todayStr !== screeningDate) {
         setScreeningDate(todayStr);
         setScreenedDriverIds([]);
@@ -316,7 +302,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [screeningDate]);
 
   const handleScreenDriver = (driverId: string) => {
-    const todayStr = getKualaLumpurTodayDateString();
+    const todayStr = kualaLumpurToday();
     setScreenedDriverIds(prev => {
       if (prev.includes(driverId)) return prev;
       const next = [...prev, driverId];
@@ -434,12 +420,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [driverData]);
 
   // --- Debt Target & Urgency Queue Computations ---
-  const todayNormalized = useMemo(() => {
-    const today = kualaLumpurNow();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    return new Date(todayStr + 'T00:00:00');
-  }, [screeningDate]);
+  // Re-read when the screening day rolls over at Kuala Lumpur midnight.
+  const todayStr = useMemo(() => kualaLumpurToday(), [screeningDate]);
+  const todayNormalized = useMemo(() => parseDate(todayStr), [todayStr]);
 
   const startOfWeek = useMemo(() => {
     const d = new Date(todayNormalized);
@@ -525,10 +508,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const unpaidInvoices = useMemo(() => allInvoices.filter(inv => inv.status !== 'PAID'), [allInvoices]);
 
-  const todayStr = useMemo(() => {
-    return `${todayNormalized.getFullYear()}-${String(todayNormalized.getMonth() + 1).padStart(2, '0')}-${String(todayNormalized.getDate()).padStart(2, '0')}`;
-  }, [todayNormalized]);
-
   const mustCollectToday = useMemo(() => unpaidInvoices.filter(inv => {
     return inv.dueDate === todayStr;
   }), [unpaidInvoices, todayStr]);
@@ -543,11 +522,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return dDate < yesterdayStart;
   }), [unpaidInvoices, yesterdayStart]);
 
-  const formatDateLabel = (dateStr: string) => {
-    const d = parseDate(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
 
   // Calculate top 10 active drivers whose last paid was 8 or more days ago
   const habitualLateAlerts = useMemo(() => {
@@ -695,17 +669,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const goodDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.GOOD).length;
   const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
 
-  // --- Helpers ---
-
-  const formatDateShort = (dateInput: any) => {
-    try {
-        if (!dateInput) return 'No payment yet';
-        const d = parseDate(dateInput);
-        if (isNaN(d.getTime())) return 'N/A';
-        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch(e) { return 'N/A'; }
-  };
-
   // --- Handlers ---
   const handleSearchFocus = () => {
     tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -716,7 +679,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     handleScreenDriver(driver.id);
     setSelectedDriverForPayment(driver);
     setPaymentAmount(driver.rentalRate.toString());
-    setPaymentDate(kualaLumpurNow().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" })); 
+    setPaymentDate(kualaLumpurToday());
     setPaymentMethod(null); // start empty
     setIsPaymentModalOpen(true);
   };
@@ -877,7 +840,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex items-center gap-3">
                 <div className="flex flex-col">
                   <span className={`text-[10px] font-bold uppercase tracking-wider ${textColor} mb-0.5`}>Cycle {inv.cycleIndex + 1}</span>
-                  <span className="text-sm font-medium text-gray-900">{inv.dueDate}</span>
+                  <span className="text-sm font-medium text-gray-900">{formatDate(inv.dueDate)}</span>
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -1118,7 +1081,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Weekly Target
                     </h3>
                     <p className="text-[11px] text-gray-400 font-medium mt-1 uppercase tracking-wider">
-                      Mon - Sun ({formatDateLabel(startOfWeek.toISOString())} - {formatDateLabel(endOfWeek.toISOString())})
+                      Mon - Sun ({formatDate(startOfWeek)} - {formatDate(endOfWeek)})
                     </p>
                   </div>
                 </div>
@@ -1126,12 +1089,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div>
                     <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Collected</span>
                     <div className="text-3xl font-black text-blue-950 tracking-tight mt-1 font-mono">
-                      RM {weeklyCollectedAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(weeklyCollectedAmount)}
                     </div>
                   </div>
                   <div className="text-right font-mono">
                     <span className="text-[11px] text-gray-400 block font-bold uppercase tracking-wider">Target</span>
-                    <span className="text-base font-extrabold text-gray-500">/ RM {weeklyTargetAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-base font-extrabold text-gray-500">/ {formatCurrency(weeklyTargetAmount)}</span>
                   </div>
                 </div>
                 {/* Progress Bar */}
@@ -1161,12 +1124,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div>
                     <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Collected</span>
                     <div className="text-3xl font-black text-indigo-950 tracking-tight mt-1 font-mono">
-                      RM {monthlyCollectedAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(monthlyCollectedAmount)}
                     </div>
                   </div>
                   <div className="text-right font-mono">
                     <span className="text-[11px] text-gray-400 block font-bold uppercase tracking-wider">Target</span>
-                    <span className="text-base font-extrabold text-gray-500">/ RM {monthlyTargetAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-base font-extrabold text-gray-500">/ {formatCurrency(monthlyTargetAmount)}</span>
                   </div>
                 </div>
                 {/* Progress Bar */}
@@ -1569,7 +1532,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(driver.rentalRate)}`;
                                barColorClass = 'bg-rose-500';
                            }
-                           const nextDueStr = nextDue && !isNaN(nextDue.getTime()) ? nextDue.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
+                           const nextDueStr = formatDate(nextDue, 'N/A');
                            const isRiskyAndSlipping = (m.status === DriverStatus.BAD || m.status === DriverStatus.MID) && v.isSlipping;
                            let behaviorText = 'Consistent Habit';
                            let behaviorColor = 'text-gray-400';
@@ -1625,7 +1588,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                           <div className="text-[10px] font-bold text-slate-500 mt-1">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</div>
                                                           <div className={`text-[10px] ${behaviorColor} font-bold mt-1 text-center`}>{behaviorText}</div>
                                                           {/* LAST PAY POSITIONED RIGHT BELOW BEHAVIOR WORSENING */}
-                                                          {lastPaymentDate && !isNaN(lastPaymentDate.getTime()) ? <div className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-1 ${showLastPayWarning ? 'text-rose-600' : 'text-slate-400'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" />}Last Pay: {formatDateShort(lastPaymentDate)}</div> : <div className="text-[9px] text-slate-400 mt-1 text-center">No payment yet</div>}
+                                                          {lastPaymentDate && !isNaN(lastPaymentDate.getTime()) ? <div className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-1 ${showLastPayWarning ? 'text-rose-600' : 'text-slate-400'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" />}Last Pay: {formatDate(lastPaymentDate)}</div> : <div className="text-[9px] text-slate-400 mt-1 text-center">No payment yet</div>}
                                                      </div>
 
                                                      {/* OUTSTANDING ALIGNED RIGHT */}
@@ -1868,7 +1831,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             ) : (
                                               <>
                                                 <div>
-                                                    <div className="text-[10px] text-gray-500">{parseDate(tx.date).toLocaleDateString('en-GB')} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
+                                                    <div className="text-[10px] text-gray-500">{formatDate(tx.date)} <span className="font-mono text-[9px] bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
                                                     <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
                                                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
                                                 </div>
@@ -1963,7 +1926,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <div className="text-xs text-gray-500 mt-1 uppercase tracking-wider">{inv.carPlate}</div>
                                     </td>
                                     <td className="px-6 py-4 font-medium text-gray-600">
-                                        {(() => { const d = parseDate(inv.dueDate); return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'; })()}
+                                        {formatDate(inv.dueDate, 'N/A')}
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-500 mb-1">

@@ -1,3 +1,4 @@
+import { formatCurrency } from "../../utils";
 import React, { useMemo, useRef, useState } from "react";
 import type {
   BusinessUnit,
@@ -9,10 +10,6 @@ import type {
 } from "../../types/finance";
 import Dialog from "./FinanceDialog";
 
-const money = new Intl.NumberFormat("en-MY", {
-  style: "currency",
-  currency: "MYR",
-});
 
 const monthStart = (month: string) => `${month.slice(0, 7)}-01`;
 const nullable = (value: string) => value.trim() || null;
@@ -178,7 +175,7 @@ export function FixedOperatingCostsPanel({
             These monthly costs recur automatically. Changes apply from the selected
             open month forward; prior and closed months stay unchanged.
           </p>
-          <strong>{money.format(selectedMonthRecurring)} monthly total</strong>
+          <strong>{formatCurrency(selectedMonthRecurring)} monthly total</strong>
         </div>
         <div className="finance-dialog-actions">{onExport && <button type="button" className="finance-secondary" onClick={onExport}>Export Excel</button>}{onImport && <><input ref={importRef} className="finance-file-input" type="file" accept=".xlsx" disabled={disabled} onChange={(event) => { onImport(event.target.files?.[0]); event.target.value = ""; }} /><button type="button" className="finance-secondary" disabled={disabled} onClick={() => importRef.current?.click()}>Import Excel</button></>}<button
           type="button"
@@ -209,7 +206,7 @@ export function FixedOperatingCostsPanel({
                 {note && <><br /><small>{note}</small></>}
               </td>
               <td>{payee ?? "—"}</td>
-              <td>{money.format(occurrence?.amount ?? row.monthly_amount)}</td>
+              <td>{formatCurrency(occurrence?.amount ?? row.monthly_amount)}</td>
               <td>
                 <div className="finance-dialog-actions">
                   <button
@@ -343,7 +340,7 @@ export function FixedOperatingCostsPanel({
           onClose={() => !pending && setConfirm(null)}
         >
           <p className="finance-dialog-copy">
-            Delete {confirm.category} ({money.format(occurrenceByTemplate.get(confirm.id)?.amount ?? confirm.monthly_amount)} per month) from {month.slice(0, 7)} forward? Earlier and closed months remain unchanged.
+            Delete {confirm.category} ({formatCurrency(occurrenceByTemplate.get(confirm.id)?.amount ?? confirm.monthly_amount)} per month) from {month.slice(0, 7)} forward? Earlier and closed months remain unchanged.
           </p>
           <ErrorLine error={error} />
           <div className="finance-dialog-actions">
@@ -474,7 +471,7 @@ export function OtherIncomePanel({
         <div>
           <h3>Other Income</h3>
           <p>Record income outside the standard rental import for this month.</p>
-          <strong>{money.format(current.reduce((sum, row) => sum + row.amount, 0))} recorded this month</strong>
+          <strong>{formatCurrency(current.reduce((sum, row) => sum + row.amount, 0))} recorded this month</strong>
         </div>
         <div className="finance-dialog-actions">{onExport && <button type="button" className="finance-secondary" onClick={onExport}>Export Excel</button>}<button
           type="button"
@@ -513,7 +510,7 @@ export function OtherIncomePanel({
                   : row.business_unit}
               </td>
               <td>{row.status}</td>
-              <td className="finance-strong">{money.format(row.amount)}</td>
+              <td className="finance-strong">{formatCurrency(row.amount)}</td>
               <td>
                 <div className="finance-dialog-actions">
                   <button
@@ -744,7 +741,7 @@ export function OtherIncomePanel({
       {deleting && (
         <Dialog title="Delete Other Income" onClose={() => setDeleting(null)}>
           <p className="finance-dialog-copy">
-            Delete {deleting.income_type} for {money.format(deleting.amount)} from {deleting.finance_month.slice(0, 7)}?
+            Delete {deleting.income_type} for {formatCurrency(deleting.amount)} from {deleting.finance_month.slice(0, 7)}?
           </p>
           <ErrorLine error={error} />
           <div className="finance-dialog-actions">
@@ -936,7 +933,7 @@ export function WorkshopSummaryPanel({
                 </td>
                 <td>{row.supplier ?? "—"}</td>
                 <td>{row.reference ?? "—"}</td>
-                <td className="finance-strong">{money.format(row.amount)}</td>
+                <td className="finance-strong">{formatCurrency(row.amount)}</td>
                 <td>
                   {row.id && allocatedExpenseIds.has(row.id)
                     ? "Linked to monthly total"
@@ -979,10 +976,10 @@ export function WorkshopSummaryPanel({
                     <br />
                     {row.reference ?? "—"}
                   </td>
-                  <td>{money.format(row.amount)}</td>
-                  <td>{money.format(row.allocated_amount)}</td>
+                  <td>{formatCurrency(row.amount)}</td>
+                  <td>{formatCurrency(row.allocated_amount)}</td>
                   <td className="finance-strong">
-                    {money.format(row.unallocated_amount)}
+                    {formatCurrency(row.unallocated_amount)}
                   </td>
                   <td>
                     <div className="finance-dialog-actions">
@@ -1004,7 +1001,7 @@ export function WorkshopSummaryPanel({
                               ? vehicleByPlate.get(expense.plate_key)?.display_plate ??
                                 expense.plate_key
                               : "Unmatched"}{" "}
-                            · {money.format(expense.amount)}
+                            · {formatCurrency(expense.amount)}
                           </option>
                         ))}
                       </select>
@@ -1203,7 +1200,7 @@ export function WorkshopSummaryPanel({
           onClose={() => !pending && setDeleting(null)}
         >
           <p className="finance-dialog-copy">
-            Delete this {money.format(deleting.amount)} monthly total for {deleting.finance_month.slice(0, 7)}? Vehicle
+            Delete this {formatCurrency(deleting.amount)} monthly total for {deleting.finance_month.slice(0, 7)}? Vehicle
             workshop entries remain unchanged.
           </p>
           <ErrorLine error={error} />

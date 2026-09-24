@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import type { Driver, DriverWithMetrics, Invoice } from '../types';
 import TerminationReport from './TerminationReport';
-import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, kualaLumpurNow, parseDate } from '../utils';
+import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, formatDate, kualaLumpurNow, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, ChevronLeft, ChevronRight, Eye, X, ShieldAlert, BadgeCheck, MessageSquareWarning } from 'lucide-react';
 
@@ -259,7 +259,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                   {currentMonth.collectionRate}%
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
-                  RM {currentMonth.collected.toLocaleString()} collected vs RM {currentMonth.issued.toLocaleString()} issued
+                  {formatCurrency(currentMonth.collected)} collected vs {formatCurrency(currentMonth.issued)} issued
                 </p>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1 mt-4 overflow-hidden">
@@ -379,7 +379,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                     dy={10}
                 />
                 <YAxis 
-                    tickFormatter={(value) => `RM ${(value / 1000).toFixed(1)}k`}
+                    tickFormatter={formatMoney}
                     tick={{ fontSize: 11, fill: '#6B7280', fontWeight: 'bold' }}
                     axisLine={false}
                     tickLine={false}
@@ -450,7 +450,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} dy={10} />
                 <YAxis tickFormatter={formatMoney} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                 <Tooltip 
-                  formatter={(value: number) => [`RM ${value.toLocaleString()}`, 'Total Arrears']}
+                  formatter={(value: number) => [formatCurrency(value), 'Total Arrears']}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Area type="monotone" dataKey="arrears" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorArrears)" />
@@ -474,7 +474,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 <YAxis tickFormatter={formatMoney} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                 <Tooltip 
                   cursor={{ fill: '#f3f4f6' }}
-                  formatter={(value: number) => [`RM ${value.toLocaleString()}`, 'Total Inflow']}
+                  formatter={(value: number) => [formatCurrency(value), 'Total Inflow']}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="inflow" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
@@ -502,7 +502,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
               <Tooltip 
                 cursor={{ fill: '#f3f4f6' }}
                 formatter={(value: number, name: string) => [
-                  name === 'Collection Rate' ? `${value}%` : `RM ${value.toLocaleString()}`, 
+                  name === 'Collection Rate' ? `${value}%` : formatCurrency(value), 
                   name === 'collected' ? 'Amount Collected' : name === 'unpaid' ? 'Amount Unpaid' : 'Collection Rate'
                 ]}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
@@ -548,10 +548,10 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                  <BarChart data={monthlyData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} dy={5} />
-                   <YAxis tickFormatter={(v) => `RM ${(v/1000).toFixed(1)}k`} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                   <YAxis tickFormatter={formatMoney} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
                    <Tooltip 
                      cursor={{ fill: '#f3f4f6' }}
-                     formatter={(value: number) => [`RM ${value.toLocaleString()}`, 'Service Claim']}
+                     formatter={(value: number) => [formatCurrency(value), 'Service Claim']}
                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                    />
                    <Bar 
@@ -569,7 +569,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
              <div className="flex items-center justify-between mb-4">
                  <h4 className="text-xs uppercase font-extrabold text-gray-400 tracking-wider">Claims Breakdowns ({selectedMonth})</h4>
                  <div className="text-xs font-bold bg-amber-50 text-amber-800 px-3 py-1 rounded-full border border-amber-200">
-                     Month Claims: RM {activeSvcData?.serviceClaim?.toLocaleString() || 0}
+                     Month Claims: {formatCurrency(activeSvcData?.serviceClaim || 0)}
                  </div>
              </div>
              
@@ -594,8 +594,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                                     {claim.carPlate}
                                  </span>
                               </td>
-                              <td className="px-4 py-3 text-gray-500 font-mono text-xs">{claim.date}</td>
-                              <td className="px-4 py-3 text-right font-bold text-amber-700 font-mono">RM {claim.amount.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-gray-500 font-mono text-xs">{formatDate(claim.date)}</td>
+                              <td className="px-4 py-3 text-right font-bold text-amber-700 font-mono">{formatCurrency(claim.amount)}</td>
                            </tr>
                         ))}
                     </tbody>

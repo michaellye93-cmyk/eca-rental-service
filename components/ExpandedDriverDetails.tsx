@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Driver, DriverStatus, PaymentTransaction } from '../types';
-import { formatCurrency, latestInvoices, parseDate } from '../utils';
+import { formatCurrency, formatDate, latestInvoices } from '../utils';
 import { 
   Phone, 
   User, 
@@ -205,7 +205,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                   </div>
                   <div>
                     <span className="font-bold text-gray-800 block">{inv.cycleLabel}</span>
-                    <span className="text-gray-400 font-mono text-[11px]">Due: {inv.dueDate ? parseDate(inv.dueDate).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                    <span className="text-gray-400 font-mono text-[11px]">Due: {formatDate(inv.dueDate, 'N/A')}</span>
                   </div>
                 </div>
 
@@ -262,7 +262,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                           </span>
                         </div>
                         <p className="text-gray-400 font-medium font-mono mt-1 text-[11px]">
-                          Timestamp: {(() => { const d = parseDate(pt.date); return d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'; })()}
+                          Paid on {formatDate(pt.date, 'N/A')}
                         </p>
                       </div>
 

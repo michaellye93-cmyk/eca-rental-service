@@ -5,11 +5,10 @@ import type { Driver } from '../types';
 import { buildTerminationReport, getReportDate } from '../terminationReport';
 import type { PaymentPeriod, TerminationEvidence } from '../terminationReport';
 import { loadTerminationDrivers } from '../terminationReportData';
+import { formatCurrency, formatDate } from '../utils';
 import './TerminationReport.css';
 
-const currency = (amount: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR', minimumFractionDigits: 2 }).format(amount);
-const dateLabel = (value: string) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + 'T00:00:00Z'));
-const movementLabel = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${currency(Math.abs(value))}`;
+const movementLabel = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${formatCurrency(Math.abs(value))}`;
 const DRIVER_FIELDS = 'id,name,car_plate,contract_start_date,contract_end_date,contract_duration_weeks,rental_rate,rental_cycle,is_delisted';
 const PAYMENT_FIELDS = 'id,driver_id,date,amount,service_claim,payment_method';
 
@@ -25,9 +24,9 @@ function PaymentTimeline({ periods, monthly }: { periods: PaymentPeriod[]; month
         <th scope="col" className="p-3">{monthly ? 'Billing period' : 'Week'}</th><th scope="col" className="p-3 text-right whitespace-nowrap">Rental Due</th><th scope="col" className="p-3 text-right whitespace-nowrap">Cash Paid</th><th scope="col" className="p-3">Result</th>
       </tr></thead>
       <tbody>{periods.map((period, index) => <tr key={period.start} className="border-b last:border-b-0 border-gray-100">
-        <th scope="row" className="p-3 font-normal"><span className="font-semibold">{monthly ? `Cycle ${index + 1}` : `Week ${index + 1}`}</span><span className="block text-[11px] text-gray-500 mt-0.5">{dateLabel(period.start)} – {dateLabel(period.end)}</span>{!period.completed && <span className="text-[10px] text-gray-500 block">Through report date · still open</span>}</th>
-        <td className="p-3 text-right whitespace-nowrap tabular-nums">{currency(period.due)}</td>
-        <td className="p-3 text-right whitespace-nowrap tabular-nums">{currency(period.cash)}{period.claims > 0 && <span className="block text-[10px] text-gray-500">+ {currency(period.claims)} credit</span>}</td>
+        <th scope="row" className="p-3 font-normal"><span className="font-semibold">{monthly ? `Cycle ${index + 1}` : `Week ${index + 1}`}</span><span className="block text-[11px] text-gray-500 mt-0.5">{formatDate(period.start)} – {formatDate(period.end)}</span>{!period.completed && <span className="text-[10px] text-gray-500 block">Through report date · still open</span>}</th>
+        <td className="p-3 text-right whitespace-nowrap tabular-nums">{formatCurrency(period.due)}</td>
+        <td className="p-3 text-right whitespace-nowrap tabular-nums">{formatCurrency(period.cash)}{period.claims > 0 && <span className="block text-[10px] text-gray-500">+ {formatCurrency(period.claims)} credit</span>}</td>
         <td className="p-3 font-semibold text-gray-700 text-[11px] sm:text-xs">{period.result === 'NO_RENT_DUE' ? 'NO RENT DUE' : period.result === 'FULL' && period.cash > period.due ? 'FULL / CATCH-UP PAYMENT' : `${period.result} PAYMENT`}</td>
       </tr>)}</tbody>
     </table>
@@ -38,9 +37,9 @@ function Evidence({ evidence: r }: { evidence: TerminationEvidence }) {
   const monthly = r.driver.rentalCycle === 'MONTHLY';
   const conclusion = [
     `The latest 8 weeks show repeated ${monthly ? 'underpayment of observed billing cycles' : 'failure to meet weekly rental requirements'}.`,
-    `Cash received was ${currency(r.cashReceived)} against ${currency(r.rentalDue)} becoming due.`,
-    r.movementDirection === 'increased' ? `Outstanding increased by ${currency(r.outstandingMovement)}.` : `Outstanding remained ${r.movementDirection} at ${currency(r.currentOutstanding)}.`,
-    r.oldestUnpaidDays >= (monthly ? 30 : 21) ? `Unpaid rental remains from ${dateLabel(r.oldestUnpaidInvoice!)}.` : '',
+    `Cash received was ${formatCurrency(r.cashReceived)} against ${formatCurrency(r.rentalDue)} becoming due.`,
+    r.movementDirection === 'increased' ? `Outstanding increased by ${formatCurrency(r.outstandingMovement)}.` : `Outstanding remained ${r.movementDirection} at ${formatCurrency(r.currentOutstanding)}.`,
+    r.oldestUnpaidDays >= (monthly ? 30 : 21) ? `Unpaid rental remains from ${formatDate(r.oldestUnpaidInvoice!)}.` : '',
     'These combined payment facts support management consideration of termination and vehicle recovery.',
   ].filter(Boolean).join(' ');
   return <div className="space-y-6 text-sm leading-relaxed text-gray-700">
@@ -55,36 +54,36 @@ function Evidence({ evidence: r }: { evidence: TerminationEvidence }) {
     </section>
     <section>
       <h5 className="font-semibold text-gray-900">2. Insufficient Payment During Observation Period</h5>
-      <p className="mt-1">Rental of {currency(r.rentalDue)} became due, while {currency(r.cashReceived)} cash was recorded as received ({((r.cashCoverage || 0) * 100).toFixed(1)}% coverage).</p>
+      <p className="mt-1">Rental of {formatCurrency(r.rentalDue)} became due, while {formatCurrency(r.cashReceived)} cash was recorded as received ({((r.cashCoverage || 0) * 100).toFixed(1)}% coverage).</p>
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-        <Metric label="Rental Due">{currency(r.rentalDue)}</Metric><Metric label="Cash Received">{currency(r.cashReceived)}</Metric><Metric label="Cash Shortfall">{currency(r.shortfall)}</Metric><Metric label="Service Claim Credits">{currency(r.serviceCredits)}</Metric>
+        <Metric label="Rental Due">{formatCurrency(r.rentalDue)}</Metric><Metric label="Cash Received">{formatCurrency(r.cashReceived)}</Metric><Metric label="Cash Shortfall">{formatCurrency(r.shortfall)}</Metric><Metric label="Service Claim Credits">{formatCurrency(r.serviceCredits)}</Metric>
       </dl>
       <p className="text-xs text-gray-500 mt-2">Service claims reduce outstanding separately; they are not cash payments.</p>
     </section>
     <section>
       <h5 className="font-semibold text-gray-900">3. Outstanding {r.movementDirection === 'increased' ? 'Continued to Increase' : r.movementDirection === 'decreased' ? 'Decreased' : 'Remained Approximately Stable'}</h5>
-      <p className="mt-1">Outstanding {r.movementDirection} from {currency(r.previousOutstanding)} at {dateLabel(r.snapshotDate)} to {currency(r.currentOutstanding)} as of {dateLabel(r.reportDate)}.</p>
-      <dl className="grid grid-cols-3 gap-3 mt-3"><Metric label="8 Weeks Ago">{currency(r.previousOutstanding)}</Metric><Metric label="Current">{currency(r.currentOutstanding)}</Metric><Metric label="Movement">{movementLabel(r.outstandingMovement)}</Metric></dl>
+      <p className="mt-1">Outstanding {r.movementDirection} from {formatCurrency(r.previousOutstanding)} at {formatDate(r.snapshotDate)} to {formatCurrency(r.currentOutstanding)} as of {formatDate(r.reportDate)}.</p>
+      <dl className="grid grid-cols-3 gap-3 mt-3"><Metric label="8 Weeks Ago">{formatCurrency(r.previousOutstanding)}</Metric><Metric label="Current">{formatCurrency(r.currentOutstanding)}</Metric><Metric label="Movement">{movementLabel(r.outstandingMovement)}</Metric></dl>
     </section>
     <section>
       <h5 className="font-semibold text-gray-900">4. Latest Cash Payment</h5>
       <p className="mt-1">{r.lastCashPayment
-        ? `The latest positive cash payment day was ${dateLabel(r.lastCashPayment.date)}, totalling ${currency(r.lastCashPayment.amount)}. No further cash payment has been recorded for ${r.daysSinceLastCash} calendar days.`
-        : `No positive cash payment is recorded in the available ledger. The contract commenced on ${dateLabel(r.driver.contractStartDate)}.`}</p>
+        ? `The latest positive cash payment day was ${formatDate(r.lastCashPayment.date)}, totalling ${formatCurrency(r.lastCashPayment.amount)}. No further cash payment has been recorded for ${r.daysSinceLastCash} calendar days.`
+        : `No positive cash payment is recorded in the available ledger. The contract commenced on ${formatDate(r.driver.contractStartDate)}.`}</p>
       <p className="mt-2">{r.lastMeaningfulPayment
-        ? `Latest meaningful payment: ${currency(r.lastMeaningfulPayment.amount)} on ${dateLabel(r.lastMeaningfulPayment.date)} (${r.daysSinceLastMeaningful} days ago).`
+        ? `Latest meaningful payment: ${formatCurrency(r.lastMeaningfulPayment.amount)} on ${formatDate(r.lastMeaningfulPayment.date)} (${r.daysSinceLastMeaningful} days ago).`
         : 'No meaningful payment is recorded in the available ledger.'}</p>
-      <p className="text-xs text-gray-500 mt-1">Meaningful = at least {currency(r.meaningfulThreshold)} cash on one day; same-day receipts are combined.{monthly ? ' Monthly equivalent: monthly rent × 12 / 52, rounded up to the nearest cent.' : ' Threshold: one contractual week’s rent.'}</p>
+      <p className="text-xs text-gray-500 mt-1">Meaningful = at least {formatCurrency(r.meaningfulThreshold)} cash on one day; same-day receipts are combined.{monthly ? ' Monthly equivalent: monthly rent × 12 / 52, rounded up to the nearest cent.' : ' Threshold: one contractual week’s rent.'}</p>
     </section>
     <section>
       <h5 className="font-semibold text-gray-900">5. Current Arrears</h5>
-      <p className="mt-1">Current outstanding is {currency(r.currentOutstanding)}{monthly ? ` against a monthly rental of ${currency(r.driver.rentalRate)}.` : `, equivalent to ${r.arrearsWeeks!.toFixed(1)} weeks of contractual rental.`} Historical debt is context; it is not a standalone reason for recommendation.</p>
+      <p className="mt-1">Current outstanding is {formatCurrency(r.currentOutstanding)}{monthly ? ` against a monthly rental of ${formatCurrency(r.driver.rentalRate)}.` : `, equivalent to ${r.arrearsWeeks!.toFixed(1)} weeks of contractual rental.`} Historical debt is context; it is not a standalone reason for recommendation.</p>
     </section>
     <section>
       <h5 className="font-semibold text-gray-900">6. Payment Lateness</h5>
-      {r.averageDaysLate !== null ? <p className="mt-1">Cash received during the observation period was applied to rental invoices using the existing oldest-invoice-first reconstruction. The cash-weighted average lateness was {r.averageDaysLate.toFixed(1)} days.{r.cashAppliedToOldInvoices > 0 ? ` ${currency(r.cashAppliedToOldInvoices)} was applied to invoices at least ${monthly ? '30' : '21'} days overdue.` : ''}</p>
+      {r.averageDaysLate !== null ? <p className="mt-1">Cash received during the observation period was applied to rental invoices using the existing oldest-invoice-first reconstruction. The cash-weighted average lateness was {r.averageDaysLate.toFixed(1)} days.{r.cashAppliedToOldInvoices > 0 ? ` ${formatCurrency(r.cashAppliedToOldInvoices)} was applied to invoices at least ${monthly ? '30' : '21'} days overdue.` : ''}</p>
         : <p className="mt-1">Average payment lateness cannot be calculated: no cash from this period was allocated to an accrued invoice.</p>}
-      <dl className="grid grid-cols-2 gap-3 mt-3"><Metric label="Oldest Unpaid Invoice">{r.oldestUnpaidInvoice ? dateLabel(r.oldestUnpaidInvoice) : 'None'}</Metric><Metric label="Average Days Late">{r.averageDaysLate === null ? 'Not available' : `${r.averageDaysLate.toFixed(1)} days`}</Metric></dl>
+      <dl className="grid grid-cols-2 gap-3 mt-3"><Metric label="Oldest Unpaid Invoice">{r.oldestUnpaidInvoice ? formatDate(r.oldestUnpaidInvoice) : 'None'}</Metric><Metric label="Average Days Late">{r.averageDaysLate === null ? 'Not available' : `${r.averageDaysLate.toFixed(1)} days`}</Metric></dl>
       <p className="text-xs text-gray-500 mt-2">Invoice dates and allocations are reconstructed from the current contract and complete payment ledger. Lateness uses only cash received in these 56 days; service credits and unapplied advances are excluded. Historical contract edits are not versioned.</p>
     </section>
     <section className="border-t border-gray-200 pt-5">
@@ -104,8 +103,8 @@ const DriverCard: React.FC<{ evidence: TerminationEvidence }> = ({ evidence }) =
     <div className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 className="text-xl font-extrabold tracking-tight text-gray-900">{r.driver.carPlate}</h3><p className="mt-1 font-medium text-gray-600">{r.driver.name}</p></div><span className="text-[10px] tracking-wide font-bold text-rose-800 bg-rose-50 rounded-md border border-rose-100 px-2.5 py-1.5">RECOMMENDED FOR TERMINATION</span></div>
       <dl className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-4">
-        <Metric label="Current Outstanding"><span className="text-lg font-bold text-rose-700 tabular-nums">{currency(r.currentOutstanding)}</span></Metric>
-        <Metric label="Latest 8 Weeks"><span className="block">{currency(r.cashReceived)} Paid</span><span className="text-gray-500 font-normal">/ {currency(r.rentalDue)} Due</span></Metric>
+        <Metric label="Current Outstanding"><span className="text-lg font-bold text-rose-700 tabular-nums">{formatCurrency(r.currentOutstanding)}</span></Metric>
+        <Metric label="Latest 8 Weeks"><span className="block">{formatCurrency(r.cashReceived)} Paid</span><span className="text-gray-500 font-normal">/ {formatCurrency(r.rentalDue)} Due</span></Metric>
         <Metric label={monthly ? 'Underpaid Billing Cycles' : 'Payment Failure'}>{monthly ? `${r.underpaidCycles} of ${r.billingCycles.length} cycles` : `${r.failureWeeks} of ${r.rentalWeeks} weeks`}<span className="block text-xs text-gray-500 font-normal">{monthly ? 'Monthly contract' : `${r.zeroWeeks} zero · ${r.partialWeeks} partial`}</span></Metric>
         <Metric label="Outstanding Movement"><span className="tabular-nums">{movementLabel(r.outstandingMovement)}</span><span className="block text-xs text-gray-500 font-normal">vs 8 weeks ago</span></Metric>
       </dl>
@@ -126,7 +125,7 @@ export function TerminationReportContent({ drivers, reportDate }: { drivers: Dri
   const report = useMemo(() => buildTerminationReport(drivers, reportDate), [drivers, reportDate]);
   const exceptions = report.analyses.filter(r => r.exclusion === 'DATA_EXCEPTION').length;
   return <>
-    <dl className="flex flex-wrap gap-x-8 gap-y-3 py-4"><Metric label="Report Date">{dateLabel(reportDate)}</Metric><Metric label="Observation Period">{dateLabel(report.windowStart)} – {dateLabel(reportDate)}</Metric><Metric label="Drivers Recommended"><span className="text-lg font-bold">{report.recommendations.length}</span></Metric></dl>
+    <dl className="flex flex-wrap gap-x-8 gap-y-3 py-4"><Metric label="Report Date">{formatDate(reportDate)}</Metric><Metric label="Observation Period">{formatDate(report.windowStart)} – {formatDate(reportDate)}</Metric><Metric label="Drivers Recommended"><span className="text-lg font-bold">{report.recommendations.length}</span></Metric></dl>
     {exceptions > 0 && <p className="mb-4 text-xs text-gray-500" role="note">{exceptions} active {exceptions === 1 ? 'account has' : 'accounts have'} a contract or ledger exception and cannot be recommended automatically. No recommendation has been inferred from incomplete evidence.</p>}
     <div className="space-y-4">{report.recommendations.length ? report.recommendations.map(r => <DriverCard key={r.driver.id} evidence={r} />)
       : <p className="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600">No driver currently demonstrates sufficiently strong payment non-performance for termination recommendation based on the latest 8-week observation period.</p>}</div>

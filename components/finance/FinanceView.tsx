@@ -1,3 +1,4 @@
+import { formatCurrency } from "../../utils";
 import React, {
   useCallback,
   useEffect,
@@ -65,11 +66,7 @@ import "./finance.css";
 import "./finance-mobile.css";
 
 const DEFAULT_MONTH = "2026-08";
-const money = new Intl.NumberFormat("en-MY", {
-  style: "currency",
-  currency: "MYR",
-});
-const formatMoney = (value = 0) => money.format(Number(value || 0));
+const formatMoney = (value = 0) => formatCurrency(Number(value || 0));
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
     month: "long",

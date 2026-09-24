@@ -1,3 +1,4 @@
+import { formatCurrency } from "../../utils";
 import React from "react";
 import { CheckIcon, CircleIcon, ReloadIcon } from "@radix-ui/react-icons";
 import type {
@@ -11,10 +12,7 @@ import type {
   WorkspaceSection,
 } from "../../services/finance/workspace";
 
-const money = (value: number) =>
-  new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(
-    value,
-  );
+const money = (value: number) => formatCurrency(value);
 const updated = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString("en-MY", {

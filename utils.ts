@@ -17,6 +17,25 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** The current wall-clock time in Kuala Lumpur as a local Date: the app's business clock. */
 export const kualaLumpurNow = (): Date => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' }));
 
+/** Today's calendar date in Kuala Lumpur as YYYY-MM-DD, whatever time zone the computer is set to. */
+export const kualaLumpurToday = (now: Date = new Date()): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
+};
+
+/** The calendar month before the one containing `isoDate` (YYYY-MM-DD), as YYYY-MM. */
+export const previousMonth = (isoDate: string): string => {
+  const [year, month] = isoDate.split('-').map(Number);
+  return month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+};
+
+/** A calendar date as shown on screen, e.g. "04 Sept 2026"; `fallback` when the value is missing or invalid. */
+export const formatDate = (value: string | Date | null | undefined, fallback = '—'): string => {
+  const date = parseDate(value);
+  return isNaN(date.getTime()) ? fallback : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 const endOfDay = (value: Date): Date => {
   const end = new Date(value);
   end.setHours(23, 59, 59, 999);

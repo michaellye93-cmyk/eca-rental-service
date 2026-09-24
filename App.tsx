@@ -3,7 +3,7 @@ import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { Driver } from './types';
-import { calculateMomentum, parseDate, generateDriverInvoices, kualaLumpurNow } from './utils'; // Import frontend metric calculation
+import { calculateMomentum, parseDate, generateDriverInvoices, kualaLumpurToday } from './utils'; // Import frontend metric calculation
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
@@ -420,7 +420,7 @@ const App: React.FC = () => {
   };
 
   const handleDelistDriver = async (driverId: string) => {
-    const today = kualaLumpurNow().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    const today = kualaLumpurToday();
     try {
       const { error } = await supabase.from('drivers').update({ is_delisted: true, delist_date: today }).eq('id', driverId);
       if (error) throw error;

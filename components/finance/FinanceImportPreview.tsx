@@ -1,13 +1,11 @@
+import { formatCurrency } from "../../utils";
 import React, { useState } from "react";
 import { insuranceStatus } from "../../services/finance/insurance";
 import type {
   FieldMapping,
   WorkbookReadResult,
 } from "../../services/finance/imports";
-const money = (n: number) =>
-  !Number.isFinite(n) ? "Invalid amount" : new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(
-    n,
-  );
+const money = (n: number) => (Number.isFinite(n) ? formatCurrency(n) : "Invalid amount");
 export default function FinanceImportPreview({
   preview,
   month,

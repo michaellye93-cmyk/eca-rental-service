@@ -1,3 +1,4 @@
+import { formatCurrency } from "../../utils";
 import React, { useEffect, useRef, useState } from "react";
 import type { FinanceInput } from "../../types/finance";
 import type {
@@ -38,10 +39,7 @@ const corporateCategories = [
   "General Software",
   "Other Corporate Cost",
 ];
-const money = (n: number) =>
-  new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(
-    n || 0,
-  );
+const money = (n: number) => formatCurrency(n || 0);
 
 export default function BankStatementPanel({
   month,
