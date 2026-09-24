@@ -1139,7 +1139,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* View Toggle Tabs - unchanged */}
-        <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit overflow-x-auto print:hidden">
+        <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit max-w-full overflow-x-auto print:hidden">
           <button onClick={() => setViewMode('ACTIVE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${viewMode === 'ACTIVE' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}>Active Fleet</button>
           <button onClick={() => setViewMode('DELISTED')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DELISTED' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Archive className="w-4 h-4" /> Delisted / Returned</button>
           
