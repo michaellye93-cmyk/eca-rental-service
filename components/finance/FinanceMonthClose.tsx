@@ -157,8 +157,9 @@ export default function FinanceMonthClose(p: Props) {
   );
   const activeInsurance = input.insurance.some(
     (policy) =>
-      policy.coverage_start.slice(0, 7) <= month &&
-      policy.coverage_end.slice(0, 7) >= month,
+      Boolean(policy.coverage_start && policy.coverage_end) &&
+      policy.coverage_start!.slice(0, 7) <= month &&
+      policy.coverage_end!.slice(0, 7) >= month,
   );
   const unallocatedWorkshop = p.report?.totals.workshop_unallocated ?? 0;
   const hasUnallocatedWorkshop = unallocatedWorkshop > 0;
@@ -329,10 +330,10 @@ export default function FinanceMonthClose(p: Props) {
             review = workspaceMeta?.reviews.find(
               (row) => row.section === section.key,
             );
+          // Current uploads are tracked in section_uploads; older workshop months only in the legacy imports table.
           const upload =
-            section.key === "workshop"
-              ? input.imports.find((row) => row.kind === "WORKSHOP")
-              : workspaceMeta?.uploads.find((row) => row.kind === section.key);
+            workspaceMeta?.uploads.find((row) => row.kind === section.key) ??
+            (section.key === "workshop" ? input.imports.find((row) => row.kind === "WORKSHOP") : undefined);
           return (
             <section className="finance-close-section" key={section.key}>
               <div className="finance-section-main">

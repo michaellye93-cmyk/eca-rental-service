@@ -35,9 +35,7 @@ import {
 import { buildFinanceReport } from "../../services/finance/calculations";
 import { insuranceCashOutflow, insuranceProblems } from "../../services/finance/insurance";
 import {
-  previewBootstrap,
   previewSmartDrive,
-  previewWorkshop,
   readFinanceWorkbook,
   type FieldMapping,
   type WorkbookReadResult,
@@ -81,7 +79,7 @@ const monthLabel = (month: string) =>
     year: "numeric",
   });
 type Page = "overview" | "close" | "vehicles" | "expenses";
-type UploadKind = "SMART_DRIVE" | "WORKSHOP" | "BOOTSTRAP" | SectionKind;
+type UploadKind = "SMART_DRIVE" | "WORKSHOP" | SectionKind;
 type UploadPreview = {
   kind: UploadKind;
   file: File;
@@ -368,17 +366,7 @@ export default function FinanceView() {
               latestInput.vehicles,
               mapping,
             )
-            : kind === "WORKSHOP"
-            ? await previewSectionWorkbook(bytes, file.name, "workshop", month, input)
-            : kind === "BOOTSTRAP"
-              ? await previewBootstrap(bytes, file.name, month)
-              : await previewSectionWorkbook(
-                  bytes,
-                  file.name,
-                  kind,
-                  month,
-                  input,
-                );
+            : await previewSectionWorkbook(bytes, file.name, kind === "WORKSHOP" ? "workshop" : kind, month, input);
       const localErrors = value.issues?.some((issue: any) => issue.severity === "error");
       if ((value as any).rows) {
         const aliasTargets = new Map<string, Set<string>>();
@@ -392,7 +380,7 @@ export default function FinanceView() {
         });
       }
       const safeKind = kind === "WORKSHOP" ? "workshop" : kind;
-      const safe = !localErrors && kind !== "SMART_DRIVE" && kind !== "BOOTSTRAP"
+      const safe = !localErrors && kind !== "SMART_DRIVE"
         ? await previewSafeSectionImport(safeKind as SectionKind, month, file.name, (value as any).rows, latestInput.month.revision, hash, replaceUploadId ? "REPLACE" : "UPDATE", replaceUploadId)
         : undefined;
       if (safe?.counts.needs_review) value.issues = [...(value.issues ?? []), { code: "IMPORT_NEEDS_REVIEW", severity: "error", detail: `${safe.counts.needs_review} row(s) need an explicit duplicate, restore, or target decision before posting.` }];
@@ -1372,83 +1360,6 @@ function PreviewDialog(props: any) {
       onClose={props.onCancel}
     >
       <FinanceImportPreview {...props} />
-    </Dialog>
-  );
-}
-
-function PreviousSharedDialog({
-  rows,
-  disabled,
-  onClose,
-  onCopy,
-}: {
-  rows: FinanceExpense[];
-  disabled: boolean;
-  onClose: () => void;
-  onCopy: (rows: FinanceExpense[]) => Promise<boolean>;
-}) {
-  const [chosen, setChosen] = useState(
-    () =>
-      new Set(
-        rows.map(
-          (row) =>
-            row.id ?? `${row.billing_date}:${row.category}:${row.amount}`,
-        ),
-      ),
-  );
-  const key = (row: FinanceExpense) =>
-    row.id ?? `${row.billing_date}:${row.category}:${row.amount}`;
-  const selected = rows.filter((row) => chosen.has(key(row)));
-  return (
-    <Dialog title="Copy previous shared costs" onClose={onClose}>
-      <p className="finance-dialog-copy">
-        Choose the recurring shared costs to bring into this month. Source
-        records are preserved for review.
-      </p>
-      {rows.length ? (
-        <DataTable headers={["Copy", "Date", "Category", "Supplier", "Amount"]}>
-          {rows.map((row) => (
-            <tr key={key(row)}>
-              <td>
-                <input
-                  aria-label={`Copy ${row.category}`}
-                  type="checkbox"
-                  checked={chosen.has(key(row))}
-                  onChange={(event) =>
-                    setChosen((current) => {
-                      const next = new Set(current);
-                      event.target.checked
-                        ? next.add(key(row))
-                        : next.delete(key(row));
-                      return next;
-                    })
-                  }
-                />
-              </td>
-              <td>{row.billing_date ?? (row.frequency === "MONTHLY_RECURRING" ? `${row.finance_month.slice(0, 7)} (monthly)` : "—")}</td>
-              <td>{row.category}</td>
-              <td>{row.supplier ?? "—"}</td>
-              <td>{formatMoney(row.amount)}</td>
-            </tr>
-          ))}
-        </DataTable>
-      ) : (
-        <Empty text="There are no shared costs available from the previous month." />
-      )}
-      <div className="finance-dialog-actions">
-        <button className="finance-secondary" onClick={onClose}>
-          Cancel
-        </button>
-        <button
-          className="finance-primary"
-          disabled={disabled || !selected.length}
-          onClick={async () => {
-            if (await onCopy(selected)) onClose();
-          }}
-        >
-          Copy selected costs
-        </button>
-      </div>
     </Dialog>
   );
 }

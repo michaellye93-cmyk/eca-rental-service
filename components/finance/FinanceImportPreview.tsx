@@ -28,27 +28,18 @@ export default function FinanceImportPreview({
   const [targets, setTargets] = useState<Record<number, string>>({});
   const sheet =
     workbook.sheets.find((s) => s.name === mapping.sheet) ?? workbook.sheets[0];
-  const smart = preview.kind === "SMART_DRIVE",
-    workshop = preview.kind === "WORKSHOP";
-  const fields = smart
-    ? [
-        ["plate", "Car plate"],
-        ["pickup", "Pickup date"],
-        ["return", "Return date"],
-        ["revenue", "Gross revenue"],
-        ["commission", "Commission"],
-        ["status", "Status"],
-        ["reference", "Reference (optional)"],
-        ["paymentStatus", "Payment status (optional)"],
-      ]
-    : [
-        ["plate", "Car plate"],
-        ["billingDate", "Billing date"],
-        ["amount", "Amount"],
-        ["supplier", "Supplier (optional)"],
-        ["reference", "Reference (optional)"],
-        ["description", "Note (optional)"],
-      ];
+  const smart = preview.kind === "SMART_DRIVE";
+  // Only the Smart Drive parser honours manual column mapping; section workbooks select sheets and headers themselves.
+  const fields = [
+    ["plate", "Car plate"],
+    ["pickup", "Pickup date"],
+    ["return", "Return date"],
+    ["revenue", "Gross revenue"],
+    ["commission", "Commission"],
+    ["status", "Status"],
+    ["reference", "Reference (optional)"],
+    ["paymentStatus", "Payment status (optional)"],
+  ];
   const rows = value.rows ?? [
     ...(value.data?.vehicles ?? []),
     ...(value.data?.recurring_costs ?? []),
@@ -84,7 +75,7 @@ export default function FinanceImportPreview({
         . Review the records and amounts before approving
         {smartExists && smart ? " this replacement" : ""}.
       </p>
-      {(smart || workshop) && (
+      {smart && (
         <details className="finance-mapping">
           <summary>Adjust worksheet and columns</summary>
           <div className="finance-form-grid">
