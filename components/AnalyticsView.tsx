@@ -183,7 +183,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             <div className="text-3xl font-black text-rose-600 font-sans tracking-tight">
               {formatCurrency(totalArrears)}
             </div>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-gray-500 mt-2">
               {arrearsBreakdownList.length} drivers have base arrears ({badArrearsCount} Bad, {midArrearsCount} Mid status)
             </p>
           </div>
@@ -210,7 +210,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             <div className="text-3xl font-black text-emerald-600 font-sans tracking-tight">
               {formatCurrency(currentMonthCollection)}
             </div>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-gray-500 mt-2">
               Month: {currentMonthName} (Bank receipts + repair claims)
             </p>
           </div>
@@ -237,11 +237,11 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             <div className="text-3xl font-black text-amber-500 font-sans tracking-tight">
               {formatCurrency(activeSvcData?.serviceClaim || 0)}
             </div>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-gray-500 mt-2">
               Recorded claims for the selected month: {selectedMonth.split(' ')[0]}
             </p>
           </div>
-          <div className="mt-4 text-[11px] text-gray-400 bg-amber-50/50 p-2 rounded border border-amber-100 italic">
+          <div className="mt-4 text-[11px] text-gray-500 bg-amber-50/50 p-2 rounded border border-amber-100 italic">
             Maintenance costs are logged in payments drawer
           </div>
         </div>
@@ -259,7 +259,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 <div className="text-3xl font-black text-blue-600 font-sans tracking-tight">
                   {currentMonth.collectionRate}%
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-gray-500 mt-2">
                   {formatCurrency(currentMonth.collected)} collected vs {formatCurrency(currentMonth.issued)} issued
                 </p>
               </div>
@@ -282,7 +282,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">Live outstanding basic amounts across active agreements.</p>
             </div>
-            <button onClick={() => setShowArrearsList(false)} className="text-gray-400 hover:text-gray-600 p-1 bg-gray-50 rounded-full">
+            <button type="button" onClick={() => setShowArrearsList(false)} aria-label="Close arrears list" className="text-gray-500 hover:text-gray-600 p-1 bg-gray-50 rounded-full">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -309,7 +309,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                         </tr>
                     ))}
                     {arrearsBreakdownList.length === 0 && (
-                        <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 italic">No agreements currently carry active arrears.</td></tr>
+                        <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500 italic">No agreements currently carry active arrears.</td></tr>
                     )}
                 </tbody>
             </table>
@@ -327,7 +327,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">Aggregate payments received on a monthly cycle (base rate + service claims).</p>
             </div>
-            <button onClick={() => setShowCollectionsList(false)} className="text-gray-400 hover:text-gray-600 p-1 bg-gray-50 rounded-full">
+            <button type="button" onClick={() => setShowCollectionsList(false)} aria-label="Close collections register" className="text-gray-500 hover:text-gray-600 p-1 bg-gray-50 rounded-full">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -348,7 +348,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                         </tr>
                     ))}
                     {getMonthlyCollectionBreakdown.length === 0 && (
-                        <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-400 italic">No collections received on record.</td></tr>
+                        <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-500 italic">No collections received on record.</td></tr>
                     )}
                 </tbody>
             </table>
@@ -363,7 +363,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
               <Activity className="w-5 h-5 text-blue-600" /> Weekly Inflow Analysis
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">Tracking Expected Rental vs Performance vs Cash Flow over the last 12 weeks</p>
+            <p className="text-xs text-gray-500 mt-0.5">Tracking Expected Rental vs Performance vs Cash Flow over the last 12 weeks</p>
           </div>
         </div>
 
@@ -543,7 +543,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1 border-r border-gray-100 pr-0 lg:pr-6">
-             <h4 className="text-xs uppercase font-extrabold text-gray-400 mb-4 tracking-wider">Claims Historical Trend</h4>
+             <h4 className="text-xs uppercase font-extrabold text-gray-500 mb-4 tracking-wider">Claims Historical Trend</h4>
              <div className="h-64 w-full">
                <ResponsiveContainer width="100%" height="100%">
                  <BarChart data={monthlyData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
@@ -568,7 +568,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
           <div className="lg:col-span-2">
              <div className="flex items-center justify-between mb-4">
-                 <h4 className="text-xs uppercase font-extrabold text-gray-400 tracking-wider">Claims Breakdowns ({selectedMonth})</h4>
+                 <h4 className="text-xs uppercase font-extrabold text-gray-500 tracking-wider">Claims Breakdowns ({selectedMonth})</h4>
                  <div className="text-xs font-bold bg-amber-50 text-amber-800 px-3 py-1 rounded-full border border-amber-200">
                      Month Claims: {formatCurrency(activeSvcData?.serviceClaim || 0)}
                  </div>
@@ -603,8 +603,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                  </table>
                </div>
              ) : (
-               <div className="flex flex-col items-center justify-center p-8 bg-gray-50/50 border border-gray-100 rounded-lg h-52 text-gray-400">
-                  <Search className="w-8 h-8 mb-3 opacity-40 text-gray-400" />
+               <div className="flex flex-col items-center justify-center p-8 bg-gray-50/50 border border-gray-100 rounded-lg h-52 text-gray-500">
+                  <Search className="w-8 h-8 mb-3 opacity-40 text-gray-500" />
                   <p className="text-sm">No repair claims logs found for {selectedMonth}</p>
                </div>
              )}

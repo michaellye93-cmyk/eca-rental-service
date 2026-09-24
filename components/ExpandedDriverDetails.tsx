@@ -116,29 +116,29 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
             </div>
             <div>
               <h4 className="text-base font-bold text-gray-900">{driver.name}</h4>
-              <p className="text-xs text-gray-400 font-medium font-mono">ID: {driver.id.substring(0, 8)}</p>
+              <p className="text-xs text-gray-500 font-medium font-mono">ID: {driver.id.substring(0, 8)}</p>
             </div>
           </div>
 
           <div className="space-y-3.5 border-t border-gray-200/60 pt-4">
             {/* Phone */}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 font-semibold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+              <span className="text-gray-500 font-semibold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                 <Phone className="w-3.5 h-3.5" /> Contact
               </span>
               {/* Driver records carry no phone number; never fall back to a placeholder that dials a stranger */}
-              <span className="text-gray-400 italic">No phone on record</span>
+              <span className="text-gray-500 italic">No phone on record</span>
             </div>
 
             {/* NRIC */}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 font-semibold uppercase tracking-wider shrink-0">NRIC No</span>
+              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">NRIC No</span>
               <span className="font-mono font-bold text-gray-700">{driver.nric}</span>
             </div>
 
             {/* Group Label */}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 font-semibold uppercase tracking-wider shrink-0">Roster Tag</span>
+              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Roster Tag</span>
               <span className="font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 uppercase tracking-wide">
                 {driver.tags?.[0] || 'Default'}
               </span>
@@ -146,7 +146,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
 
             {/* Category */}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 font-semibold uppercase tracking-wider shrink-0">Category</span>
+              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Category</span>
               <span className={`font-black uppercase tracking-wider text-[10px] px-2 py-0.5 rounded border ${
                 driver.category === 'SEWABELI' 
                   ? 'bg-indigo-50 text-indigo-700 border-indigo-100' 
@@ -158,7 +158,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
 
             {/* Registered Car Plate */}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-400 font-semibold uppercase tracking-wider shrink-0">Registered Car</span>
+              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Registered Car</span>
               <span className="font-mono font-extrabold text-gray-950 bg-yellow-50 px-2 border border-yellow-200 rounded">
                 {driver.carPlate}
               </span>
@@ -182,7 +182,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               <FileText className="w-4 h-4 text-gray-500" />
               Dynamic Billing & Rental Schedule
             </h5>
-            <span className="text-[10px] text-gray-400 font-black uppercase tracking-wider">Last 6 Billing Periods</span>
+            <span className="text-[10px] text-gray-500 font-black uppercase tracking-wider">Last 6 Billing Periods</span>
           </div>
 
           <div className="border border-gray-200/80 rounded-xl overflow-hidden shadow-sm bg-white divide-y divide-gray-100">
@@ -198,7 +198,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                   </div>
                   <div>
                     <span className="font-bold text-gray-800 block">{inv.cycleLabel}</span>
-                    <span className="text-gray-400 font-mono text-[11px]">Due: {formatDate(inv.dueDate, 'N/A')}</span>
+                    <span className="text-gray-500 font-mono text-[11px]">Due: {formatDate(inv.dueDate, 'N/A')}</span>
                   </div>
                 </div>
 
@@ -230,7 +230,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
           </h5>
 
           {driver.paymentHistory.length === 0 ? (
-            <div className="p-12 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-gray-400 text-xs italic">
+            <div className="p-12 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-gray-500 text-xs italic">
               No historical payment logs located. Expand driver with new receipts.
             </div>
           ) : (
@@ -253,7 +253,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                             {pt.paymentMethod || 'BANK TRANSFER'}
                           </span>
                         </div>
-                        <p className="text-gray-400 font-medium font-mono mt-1 text-[11px]">
+                        <p className="text-gray-500 font-medium font-mono mt-1 text-[11px]">
                           Paid on {formatDate(pt.date, 'N/A')}
                         </p>
                       </div>
@@ -281,11 +281,12 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                             )}
                             <div className="truncate max-w-[120px]">
                               <span className="font-bold underline text-[10px] block truncate" title={uploadedData.name}>{uploadedData.name}</span>
-                              <span className="text-[9px] text-gray-400 block font-mono font-semibold">{uploadedData.size}</span>
+                              <span className="text-[9px] text-gray-500 block font-mono font-semibold">{uploadedData.size}</span>
                             </div>
                             <button 
                               type="button"
                               onClick={() => handleRemoveReceipt(pt.id || `tx-manual-${pt.id}`)}
+                              aria-label="Remove receipt"
                               className="text-red-500 hover:text-red-700 p-1 min-w-[30px] min-h-[30px]"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -334,12 +335,12 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               onChange={handleFileChange}
             />
             
-            <div className="p-3 bg-white shadow-md border border-gray-100 rounded-xl mb-3 text-gray-400 group-hover:text-blue-500 transform group-hover:scale-110 transition-transform">
+            <div className="p-3 bg-white shadow-md border border-gray-100 rounded-xl mb-3 text-gray-500 group-hover:text-blue-500 transform group-hover:scale-110 transition-transform">
               <Upload className="w-5 h-5" />
             </div>
 
             <span className="text-xs text-gray-700 font-bold block mb-1">Drag receipts here or click</span>
-            <span className="text-[10px] text-gray-400 font-medium">JPEG, PNG, or PDF up to 5MB</span>
+            <span className="text-[10px] text-gray-500 font-medium">JPEG, PNG, or PDF up to 5MB</span>
             
             {isDragging && (
               <div className="absolute inset-0 bg-blue-50/90 backdrop-blur-sm rounded-2xl flex items-center justify-center font-bold text-blue-600 text-xs">
@@ -350,7 +351,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
 
           {Object.keys(receipts).length > 0 && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-              <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Uploaded proofs ({Object.keys(receipts).length})</span>
+              <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider block">Uploaded proofs ({Object.keys(receipts).length})</span>
               <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                 {Object.entries(receipts).map(([id, rawR]) => {
                   const r = rawR as { name: string; size: string; previewUrl: string };

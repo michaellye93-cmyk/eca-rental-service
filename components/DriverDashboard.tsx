@@ -202,7 +202,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
             </h1>
             <p className="text-sm text-gray-500 font-mono truncate">{driver.carPlate}</p>
           </div>
-          <button onClick={onLogout} className="text-gray-400 hover:text-gray-600 shrink-0 p-1">
+          <button onClick={onLogout} aria-label="Log out" title="Log out" className="text-gray-500 hover:text-gray-700 shrink-0 p-1">
             <LogOut className="w-6 h-6" />
           </button>
         </div>
