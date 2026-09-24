@@ -934,7 +934,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Fleet Overview & Health Status */}
               <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-md p-6 space-y-6 font-sans">
                 <div className="flex items-center gap-2.5">
-                  <Activity className="w-6 h-6 text-blue-600 animate-pulse" />
+                  <Activity className="w-6 h-6 text-blue-600" />
                   <h2 className="text-xl font-bold text-gray-900 tracking-tight">Fleet Overview & Health Status</h2>
                 </div>
 
@@ -957,7 +957,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       statusFilter === 'GOOD' ? 'ring-2 ring-emerald-500 border-transparent bg-emerald-50/10' : 'border-gray-200/60'
                     }`}
                   >
-                    <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">GOOD STATUS</span>
+                    <span className="text-gray-500 font-extrabold text-xs uppercase tracking-wider">GOOD STATUS</span>
                     <span className="text-5xl font-black text-emerald-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((goodDriversCount / activeFleetCount) * 100) : 0}%</span>
                     <span className="text-sm font-bold text-gray-400 mb-2">{goodDriversCount} drivers</span>
                     
@@ -978,10 +978,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       }
                     }}
                     className={`bg-gray-50/40 rounded-xl p-5 border text-center transition-all duration-300 flex flex-col items-center justify-between hover:shadow-md cursor-pointer hover:scale-[1.01] ${
-                      statusFilter === 'MID' ? 'ring-2 ring-amber-550 border-transparent bg-amber-50/10' : 'border-gray-200/60'
+                      statusFilter === 'MID' ? 'ring-2 ring-amber-500 border-transparent bg-amber-50/10' : 'border-gray-200/60'
                     }`}
                   >
-                    <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">MID STATUS</span>
+                    <span className="text-gray-500 font-extrabold text-xs uppercase tracking-wider">MID STATUS</span>
                     <span className="text-5xl font-black text-amber-500 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((midDriversCount / activeFleetCount) * 100) : 0}%</span>
                     <span className="text-sm font-bold text-gray-400 mb-2">{midDriversCount} drivers</span>
                     
@@ -1005,7 +1005,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       statusFilter === 'BAD' ? 'ring-2 ring-rose-500 border-transparent bg-rose-50/10' : 'border-gray-200/60'
                     }`}
                   >
-                    <span className="text-gray-450 font-extrabold text-xs uppercase tracking-wider">BAD STATUS</span>
+                    <span className="text-gray-500 font-extrabold text-xs uppercase tracking-wider">BAD STATUS</span>
                     <span className="text-5xl font-black text-rose-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((badDriversCount / activeFleetCount) * 100) : 0}%</span>
                     <span className="text-sm font-bold text-gray-400 mb-2">{badDriversCount} drivers</span>
                     
@@ -1062,9 +1062,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* Late Alerts Feed */}
               <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-md p-6 flex flex-col max-h-[440px] overflow-hidden font-sans">
-                <div className="flex items-center justify-between mb-4 border-b border-gray-150 pb-3 mt-0.5">
+                <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-3 mt-0.5">
                   <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-amber-500 animate-pulse" />
+                    <Clock className="w-5 h-5 text-amber-500" />
                     Late Alerts (8d+)
                   </h3>
                   <span className="bg-red-50 text-red-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase border border-red-200 tracking-wider">
@@ -1072,10 +1072,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto max-h-[310px] space-y-2.5 pr-2 scrollbar-thin scrollbar-thumb-gray-200 hover:scrollbar-thumb-gray-300">
+                <div className="flex-1 overflow-y-auto max-h-[310px] space-y-2.5 pr-2">
                   {habitualLateAlerts.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-gray-50/25 rounded-xl border border-dashed border-gray-250">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2 animate-bounce" />
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-gray-50/25 rounded-xl border border-dashed border-gray-200">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
                       <p className="text-xs text-gray-400 font-bold">All accounts are safe and active.</p>
                     </div>
                   ) : (
@@ -1090,7 +1090,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0 group-hover:scale-125 transition-transform" />
                           <div className="truncate font-bold text-gray-800 group-hover:text-orange-950 leading-tight">
                             {driver.name}
-                            <span className="block text-[10px] text-gray-405 font-mono font-normal mt-0.5">
+                            <span className="block text-[10px] text-gray-500 font-mono font-normal mt-0.5">
                               {driver.carPlate}
                             </span>
                           </div>
@@ -1194,7 +1194,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <span className="text-3xl font-black text-orange-600 tracking-tight font-mono">{mustCollectToday.length}</span>
                 </div>
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-105">
+                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
                   <span className="text-[11px] font-black text-orange-600 flex items-center gap-1 uppercase tracking-wider">
                     <span className="font-bold text-xs mr-0.5">RM</span> Payment
                   </span>
@@ -1217,7 +1217,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <span className="text-3xl font-black text-amber-500 tracking-tight font-mono">{yesterdayDue.length}</span>
                 </div>
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-105">
+                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
                   <span className="text-[11px] font-black text-amber-600 flex items-center gap-1 uppercase tracking-wider">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" /> ! Follow up
                   </span>
@@ -1232,17 +1232,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onClick={() => setInvoicePopupData({ title: 'Overdue', invoices: overdue })}
                 className="cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-red-300"
               >
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-650"></div>
+                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600"></div>
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-bold text-base tracking-tight text-gray-900">Overdue</h3>
                     <p className="text-xs text-gray-400 mt-0.5 font-medium">Severe backlog (3d+ late)</p>
                   </div>
-                  <span className="text-3xl font-black text-red-650 tracking-tight font-mono">{overdue.length}</span>
+                  <span className="text-3xl font-black text-red-600 tracking-tight font-mono">{overdue.length}</span>
                 </div>
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-105">
+                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
                   <span className="text-[11px] font-black text-red-600 flex items-center gap-1 uppercase tracking-wider">
-                    <Siren className="w-3.5 h-3.5 shrink-0 animate-pulse text-red-600" /> ! Urgent Action
+                    <Siren className="w-3.5 h-3.5 shrink-0 text-red-600" /> ! Urgent Action
                   </span>
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
                     View Invoices
@@ -1363,7 +1363,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <td className="px-6 py-4 font-bold text-gray-900 flex items-center gap-2">
                                           {driver.name}
                                           {isNew && (
-                                            <span className="text-[10px] text-red-500 font-black animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] tracking-widest border border-red-500/30 px-1.5 py-0.5 rounded-sm bg-red-50">NEW</span>
+                                            <span className="text-[10px] text-red-500 font-black tracking-widest border border-red-500/30 px-1.5 py-0.5 rounded-sm bg-red-50">NEW</span>
                                           )}
                                         </td>
                                         <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
@@ -1431,7 +1431,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <option key={tag} value={tag}>{tag}</option>
                         ))}
                       </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-550">
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
                         <ChevronDown className="h-4 w-4" />
                       </div>
                     </div>
@@ -1442,7 +1442,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {(statusFilter !== 'ALL' || selectedTagFilter !== 'ALL' || urgencyFilter !== 'ALL' || searchTerm !== '') && (
                   <div className="px-6 py-3 bg-blue-50/60 border-b border-blue-100 flex justify-between items-center text-xs text-blue-800 font-semibold sticky top-[68px] z-10 backdrop-blur-md font-sans">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
                       <span>Viewing Matched Queue:</span>
                       {statusFilter !== 'ALL' && (
                         <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-blue-200">
@@ -1455,12 +1455,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </span>
                       )}
                       {selectedTagFilter !== 'ALL' && (
-                        <span className="bg-purple-100 text-purple-805 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-purple-200">
+                        <span className="bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-purple-200">
                           Staff: {selectedTagFilter}
                         </span>
                       )}
                       {searchTerm !== '' && (
-                        <span className="bg-gray-100 text-gray-805 px-2.5 py-0.5 rounded-full font-bold text-[10px] border border-gray-200">
+                        <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full font-bold text-[10px] border border-gray-200">
                           Query: "{searchTerm}"
                         </span>
                       )}
@@ -1551,7 +1551,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                    isNegativeProgress = true;
                                    labelText = 'Slipped';
                                    valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(baselineOutstanding)}`;
-                                   barColorClass = 'bg-rose-500 animate-pulse';
+                                   barColorClass = 'bg-rose-500';
                                } else {
                                    labelText = 'Restored';
                                    valueText = `${formatCurrency(0)} / ${formatCurrency(baselineOutstanding)}`;
@@ -1564,7 +1564,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                isNegativeProgress = true;
                                labelText = 'Slipped';
                                valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(driver.rentalRate)}`;
-                               barColorClass = 'bg-rose-500 animate-pulse';
+                               barColorClass = 'bg-rose-500';
                            }
                            const nextDueStr = nextDue && !isNaN(nextDue.getTime()) ? nextDue.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
                            const isRiskyAndSlipping = (m.status === DriverStatus.BAD || m.status === DriverStatus.MID) && v.isSlipping;
@@ -1593,7 +1593,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                                  <h3 className="font-bold text-slate-900 text-base truncate">{driver.name}</h3>
                                                                  {!screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
                                                                     <button type="button" onClick={(e) => { e.stopPropagation(); handleScreenDriver(driver.id); }} className="relative flex h-3 w-3 items-center justify-center cursor-pointer group/reddot shrink-0" title="Pending Daily Screening">
-                                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                                                        
                                                                         <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 border border-white hover:bg-rose-700 shadow-sm"></span>
                                                                     </button>
                                                                  )}
@@ -1601,7 +1601,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                                     <span title="Screened today" role="img" aria-label="Screened today" className="inline-flex"><CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-emerald-500 stroke-[3]" /></span>
                                                                  )}
                                                                  {driver.debtTrend.isStreak && <span className="text-sm" title="3-Week Debt Streak">⚠️</span>}
-                                                                 {v.isSlipping && <div title="Driver's payment behavior is worsening" className="cursor-help inline-flex"><TrendingDown className="w-4 h-4 text-rose-500 animate-bounce" /></div>}
+                                                                 {v.isSlipping && <div title="Driver's payment behavior is worsening" className="cursor-help inline-flex"><TrendingDown className="w-4 h-4 text-rose-500" /></div>}
                                                                  {v.isRecovering && <div title="Driver's payment behavior is improving" className="cursor-help inline-flex"><TrendingUp className="w-4 h-4 text-emerald-500" /></div>}
                                                              </div>
                                                              <div className="flex items-center gap-2 mt-0.5 text-[11px] flex-wrap w-full">
@@ -1693,7 +1693,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Driver Modal */}
                 {isDriverModalOpen && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
                             <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                                 <h2 className="text-xl font-bold text-gray-900">{editingId ? "Edit Driver Profile" : "Add Driver Profile"}</h2>
                                 <button onClick={() => setIsDriverModalOpen(false)} title="Close" className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
@@ -1779,7 +1779,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Delist Confirmation Modal */}
                 {driverToDelist && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
                             <div className="p-6">
                                 <div className="flex items-center gap-3 text-rose-600 mb-4">
                                     <AlertTriangle className="w-8 h-8 shrink-0" />
@@ -1800,7 +1800,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Payment Modal */}
                 {isPaymentModalOpen && liveDriverForPayment && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
                           <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                               <div>
                                   <h2 className="text-xl font-bold text-gray-900">Driver Payment Panel</h2>
@@ -1930,7 +1930,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Invoice Details Popup Modal */}
       {invoicePopupData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
               <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                   <div>
                       <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">

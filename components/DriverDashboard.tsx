@@ -164,7 +164,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
           lightBg: 'bg-red-50',
           text: 'text-red-500',
           border: 'border-red-800',
-          icon: <AlertOctagon className="w-12 h-12 text-red-500 mb-2 animate-pulse" />,
+          icon: <AlertOctagon className="w-12 h-12 text-red-500 mb-2" />,
           title: 'CRITICAL ALERT',
           message: 'Immediate payment required to avoid vehicle suspension.',
           ctaColor: 'bg-red-600 hover:bg-red-700'
@@ -305,7 +305,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
                 {/* Streak Badge */}
                 <div className="flex items-center gap-4 mb-6 relative z-10">
                     <div className="p-3 bg-gradient-to-br from-yellow-100 to-amber-100 rounded-full shadow-inner ring-1 ring-amber-200">
-                        <Flame className="w-8 h-8 text-amber-500 fill-amber-500 animate-pulse" />
+                        <Flame className="w-8 h-8 text-amber-500 fill-amber-500" />
                     </div>
                     <div>
                         <h3 className="text-gray-900 font-bold text-lg leading-tight">Elite Status: Active</h3>

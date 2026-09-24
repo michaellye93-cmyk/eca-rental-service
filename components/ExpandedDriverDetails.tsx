@@ -111,7 +111,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
   };
 
   return (
-    <div className="bg-white/95 rounded-2xl border border-gray-200/80 shadow-inner p-6 space-y-8 animate-fade-in font-sans text-gray-800">
+    <div className="bg-white/95 rounded-2xl border border-gray-200/80 shadow-inner p-6 space-y-8 font-sans text-gray-800">
       {/* Drawer Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
@@ -198,7 +198,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg shrink-0 ${
                     inv.status === 'PAID' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                    inv.status === 'UNPAID' ? 'bg-red-50 text-red-650 border border-red-100 animate-pulse' :
+                    inv.status === 'UNPAID' ? 'bg-red-50 text-red-600 border border-red-100' :
                     'bg-amber-50 text-amber-600 border border-amber-100'
                   }`}>
                     <Calendar className="w-3.5 h-3.5" />
@@ -249,7 +249,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                 return (
                   <div key={pt.id || index} className="relative text-xs">
                     {/* Tiny bullet */}
-                    <span className="absolute -left-7 top-1 w-3 h-3 rounded-full bg-blue-600 border-2 border-white ring-2 ring-blue-105" />
+                    <span className="absolute -left-7 top-1 w-3 h-3 rounded-full bg-blue-600 border-2 border-white ring-2 ring-blue-100" />
                     
                     <div className="bg-gray-50 rounded-xl p-4 border border-gray-200/60 hover:border-gray-300 hover:shadow-sm transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                       <div>
@@ -350,7 +350,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
             <span className="text-[10px] text-gray-400 font-medium">JPEG, PNG, or PDF up to 5MB</span>
             
             {isDragging && (
-              <div className="absolute inset-0 bg-blue-50/90 backdrop-blur-sm rounded-2xl flex items-center justify-center font-bold text-blue-650 text-xs">
+              <div className="absolute inset-0 bg-blue-50/90 backdrop-blur-sm rounded-2xl flex items-center justify-center font-bold text-blue-600 text-xs">
                 Release to Upload receipt proof!
               </div>
             )}
@@ -359,7 +359,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
           {Object.keys(receipts).length > 0 && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
               <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Uploaded proofs ({Object.keys(receipts).length})</span>
-              <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1 no-scrollbar">
+              <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                 {Object.entries(receipts).map(([id, rawR]) => {
                   const r = rawR as { name: string; size: string; previewUrl: string };
                   return (

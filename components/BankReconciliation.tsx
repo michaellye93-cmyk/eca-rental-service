@@ -1613,7 +1613,7 @@ try {
                        </tr>
                        <tr>
                          <td className="p-2 border-b border-[#f3f4f6]">Total Withdrawals ({countWithdrawals} Items)</td>
-                         <td className="p-2 text-right border-b border-[#f3f4f6] text-red-650 font-medium">-{totalWithdrawalsAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                         <td className="p-2 text-right border-b border-[#f3f4f6] text-red-600 font-medium">-{totalWithdrawalsAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                        </tr>
                        <tr className="bg-[#fafafa]">
                          <td className="p-2 font-bold text-[#111827] border-t border-[#e5e7eb]">Ending Balance (Audited)</td>

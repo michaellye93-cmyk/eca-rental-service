@@ -273,7 +273,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
       {/* --- INLINE ACTIVE ARREARS BREAKDOWN (Premium, User-friendly table) --- */}
       {showArrearsList && (
-        <div className="bg-white p-6 rounded-xl border border-rose-200 shadow-md animate-in fade-in duration-300">
+        <div className="bg-white p-6 rounded-xl border border-rose-200 shadow-md">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -301,7 +301,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                         <tr key={d.id} className="hover:bg-red-50/20 transition-colors">
                             <td className="px-6 py-4 font-semibold text-gray-900">{d.name}</td>
                             <td className="px-6 py-4 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.metrics.status === 'BAD' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-yellow-105 text-yellow-850 bg-yellow-100 border-yellow-250 text-yellow-800 border-yellow-200'}`}>{d.metrics.status}</span>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.metrics.status === 'BAD' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`}>{d.metrics.status}</span>
                             </td>
                             <td className="px-6 py-4 text-right font-mono text-rose-600 font-bold">{formatCurrency(d.activeBalance.baseValue)}</td>
                             <td className="px-6 py-4 text-right font-mono text-gray-600">{d.metrics.cyclesOwed.toFixed(1)}</td>
@@ -318,7 +318,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
       {/* --- INLINE MONTHLY COLLECTIONS REGISTER --- */}
       {showCollectionsList && (
-        <div className="bg-white p-6 rounded-xl border border-emerald-200 shadow-md animate-in fade-in duration-300">
+        <div className="bg-white p-6 rounded-xl border border-emerald-200 shadow-md">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -527,7 +527,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             <p className="text-sm text-gray-500 mt-1 font-medium">Verify structural fleet repairs claim records to coordinate drivers.</p>
           </div>
           
-          <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-250 border-gray-200 overflow-x-auto">
+          <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-200 overflow-x-auto">
             {monthlyData.map(month => (
               <button
                 key={month.name}
@@ -589,7 +589,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                            <tr key={claim.id} className="hover:bg-amber-50/20 transition-colors">
                               <td className="px-4 py-3 font-semibold text-gray-900">{claim.driverName}</td>
                               <td className="px-4 py-3">
-                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-800 border-gray-205 border">
+                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-800 border-gray-200 border">
                                     <CarFront className="w-3.5 h-3.5 text-gray-500" />
                                     {claim.carPlate}
                                  </span>
