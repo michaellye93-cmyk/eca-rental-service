@@ -2,8 +2,8 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Driver, DriverStatus } from '../types';
 import { calculateDriverMetrics, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
-import AnalyticsView from './AnalyticsView';
-import BankReconciliation from './BankReconciliation';
+const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
+const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 import {
   LogOut,
@@ -1159,11 +1159,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense>
           ) : viewMode === 'ANALYTICS' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <AnalyticsView drivers={driverData} />
+               <React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driverData} /></React.Suspense>
              </div>
           ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
              <div className="p-6 bg-gray-50/50">
-               <BankReconciliation drivers={driverData} />
+               <React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driverData} /></React.Suspense>
              </div>
           ) : viewMode === 'DRIVER_LIST' && userRole === 'admin' ? (
              <div className="bg-white">

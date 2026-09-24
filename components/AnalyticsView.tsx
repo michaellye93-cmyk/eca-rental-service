@@ -10,7 +10,8 @@ interface AnalyticsViewProps {
 }
 
 const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
-  const today = kualaLumpurNow();
+  // Fixed while this screen is open, so the six-month history is only rebuilt when the data changes.
+  const today = useMemo(() => kualaLumpurNow(), []);
 
   const [selectedMonth, setSelectedMonth] = useState<string>('');
 
@@ -141,7 +142,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         serviceClaimsList: serviceClaimsList.sort((a,b) => b.amount - a.amount)
       };
     });
-  }, [drivers, today.valueOf()]);
+  }, [drivers, today]);
 
   // Set default selected month to current month on load
   useEffect(() => {

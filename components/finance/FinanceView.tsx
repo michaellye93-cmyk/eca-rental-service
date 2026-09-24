@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../utils";
+import { formatCurrency, kualaLumpurToday, previousMonth } from "../../utils";
 import React, {
   useCallback,
   useEffect,
@@ -65,7 +65,6 @@ import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from ".
 import "./finance.css";
 import "./finance-mobile.css";
 
-const DEFAULT_MONTH = "2026-08";
 const formatMoney = (value = 0) => formatCurrency(Number(value || 0));
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
@@ -89,7 +88,8 @@ export default function FinanceView() {
   const [sessionState, setSessionState] = useState<
     "checking" | "login" | "denied" | "ready"
   >("checking");
-  const [month, setMonth] = useState(DEFAULT_MONTH);
+  // Opens on the last completed month (Kuala Lumpur calendar).
+  const [month, setMonth] = useState(() => previousMonth(kualaLumpurToday()));
   const [input, setInput] = useState<FinanceInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
