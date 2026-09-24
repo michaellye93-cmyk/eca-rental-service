@@ -898,26 +898,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="min-h-screen bg-gray-100 font-sans print:bg-white">
       {/* Top Navigation - unchanged */}
-      <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shadow-md sticky top-0 z-20 print:hidden">
-        <h1 className="text-xl font-bold tracking-tight">Admin<span className="text-blue-400">Control</span></h1>
-        
-        <div className="flex items-center gap-4">
-           {/* Current Role Indicator */}
-           <div className="flex bg-gray-800 rounded-lg p-1.5 px-3 items-center gap-2 border border-gray-700">
+      <div className="bg-gray-900 text-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-3 shadow-md sticky top-0 z-20 print:hidden">
+        <h1 className="text-lg sm:text-xl font-bold tracking-tight shrink-0">Admin<span className="text-blue-400">Control</span></h1>
+
+        <div className="flex items-center gap-2 sm:gap-4">
+           {/* Current Role Indicator (hidden on phones so Add Driver and Logout stay on screen) */}
+           <div className="hidden sm:flex bg-gray-800 rounded-lg p-1.5 px-3 items-center gap-2 border border-gray-700">
               {userRole === 'admin' ? <Shield className="w-3 h-3 text-blue-400" /> : <UserPlus className="w-3 h-3 text-indigo-400" />}
               <span className="text-xs font-bold uppercase tracking-wide text-gray-300">
                 {userRole === 'admin' ? 'Administrator' : 'Staff View'}
               </span>
            </div>
-           
-           <div className="h-6 w-px bg-gray-700"></div>
 
-           <button onClick={handleOpenCreateModal} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-blue-900/50">
-            <UserPlus className="w-4 h-4" /> Add Driver
+           <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
+
+           <button onClick={handleOpenCreateModal} aria-label="Add driver" title="Add driver" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-blue-900/50">
+            <UserPlus className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Add Driver</span>
           </button>
-          
-          <button onClick={onLogout} className="text-gray-400 hover:text-white flex items-center gap-2 text-sm transition-colors">
-            <LogOut className="w-4 h-4" /> Logout
+
+          <button onClick={onLogout} aria-label="Log out" title="Log out" className="text-gray-400 hover:text-white flex items-center gap-2 text-sm transition-colors p-2 sm:p-0">
+            <LogOut className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </div>
@@ -1181,74 +1181,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* Section 2: The Urgency Row (KPI Alerts) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
-              {/* Must Collect Today */}
-              <div 
+              {/* Due today (counts unpaid rent cycles, not drivers) */}
+              <button
+                type="button"
                 onClick={() => setInvoicePopupData({ title: 'Must Collect Today', invoices: mustCollectToday })}
-                className="cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-orange-300"
+                className="w-full text-left cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-orange-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
               >
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-500"></div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-base tracking-tight text-gray-900">Must Collect Today</h3>
-                    <p className="text-xs text-gray-400 mt-0.5 font-medium">Invoices due today</p>
-                  </div>
+                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-500"></span>
+                <span className="flex justify-between items-start">
+                  <span>
+                    <span className="block font-bold text-base tracking-tight text-gray-900">Must Collect Today</span>
+                    <span className="block text-xs text-gray-500 mt-0.5 font-medium">Unpaid rent cycles due today</span>
+                  </span>
                   <span className="text-3xl font-black text-orange-600 tracking-tight font-mono">{mustCollectToday.length}</span>
-                </div>
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
+                </span>
+                <span className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
                   <span className="text-[11px] font-black text-orange-600 flex items-center gap-1 uppercase tracking-wider">
                     <span className="font-bold text-xs mr-0.5">RM</span> Payment
                   </span>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                     View Invoices
                   </span>
-                </div>
-              </div>
+                </span>
+              </button>
 
-              {/* Yesterday Unpaid */}
-              <div 
-                onClick={() => setInvoicePopupData({ title: 'Yesterday Unpaid', invoices: yesterdayDue })}
-                className="cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-amber-300"
+              {/* Due 1-3 days ago (today - 3 through yesterday) */}
+              <button
+                type="button"
+                onClick={() => setInvoicePopupData({ title: '1–3 Days Late', invoices: yesterdayDue })}
+                className="w-full text-left cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
               >
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500"></div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-base tracking-tight text-gray-900">Yesterday Unpaid</h3>
-                    <p className="text-xs text-gray-400 mt-0.5 font-medium">Overdue 1 to 3 days</p>
-                  </div>
+                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500"></span>
+                <span className="flex justify-between items-start">
+                  <span>
+                    <span className="block font-bold text-base tracking-tight text-gray-900">1–3 Days Late</span>
+                    <span className="block text-xs text-gray-500 mt-0.5 font-medium">Unpaid rent cycles due 1–3 days ago</span>
+                  </span>
                   <span className="text-3xl font-black text-amber-500 tracking-tight font-mono">{yesterdayDue.length}</span>
-                </div>
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
+                </span>
+                <span className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
                   <span className="text-[11px] font-black text-amber-600 flex items-center gap-1 uppercase tracking-wider">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" /> ! Follow up
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> Follow up
                   </span>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                     View Invoices
                   </span>
-                </div>
-              </div>
+                </span>
+              </button>
 
-              {/* Overdue */}
-              <div 
-                onClick={() => setInvoicePopupData({ title: 'Overdue', invoices: overdue })}
-                className="cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-red-300"
+              {/* Due 4 or more days ago */}
+              <button
+                type="button"
+                onClick={() => setInvoicePopupData({ title: '4+ Days Late', invoices: overdue })}
+                className="w-full text-left cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-red-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
               >
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600"></div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-base tracking-tight text-gray-900">Overdue</h3>
-                    <p className="text-xs text-gray-400 mt-0.5 font-medium">Severe backlog (3d+ late)</p>
-                  </div>
-                  <span className="text-3xl font-black text-red-600 tracking-tight font-mono">{overdue.length}</span>
-                </div>
-                <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-                  <span className="text-[11px] font-black text-red-600 flex items-center gap-1 uppercase tracking-wider">
-                    <Siren className="w-3.5 h-3.5 shrink-0 text-red-600" /> ! Urgent Action
+                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600"></span>
+                <span className="flex justify-between items-start">
+                  <span>
+                    <span className="block font-bold text-base tracking-tight text-gray-900">4+ Days Late</span>
+                    <span className="block text-xs text-gray-500 mt-0.5 font-medium">Unpaid rent cycles due 4 or more days ago</span>
                   </span>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  <span className="text-3xl font-black text-red-600 tracking-tight font-mono">{overdue.length}</span>
+                </span>
+                <span className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
+                  <span className="text-[11px] font-black text-red-600 flex items-center gap-1 uppercase tracking-wider">
+                    <Siren className="w-3.5 h-3.5 shrink-0 text-red-600" aria-hidden="true" /> Urgent action
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                     View Invoices
                   </span>
-                </div>
-              </div>
+                </span>
+              </button>
             </div>
 
           </div>
@@ -1451,7 +1454,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       )}
                       {urgencyFilter !== 'ALL' && (
                         <span className="bg-orange-100 text-orange-950 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-orange-200">
-                          Urgency: {urgencyFilter === 'TODAY' ? 'Must Collect Today' : urgencyFilter === 'YESTERDAY' ? 'Yesterday Unpaid' : 'Overdue'}
+                          Urgency: {urgencyFilter === 'TODAY' ? 'Must Collect Today' : urgencyFilter === 'YESTERDAY' ? '1–3 Days Late' : '4+ Days Late'}
                         </span>
                       )}
                       {selectedTagFilter !== 'ALL' && (
@@ -1730,7 +1733,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Rental Rate (Base)</label>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Rent per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'} (RM)</label>
                                         <input required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.rentalRate} onChange={e => setFormData({...formData, rentalRate: Number(e.target.value)})} min="0" step="0.01" />
                                     </div>
                                 </div>
@@ -1740,7 +1743,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <input required type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractStartDate} onChange={e => setFormData({...formData, contractStartDate: e.target.value})} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Duration (Wks)</label>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Duration ({formData.rentalCycle === 'MONTHLY' ? 'months' : 'weeks'})</label>
                                         <input required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractDuration} onChange={e => setFormData({...formData, contractDuration: Number(e.target.value)})} min="1" />
                                     </div>
                                     <div>
@@ -1869,7 +1872,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                     <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: {formatCurrency(tx.amount + (tx.serviceClaim || 0))}</div>
                                                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">{tx.paymentMethod}</span>
                                                 </div>
-                                                <button onClick={() => handleStartEditTx(tx)} className="text-[10px] text-blue-600 font-semibold hover:bg-blue-50 px-2 py-1.5 rounded transition-colors bg-white border border-blue-100">Edit Figure</button>
+                                                <button onClick={() => handleStartEditTx(tx)} className="text-[10px] text-blue-600 font-semibold hover:bg-blue-50 px-2 py-1.5 rounded transition-colors bg-white border border-blue-100">Edit payment</button>
                                               </>
                                             )}
                                           </div>
@@ -1947,7 +1950,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <tr>
                               <th className="px-6 py-3">Driver / Car</th>
                               <th className="px-6 py-3">Due Date</th>
-                              <th className="px-6 py-3">Invoice Auth</th>
+                              <th className="px-6 py-3">Paid / Due</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">

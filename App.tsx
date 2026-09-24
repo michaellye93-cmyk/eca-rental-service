@@ -476,31 +476,21 @@ const App: React.FC = () => {
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Database className="w-8 h-8 text-red-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Database Connection Failed</h2>
-            <div className="text-xs font-mono bg-gray-50 p-3 rounded border border-gray-200 text-red-500 mb-6 break-words">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Can't load the rental data</h2>
+            <div className="text-xs font-mono bg-gray-50 p-3 rounded border border-gray-200 text-red-600 mb-6 break-words">
               {error}
             </div>
-            
+
             {isTableMissing ? (
                <div className="text-left text-sm bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-6 text-yellow-900">
                   <strong className="flex items-center gap-2 mb-2">
-                    <UploadCloud className="w-5 h-5"/> Missing Database Tables
-                  </strong> 
-                  <p className="mb-3">
-                    Your Supabase project is connected, but the required tables do not exist yet.
-                  </p>
-                  <div className="bg-white p-3 rounded border border-yellow-100 text-xs text-gray-700">
-                    <strong>Action Required:</strong>
-                    <ol className="list-decimal list-inside mt-1 space-y-1">
-                      <li>Go to <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline text-blue-600">Supabase Dashboard</a> &gt; SQL Editor.</li>
-                      <li>Run the creation script.</li>
-                    </ol>
-                  </div>
+                    <UploadCloud className="w-5 h-5" aria-hidden="true" /> The database isn't set up as expected
+                  </strong>
+                  <p>The app reached the database, but a table it needs is missing. Please contact the administrator and pass on the message above.</p>
                </div>
             ) : (
                <div className="text-left text-sm bg-blue-50 p-4 rounded-lg border border-blue-100 mb-6 text-blue-900">
-                   <strong>Check Configuration:</strong> 
-                   <p className="mt-1">Ensure your <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> are set correctly in the Settings menu.</p>
+                   <p>Check your internet connection, then try again. If it keeps failing, contact the administrator and pass on the message above.</p>
                </div>
             )}
 

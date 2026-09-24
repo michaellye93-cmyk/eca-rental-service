@@ -177,7 +177,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               onClick={onLogPaymentClick}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all focus:ring-2 focus:ring-blue-500/55"
             >
-              <DollarSign className="w-4 h-4 shrink-0" /> Log Payment / Issue Arrears
+              <DollarSign className="w-4 h-4 shrink-0" aria-hidden="true" /> Record payment
             </button>
           </div>
         </div>
