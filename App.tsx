@@ -3,7 +3,7 @@ import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { Driver } from './types';
-import { calculateMomentum, parseDate, generateDriverInvoices, kualaLumpurToday } from './utils'; // Import frontend metric calculation
+import { calculateMomentum, parseDate, generateDriverInvoices, kualaLumpurToday, fromDriverRow, toDriverRow } from './utils'; // Import frontend metric calculation
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
@@ -94,35 +94,14 @@ const App: React.FC = () => {
 
             const totalPaid = myPayments.reduce((sum: number, p: any) => sum + p.amount + (p.serviceClaim || 0), 0);
 
-            // Calculate momentum metrics locally to replace SQL View logic
-            const tempDriverForCalc = {
-                contractStartDate: d.contract_start_date,
-                rentalCycle: d.rental_cycle || 'WEEKLY',
-                paymentHistory: myPayments
-            } as Driver;
-            
-            const momentum = calculateMomentum(tempDriverForCalc);
+            const profile = fromDriverRow(d);
+            // Payment timing trend, calculated locally
+            const momentum = calculateMomentum({ ...profile, totalAmountPaid: totalPaid, paymentHistory: myPayments });
 
             return {
-            id: d.id,
-            nric: d.nric,
-            email: d.email,
-            name: d.name,
-            address: d.address,
-            carPlate: d.car_plate,
-            contractStartDate: d.contract_start_date,
-            contractEndDate: d.contract_end_date, // Now reliably fetched from table
-            category: d.category, // Now reliably fetched from table
-            rentalCycle: d.rental_cycle || 'WEEKLY',
-            contractDuration: d.contract_duration_weeks,
-            rentalRate: d.rental_rate,
-            isDelisted: d.is_delisted,
-            delistDate: d.delist_date,
-            tags: d.tags || [],
+            ...profile,
             totalAmountPaid: totalPaid,
             paymentHistory: myPayments,
-            
-            // Use frontend calculations instead of view columns
             avgDaysLate: momentum.avgLateness,
             lastDaysLate: momentum.lastLateness,
             performanceVelocity: momentum.velocity
@@ -373,22 +352,7 @@ const App: React.FC = () => {
 
   const handleCreateDriver = async (newDriver: Driver) => {
     try {
-      const dbDriver = {
-        nric: newDriver.nric,
-        email: newDriver.email || null,
-        name: newDriver.name,
-        address: newDriver.address || null,
-        // contact_number removed
-        car_plate: newDriver.carPlate,
-        contract_start_date: newDriver.contractStartDate,
-        contract_end_date: newDriver.contractEndDate || null,
-        category: newDriver.category || 'SEWABELI',
-        rental_cycle: newDriver.rentalCycle,
-        contract_duration_weeks: newDriver.contractDuration,
-        rental_rate: newDriver.rentalRate,
-        is_delisted: false,
-        tags: newDriver.tags || []
-      };
+      const dbDriver = { ...toDriverRow(newDriver), is_delisted: false, tags: newDriver.tags || [] };
       const { error } = await supabase.from('drivers').insert(dbDriver);
       if (error) throw error;
       await fetchDriversAndPayments(true);
@@ -400,21 +364,7 @@ const App: React.FC = () => {
 
   const handleUpdateDriver = async (updatedDriver: Driver) => {
     try {
-       const dbUpdate = {
-        nric: updatedDriver.nric,
-        email: updatedDriver.email || null,
-        name: updatedDriver.name,
-        address: updatedDriver.address || null,
-        // contact_number removed
-        car_plate: updatedDriver.carPlate,
-        contract_start_date: updatedDriver.contractStartDate,
-        contract_end_date: updatedDriver.contractEndDate || null,
-        category: updatedDriver.category || 'SEWABELI',
-        rental_cycle: updatedDriver.rentalCycle,
-        contract_duration_weeks: updatedDriver.contractDuration,
-        rental_rate: updatedDriver.rentalRate,
-        tags: updatedDriver.tags
-      };
+      const dbUpdate = toDriverRow(updatedDriver);
       const { error } = await supabase.from('drivers').update(dbUpdate).eq('id', updatedDriver.id);
       if (error) throw error;
       await fetchDriversAndPayments(true);

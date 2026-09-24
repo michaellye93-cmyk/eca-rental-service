@@ -301,3 +301,57 @@ export const formatNric = (value: string): string => {
   if (digits.length > 6) return `${digits.slice(0, 6)}-${digits.slice(6)}`;
   return digits;
 };
+
+/** A row of the drivers table (only the columns the app reads or writes). */
+export interface DriverRow {
+  id: string;
+  nric: string;
+  email?: string | null;
+  name: string;
+  address?: string | null;
+  car_plate: string;
+  contract_start_date: string;
+  contract_end_date?: string | null;
+  category?: Driver['category'] | null;
+  rental_cycle?: Driver['rentalCycle'] | null;
+  contract_duration_weeks: number;
+  rental_rate: number;
+  is_delisted?: boolean | null;
+  delist_date?: string | null;
+  tags?: string[] | null;
+}
+
+/** The profile and contract columns written when a driver is created or edited. */
+export const toDriverRow = (driver: Driver) => ({
+  nric: driver.nric,
+  email: driver.email || null,
+  name: driver.name,
+  address: driver.address || null,
+  car_plate: driver.carPlate,
+  contract_start_date: driver.contractStartDate,
+  contract_end_date: driver.contractEndDate || null,
+  category: driver.category || 'SEWABELI',
+  rental_cycle: driver.rentalCycle,
+  contract_duration_weeks: driver.contractDuration,
+  rental_rate: driver.rentalRate,
+  tags: driver.tags,
+});
+
+/** A drivers row as the app's driver profile; payments and totals are attached by the caller. */
+export const fromDriverRow = (row: DriverRow): Omit<Driver, 'totalAmountPaid' | 'paymentHistory'> => ({
+  id: row.id,
+  nric: row.nric,
+  email: row.email ?? undefined,
+  name: row.name,
+  address: row.address ?? undefined,
+  carPlate: row.car_plate,
+  contractStartDate: row.contract_start_date,
+  contractEndDate: row.contract_end_date ?? undefined,
+  category: row.category ?? undefined,
+  rentalCycle: row.rental_cycle || 'WEEKLY',
+  contractDuration: row.contract_duration_weeks,
+  rentalRate: row.rental_rate,
+  isDelisted: row.is_delisted ?? undefined,
+  delistDate: row.delist_date ?? undefined,
+  tags: row.tags || [],
+});
