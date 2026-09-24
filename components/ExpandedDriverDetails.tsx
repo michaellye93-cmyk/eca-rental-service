@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Driver, DriverStatus, PaymentTransaction } from '../types';
-import { formatCurrency, parseDate } from '../utils';
+import { formatCurrency, latestInvoices, parseDate } from '../utils';
 import { 
   Phone, 
   User, 
@@ -42,36 +42,11 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate simulated weekly/monthly bills based on rental cycles
-  const billingSchedule = React.useMemo(() => {
-    const cycleDays = driver.rentalCycle === 'MONTHLY' ? 30 : 7;
-    const items = [];
-    const dateCursor = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
-    
-    // We render the last 6 cycles of billing schedules
-    for (let i = 0; i < 6; i++) {
-      const dueDate = new Date(dateCursor.getTime() - i * cycleDays * 24 * 60 * 65 * 1000);
-      const isOverdue = i > 0 && driver.activeBalance.baseValue > (i * driver.weeklyRate);
-      let status: 'PAID' | 'PARTIAL' | 'UNPAID' | 'OVERDUE' = 'PAID';
-      
-      if (i === 0) {
-        status = driver.activeBalance.baseValue <= 0 ? 'PAID' : 'PARTIAL';
-      } else if (isOverdue) {
-        status = 'OVERDUE';
-      } else if (driver.activeBalance.baseValue > 0 && i < 3) {
-        status = 'PARTIAL';
-      }
-
-      items.push({
-        id: `inv-${driver.id}-${i}`,
-        dueDate,
-        amount: driver.weeklyRate,
-        status,
-        cycleLabel: driver.rentalCycle === 'MONTHLY' ? 'Monthly Rental' : 'Weekly Rental'
-      });
-    }
-    return items;
-  }, [driver]);
+  // The latest six obligations from the shared rent schedule, newest first
+  const billingSchedule = React.useMemo(() => latestInvoices(driver).map(invoice => ({
+    ...invoice,
+    cycleLabel: driver.rentalCycle === 'MONTHLY' ? 'Monthly Rental' : 'Weekly Rental'
+  })), [driver]);
 
   const saveReceipts = (newReceipts: Record<string, { name: string; size: string; previewUrl: string }>) => {
     setReceipts(newReceipts);
@@ -158,23 +133,8 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               <span className="text-gray-400 font-semibold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                 <Phone className="w-3.5 h-3.5" /> Contact
               </span>
-              <div className="flex items-center gap-2">
-                <a 
-                  href={`tel:${driver.phone || '0123456789'}`} 
-                  className="font-bold text-blue-600 hover:underline hover:text-blue-700 min-h-[30px] flex items-center"
-                >
-                  {driver.phone || '012-345 6789'}
-                </a>
-                <a 
-                  href={`https://wa.me/${driver.phone?.replace(/[^0-9]/g, '') || '60123456789'}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors"
-                  title="WhatsApp Chat"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                </a>
-              </div>
+              {/* Driver records carry no phone number; never fall back to a placeholder that dials a stranger */}
+              <span className="text-gray-400 italic">No phone on record</span>
             </div>
 
             {/* NRIC */}
@@ -238,7 +198,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg shrink-0 ${
                     inv.status === 'PAID' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                    inv.status === 'OVERDUE' ? 'bg-red-50 text-red-650 border border-red-100 animate-pulse' :
+                    inv.status === 'UNPAID' ? 'bg-red-50 text-red-650 border border-red-100 animate-pulse' :
                     'bg-amber-50 text-amber-600 border border-amber-100'
                   }`}>
                     <Calendar className="w-3.5 h-3.5" />
@@ -253,7 +213,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                   <span className="font-mono font-extrabold text-gray-900">{formatCurrency(inv.amount)}</span>
                   <span className={`px-2.5 py-1 rounded-full font-black text-[10px] tracking-wider shrink-0 ${
                     inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' :
-                    inv.status === 'OVERDUE' ? 'bg-red-100 text-red-800' :
+                    inv.status === 'UNPAID' ? 'bg-red-100 text-red-800' :
                     'bg-amber-100 text-amber-800'
                   }`}>
                     {inv.status}
@@ -298,7 +258,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                             {formatCurrency(pt.amount)}
                           </span>
                           <span className="px-2 py-0.5 rounded bg-gray-200 text-gray-700 font-mono uppercase text-[9px] font-bold">
-                            {pt.method || 'Cash / Bank'}
+                            {pt.paymentMethod || 'BANK TRANSFER'}
                           </span>
                         </div>
                         <p className="text-gray-400 font-medium font-mono mt-1 text-[11px]">

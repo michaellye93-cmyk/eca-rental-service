@@ -27,6 +27,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["App.tsx", "index.tsx", "components/**/*.tsx", "services/accessIdAuth.ts", "services/finance/**/*.ts", "types/finance.ts", "constants.ts", "types.ts", "utils.ts", "supabaseClient.ts", "vite.config.ts"],
+  "include": ["App.tsx", "index.tsx", "components/**/*.tsx", "services/accessIdAuth.ts", "services/finance/**/*.ts", "types/finance.ts", "types.ts", "utils.ts", "supabaseClient.ts", "vite.config.ts"],
   "exclude": ["supabase/functions", "node_modules", "dist"]
 }

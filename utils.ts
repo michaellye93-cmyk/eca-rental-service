@@ -138,16 +138,6 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = kua
   };
 };
 
-export const calculateActiveBalance = (driver: Driver, referenceDate?: Date): { baseValue: number, accruedInterest: number } => {
-  // Unified Calculation: Sums invoices where status === 'unpaid' (handled by metrics logic)
-  // Ignores VOID (handled by contractEndDate capping logic above)
-  const metrics = calculateDriverMetrics(driver, referenceDate);
-  return {
-    baseValue: metrics.principalOutstanding,
-    accruedInterest: metrics.penaltyAmount
-  };
-};
-
 export const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-MY', {
     style: 'currency',
@@ -256,4 +246,75 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = kua
       status
     };
   });
+};
+
+/** The next rent due date: the oldest obligation not fully paid, or the next cycle while the contract continues. */
+export const getNextDueDate = (driver: Driver, referenceDate: Date = kualaLumpurNow()): Date | null => {
+  const schedule = buildRentSchedule(driver, referenceDate, true);
+  const unpaid = schedule.find(obligation => obligation.remaining > 0.01);
+  if (unpaid) return unpaid.dueDate;
+  const start = parseDate(driver.contractStartDate);
+  if (isNaN(start.getTime())) return null;
+  const next = dueDateOf(start, driver.rentalCycle, schedule.length ? schedule[schedule.length - 1].index + 1 : 0);
+  const stop = accrualStop(driver);
+  return stop && next >= stop ? null : next;
+};
+
+/** The `count` most recent obligations due on or before the reference day, newest first. */
+export const latestInvoices = (driver: Driver, referenceDate: Date = kualaLumpurNow(), count = 6): Invoice[] => {
+  const referenceEnd = endOfDay(referenceDate);
+  return generateDriverInvoices(driver, referenceDate)
+    .filter(invoice => parseDate(invoice.dueDate) <= referenceEnd)
+    .slice(-count)
+    .reverse();
+};
+
+export interface WeeklyFinancials {
+  start: Date;
+  end: Date;
+  label: string;
+  expected: number;
+  performanceCollected: number;
+  cashFlowCollected: number;
+}
+
+/**
+ * Monday-to-Sunday rent performance for the `weekCount` weeks ending with the reference week, oldest first.
+ * `expected` and `performanceCollected` come from the shared schedule (rent due that week and what has been
+ * allocated to it); `cashFlowCollected` is cash plus service claims by payment date.
+ */
+export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = kualaLumpurNow(), weekCount = 12): WeeklyFinancials[] => {
+  const monday = new Date(referenceDate);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const weeks: WeeklyFinancials[] = Array.from({ length: weekCount }, (_, i) => {
+    const start = new Date(monday);
+    start.setDate(monday.getDate() - (weekCount - 1 - i) * 7);
+    const end = endOfDay(new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6));
+    const label = `${start.getDate()}/${start.getMonth() + 1} - ${end.getDate()}/${end.getMonth() + 1}`;
+    return { start, end, label, expected: 0, performanceCollected: 0, cashFlowCollected: 0 };
+  });
+  const weekOf = (date: Date) => weeks.find(week => date >= week.start && date <= week.end);
+  for (const driver of drivers) {
+    for (const invoice of generateDriverInvoices(driver, referenceDate)) {
+      const week = weekOf(parseDate(invoice.dueDate));
+      if (week) {
+        week.expected += invoice.amount;
+        week.performanceCollected += invoice.amountPaid;
+      }
+    }
+    for (const payment of driver.paymentHistory || []) {
+      const week = weekOf(parseDate(payment.date));
+      if (week) week.cashFlowCollected += payment.amount + (payment.serviceClaim || 0);
+    }
+  }
+  return weeks;
+};
+
+/** Malaysian NRIC as typed: digits only, at most 12, hyphenated as XXXXXX-XX-XXXX. */
+export const formatNric = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 12);
+  if (digits.length > 8) return `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}`;
+  if (digits.length > 6) return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+  return digits;
 };

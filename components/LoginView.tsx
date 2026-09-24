@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
+import { formatNric } from '../utils';
 
 interface LoginViewProps {
   onLoginDriver: (nric: string) => void;
@@ -41,17 +42,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
     } finally {
       setIsAdminLoggingIn(false);
     }
-  };
-
-  const formatNric = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    const truncated = cleaned.slice(0, 12);
-    if (truncated.length > 8) {
-        return `${truncated.slice(0, 6)}-${truncated.slice(6, 8)}-${truncated.slice(8)}`;
-    } else if (truncated.length > 6) {
-        return `${truncated.slice(0, 6)}-${truncated.slice(6)}`;
-    }
-    return truncated;
   };
 
   const handleNricChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Driver, DriverStatus, Car} from '../types';
-import { calculateDriverMetrics, formatCurrency, analyzePaymentHabit, calculateActiveBalance, generateDriverInvoices, parseDate } from '../utils';
+import { Driver, DriverStatus } from '../types';
+import { calculateDriverMetrics, formatCurrency, formatNric, analyzePaymentHabit, generateDriverInvoices, getNextDueDate, kualaLumpurNow, parseDate } from '../utils';
 import AnalyticsView from './AnalyticsView';
 import BankReconciliation from './BankReconciliation';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -60,7 +60,6 @@ import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 
 interface AdminDashboardProps {
   drivers: Driver[];
-  cars: Car[];
   userRole: 'admin' | 'staff'; // Role passed from parent
   onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
@@ -68,26 +67,31 @@ interface AdminDashboardProps {
   onUpdateDriver: (driver: Driver) => void;
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
-  onCreateCar: (car: Car) => void;
-  onUpdateCar: (car: Car) => void;
-  onDeleteCar: (carId: string) => void;
   onLogout: () => void;
   onRefresh: () => Promise<void>;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  drivers, 
-  cars,
-  userRole, 
-  onUpdatePayment, 
+// Fixed baseline for the "Restored / Slipped" recovery bar on each driver row.
+const RECOVERY_BASELINE_DATE = new Date('2026-05-27T00:00:00Z');
+
+// Recorded contract length implied by the start and end dates (months approximated as 30 days).
+const contractCyclesBetween = (startDate: string, endDate: string, cycle: Driver['rentalCycle']): number | null => {
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  if (!startDate || !endDate || isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return null;
+  const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.ceil(days / (cycle === 'MONTHLY' ? 30 : 7));
+};
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  drivers,
+  userRole,
+  onUpdatePayment,
   onEditPayment,
-  onCreateDriver, 
-  onUpdateDriver, 
+  onCreateDriver,
+  onUpdateDriver,
   onDelistDriver,
   onDeleteDriver,
-  onCreateCar,
-  onUpdateCar,
-  onDeleteCar,
   onLogout,
   onRefresh
 }) => {
@@ -193,19 +197,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   // Modal States
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
-  const [isCarModalOpen, setIsCarModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isArrearsModalOpen, setIsArrearsModalOpen] = useState(false);
-  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
-  
-  // Weekly Detail Modal State
-  const [selectedWeek, setSelectedWeek] = useState<any>(null);
-  
+
   // Confirmation Modal State
   const [driverToDelist, setDriverToDelist] = useState<Driver | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingCarId, setEditingCarId] = useState<string | null>(null);
   const [selectedDriverForPayment, setSelectedDriverForPayment] = useState<Driver | null>(null);
 
   // Invoice Popup State
@@ -223,7 +220,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (isPaymentModalOpen && liveDriverForPayment) {
       setTimeout(() => {
-        const anchor = document.getElementById('current-invoice-anchor');
+        const anchor = document.getElementById('current-payment-anchor');
         if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 150);
     }
@@ -241,7 +238,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nric: '',
     // contactNumber removed
     carPlate: '',
-    contractStartDate: new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }),
+    contractStartDate: kualaLumpurNow().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }),
     contractEndDate: '',
     category: 'SEWABELI' as 'SEWABELI' | 'SEWA_BIASA',
     rentalCycle: 'WEEKLY' as 'WEEKLY' | 'MONTHLY',
@@ -251,15 +248,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const [formData, setFormData] = useState(initialFormState);
-  const [carFormData, setCarFormData] = useState({
-    make: '',
-    model: '',
-    plateNumber: '',
-    roadtaxExpiry: '',
-    insuranceExpiry: '',
-    inspectionExpiry: '',
-    notes: ''
-  });
   const [tagInput, setTagInput] = useState('');
   
   // Payment Form State
@@ -279,7 +267,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       month: '2-digit',
       day: '2-digit'
     });
-    const parts = formatter.formatToParts(new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })));
+    const parts = formatter.formatToParts(kualaLumpurNow());
     const year = parts.find(p => p.type === 'year')?.value || '2026';
     const month = parts.find(p => p.type === 'month')?.value || '05';
     const day = parts.find(p => p.type === 'day')?.value || '27';
@@ -341,14 +329,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  // --- Security Logic ---
-  useEffect(() => {
-    // Access Restriction: If staff is on CARS tab, redirect to ACTIVE
-    if (userRole === 'staff' && viewMode === 'CARS') {
-      setViewMode('ACTIVE');
-    }
-  }, [userRole, viewMode]);
-
   // --- UI Refresh: Trigger Global State Refresh on Mount ---
   // REMOVED: This causes a flicker on login because it triggers the global loading state.
   // The data is already fetched in App.tsx on initial load.
@@ -360,27 +340,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- Auto-Calculate Duration when Dates Change ---
   useEffect(() => {
-    if (formData.contractStartDate && formData.contractEndDate) {
-      const start = new Date(formData.contractStartDate + 'T00:00:00');
-      const end = new Date(formData.contractEndDate + 'T00:00:00');
-      
-      if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start) {
-        const diffTime = Math.abs(end.getTime() - start.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        let calculatedDuration = 0;
-        if (formData.rentalCycle === 'MONTHLY') {
-          calculatedDuration = Math.ceil(diffDays / 30); // Approx
-        } else {
-          calculatedDuration = Math.ceil(diffDays / 7);
-        }
-        
-        setFormData(prev => ({
-          ...prev,
-          contractDuration: calculatedDuration
-        }));
-      }
-    }
+    const cycles = contractCyclesBetween(formData.contractStartDate, formData.contractEndDate, formData.rentalCycle);
+    if (cycles !== null) setFormData(prev => ({ ...prev, contractDuration: cycles }));
   }, [formData.contractStartDate, formData.contractEndDate, formData.rentalCycle]);
 
 
@@ -388,8 +349,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const driverData = useMemo(() => drivers.map(d => {
     // Basic financial metrics
     const metrics = calculateDriverMetrics(d);
-    // Unified Calculation for Active Balance
-    const activeBalance = calculateActiveBalance(d);
+    const activeBalance = { baseValue: metrics.principalOutstanding, accruedInterest: metrics.penaltyAmount };
+    const recoveryBaseline = calculateDriverMetrics(d, RECOVERY_BASELINE_DATE).principalOutstanding;
 
     // Habit analysis
     const habit = analyzePaymentHabit(d);
@@ -411,7 +372,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // 2. Historical Snapshot (7 Days Ago)
     // Script: Scan unpaid invoices from 7 days ago
-    const sevenDaysAgo = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+    const sevenDaysAgo = kualaLumpurNow();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(23, 59, 59, 999); // End of day to capture full day's state
     
@@ -425,12 +386,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const isDebtDecreasing = trendValue < 0;
 
     // 4. Debt Streak Calculation (3-Week Increase)
-    const fourteenDaysAgo = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+    const fourteenDaysAgo = kualaLumpurNow();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     const metrics14 = calculateDriverMetrics(d, fourteenDaysAgo);
     const debt14 = metrics14.principalOutstanding;
 
-    const twentyOneDaysAgo = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+    const twentyOneDaysAgo = kualaLumpurNow();
     twentyOneDaysAgo.setDate(twentyOneDaysAgo.getDate() - 21);
     const metrics21 = calculateDriverMetrics(d, twentyOneDaysAgo);
     const debt21 = metrics21.principalOutstanding;
@@ -447,6 +408,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ...d,
         metrics,
         activeBalance, // Exposed for UI
+        recoveryBaseline,
         habit,
         velocityData: {
             velocity,
@@ -473,7 +435,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- Debt Target & Urgency Queue Computations ---
   const todayNormalized = useMemo(() => {
-    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+    const today = kualaLumpurNow();
     today.setHours(0, 0, 0, 0);
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     return new Date(todayStr + 'T00:00:00');
@@ -590,7 +552,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Calculate top 10 active drivers whose last paid was 8 or more days ago
   const habitualLateAlerts = useMemo(() => {
     const alerts: { driver: Driver; daysSinceLastPay: number }[] = [];
-    const todayRef = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+    const todayRef = kualaLumpurNow();
     todayRef.setHours(0,0,0,0);
 
     driverData.filter(d => !d.isDelisted).forEach(d => {
@@ -728,33 +690,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [driverData, viewMode, searchTerm, selectedTagFilter, sortConfig, statusFilter]);
 
   // Summary Stats
-  const totalArrears = driverData.filter(d => !d.isDelisted).reduce((sum, d) => sum + Math.max(0, d.activeBalance.baseValue), 0);
   const badDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.BAD).length;
   const midDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.MID).length;
   const goodDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.GOOD).length;
   const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
 
-  
-  const getMonthlyCollectionBreakdown = () => {
-    const breakdown: Record<string, number> = {};
-    drivers.forEach(driver => {
-      if (driver.paymentHistory) {
-        driver.paymentHistory.forEach(payment => {
-            const date = new Date(payment.date + 'T00:00:00');
-            const monthKey = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount + (payment.serviceClaim || 0);
-        });
-      }
-    });
-    return Object.entries(breakdown).map(([month, amount]) => ({ month, amount })).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-  };
-
   // --- Helpers ---
-  
-  const monthlyData = getMonthlyCollectionBreakdown();
-  const currentMonthData = monthlyData.length > 0 ? monthlyData[monthlyData.length - 1] : { month: '', amount: 0 };
-  const currentMonthCollection = currentMonthData.amount;
-  const currentMonthName = currentMonthData.month;
 
   const formatDateShort = (dateInput: any) => {
     try {
@@ -763,24 +704,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (isNaN(d.getTime())) return 'N/A';
         return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     } catch(e) { return 'N/A'; }
-  };
-
-  const getNextDueDate = (driver: Driver): Date | null => {
-    const startDate = parseDate(driver.contractStartDate);
-    let remainingPayment = driver.totalAmountPaid;
-    const now = new Date();
-    for (let i = 0; i < driver.contractDuration; i++) {
-      const itemDate = new Date(startDate);
-      if (driver.rentalCycle === 'MONTHLY') itemDate.setMonth(startDate.getMonth() + i);
-      else itemDate.setDate(startDate.getDate() + (i * 7));
-      
-      if (remainingPayment >= driver.rentalRate - 0.01) {
-          remainingPayment -= driver.rentalRate;
-      } else {
-          return itemDate;
-      }
-    }
-    return null;
   };
 
   // --- Handlers ---
@@ -793,7 +716,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     handleScreenDriver(driver.id);
     setSelectedDriverForPayment(driver);
     setPaymentAmount(driver.rentalRate.toString());
-    setPaymentDate(new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" })); 
+    setPaymentDate(kualaLumpurNow().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" })); 
     setPaymentMethod(null); // start empty
     setIsPaymentModalOpen(true);
   };
@@ -893,19 +816,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!formData.name || !formData.nric || !formData.carPlate) { alert("Missing fields."); return; }
     
     // AUTOMATED LOGIC: Sync Duration if End Date is set
-    let finalDuration = formData.contractDuration;
-    if (formData.contractStartDate && formData.contractEndDate) {
-        const start = new Date(formData.contractStartDate + 'T00:00:00');
-        const end = new Date(formData.contractEndDate + 'T00:00:00');
-        const diffTime = Math.abs(end.getTime() - start.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (formData.rentalCycle === 'MONTHLY') {
-            finalDuration = Math.ceil(diffDays / 30);
-        } else {
-            finalDuration = Math.ceil(diffDays / 7);
-        }
-    }
+    const finalDuration = contractCyclesBetween(formData.contractStartDate, formData.contractEndDate, formData.rentalCycle) ?? formData.contractDuration;
 
     const submissionData = { ...formData, contractDuration: finalDuration };
 
@@ -926,24 +837,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleCarFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!carFormData.make || !carFormData.model || !carFormData.plateNumber) {
-        alert("Missing fields.");
-        return;
-    }
-
-    if (editingCarId) {
-        onUpdateCar({ id: editingCarId, ...carFormData });
-    } else {
-        onCreateCar({ id: Date.now().toString(), ...carFormData });
-    }
-    setIsCarModalOpen(false);
-  };
-
-  
   const renderPaymentSchedule = (driver: Driver) => {
-    const invoices = generateDriverInvoices(driver, new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })));
+    const invoices = generateDriverInvoices(driver, kualaLumpurNow());
     let anchorFound = false;
 
     return (
@@ -1029,50 +924,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 print:p-0 print:m-0 print:w-full print:max-w-none">
         
-        {/* Immediate Capture Alert Feed - deactivated */}
-        {false && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex items-center h-16 relative">
-                 <div className="bg-gray-900 text-white px-4 h-full flex items-center gap-2 z-10 shrink-0 shadow-md">
-                    <Siren className="w-5 h-5 text-red-500 animate-pulse" />
-                    <div className="flex flex-col leading-tight">
-                        <span className="font-bold text-sm tracking-wide uppercase">Immediate Capture</span>
-                        <span className="text-[10px] text-gray-400 font-medium tracking-wider">LIVE FEED</span>
-                    </div>
-                 </div>
-                 
-                 <div className="flex-1 overflow-x-auto whitespace-nowrap p-3 flex items-center gap-3 no-scrollbar mask-image-gradient">
-                     {/* Alert Feed Items */}
-                     {[].map((alert: any) => (
-                         <div key={alert.id} className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold shadow-sm shrink-0 transition-transform hover:scale-105 cursor-default
-                             ${alert.type === 'CRITICAL' 
-                                ? 'bg-red-100 text-red-800 border-red-200 ring-1 ring-red-300' 
-                                : alert.type === 'GOOD' ? 'bg-green-100 text-green-800 border-green-200' 
-                                : 'bg-amber-100 text-amber-800 border-amber-200'
-                             }`}>
-                             {alert.type === 'CRITICAL' ? (
-                                 <AlertOctagon className="w-3 h-3 text-red-600 animate-pulse" />
-                             ) : alert.type === 'GOOD' ? (
-                                 <TrendingUp className="w-3 h-3 text-green-600" />
-                             ) : (
-                                 <TrendingDown className="w-3 h-3 text-amber-600" />
-                             )}
-                             <span>{alert.driver.name}</span>
-                             <span className="opacity-70 font-normal border-l border-current pl-2 ml-1">
-                                 {alert.msg}
-                             </span>
-                         </div>
-                     ))}
-                     {[].length === 0 && (
-                         <div className="text-sm text-gray-400 italic flex items-center gap-2 pl-2">
-                             <CheckCircle2 className="w-4 h-4 text-green-500" /> Fleet performance stable. No alerts.
-                         </div>
-                     )}
-                 </div>
-                 
-                 <div className="bg-gradient-to-l from-white via-white/80 to-transparent w-16 h-full absolute right-0 pointer-events-none z-10"></div>
-            </div>
-        )}
-
         {/* Merged Fleet Overview & Fleet Health Card Grid */}
         {(viewMode === 'ACTIVE' || viewMode === 'DELISTED') && (
           <div className="space-y-6">
@@ -1403,101 +1254,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* KPI Cards Grid - unchanged */}
-        {false && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 relative overflow-hidden">
-            <div className="flex justify-between items-start relative z-0">
-              <div className="w-full">
-                <p className="text-sm font-medium text-gray-500">Active Arrears</p>
-                {userRole === 'staff' ? (
-                  <div className="relative mt-1 w-full">
-                     <h3 className="text-2xl font-bold text-gray-900 blur-md select-none opacity-50">RM 14,250.00</h3>
-                     <div className="absolute inset-0 flex items-center justify-start">
-                         <div className="bg-gray-100/90 backdrop-blur-sm px-2 py-1 rounded border border-gray-200 flex items-center gap-1.5 shadow-sm">
-                             <Lock className="w-3 h-3 text-gray-500" />
-                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Restricted Access</span>
-                         </div>
-                     </div>
-                  </div>
-                ) : (
-                  <h3 className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalArrears)}</h3>
-                )}
-              </div>
-              
-              {userRole === 'admin' && (
-                <button onClick={() => setIsArrearsModalOpen(true)} className="p-2 bg-red-100 rounded-lg hover:bg-red-200 transition-colors cursor-pointer shadow-sm active:scale-95">
-                  <TrendingUp className="w-5 h-5 text-red-600" />
-                </button>
-              )}
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 relative overflow-hidden">
-            <div className="flex justify-between items-start">
-              <div className="w-full">
-                <p className="text-sm font-medium text-gray-500">Current Month Inflow</p>
-                {userRole === 'staff' ? (
-                   <div className="relative mt-1 w-full">
-                     <h3 className="text-2xl font-bold text-green-600 blur-md select-none opacity-50">RM 48,000.00</h3>
-                     <div className="absolute inset-0 flex items-center justify-start">
-                         <div className="bg-gray-100/90 backdrop-blur-sm px-2 py-1 rounded border border-gray-200 flex items-center gap-1.5 shadow-sm">
-                             <Lock className="w-3 h-3 text-gray-500" />
-                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Restricted Access</span>
-                         </div>
-                     </div>
-                  </div>
-                ) : (
-                  <h3 className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(currentMonthCollection)}</h3>
-                )}
-              </div>
-              
-              {userRole === 'admin' && (
-                <button onClick={() => setIsCollectionModalOpen(true)} className="p-2 bg-green-100 rounded-lg hover:bg-green-200 transition-colors cursor-pointer shadow-sm active:scale-95">
-                  <PieChart className="w-5 h-5 text-green-600" />
-                </button>
-              )}
-            </div>
-             <div className="mt-2 text-xs text-gray-400">Month: {currentMonthName}</div>
-          </div>
-          
-          {/* Performance Summary Card */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-gray-500">Fleet Health</p>
-                  <Activity className="w-4 h-4 text-gray-400" />
-              </div>
-              <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                      <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div> Bad</span>
-                      <span className="font-bold text-gray-900">{badDriversCount}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-red-500 h-1.5 rounded-full transition-all duration-1000" style={{ width: `${activeFleetCount > 0 ? (badDriversCount/activeFleetCount)*100 : 0}%` }}></div>
-                  </div>
-                   <div className="flex justify-between items-center text-xs pt-1">
-                      <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Mid</span>
-                      <span className="font-bold text-gray-900">{midDriversCount}</span>
-                  </div>
-                   <div className="flex justify-between items-center text-xs pt-1">
-                      <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div> Good</span>
-                      <span className="font-bold text-gray-900">{goodDriversCount}</span>
-                  </div>
-              </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 relative group cursor-pointer" onClick={handleSearchFocus}>
-             <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Active Fleet</p>
-                <h3 className="text-2xl font-bold text-gray-900 mt-1">{activeFleetCount}</h3>
-              </div>
-              <button className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors"><Search className="w-5 h-5 text-blue-600" /></button>
-            </div>
-          </div>
-        </div>
-        )}
-
         {/* View Toggle Tabs - unchanged */}
         <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit overflow-x-auto print:hidden">
           <button onClick={() => setViewMode('ACTIVE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${viewMode === 'ACTIVE' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}>Active Fleet</button>
@@ -1597,7 +1353,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     let isNew = false;
                                     if (driver.contractStartDate) {
                                       const start = new Date(driver.contractStartDate + 'T00:00:00');
-                                      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+                                      const now = kualaLumpurNow();
                                       const diffTime = Math.abs(now.getTime() - start.getTime());
                                       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                       isNew = diffDays <= 30;
@@ -1768,18 +1524,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                            const lastPaymentDate = lastPayment && lastPayment.date ? parseDate(lastPayment.date) : null;
                            let showLastPayWarning = false;
                            if (lastPaymentDate && !isNaN(lastPaymentDate.getTime())) {
-                               const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
+                               const today = kualaLumpurNow();
                                const diffTime = Math.abs(today.getTime() - lastPaymentDate.getTime());
                                const daysSinceLastPay = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
                                const threshold = driver.rentalCycle === 'MONTHLY' ? 30 : 7;
                                showLastPayWarning = daysSinceLastPay > threshold;
                            }
                            const nextDue = getNextDueDate(driver);
-                           const excessPaymentTotal = 0; // legacy unused;
-                               // legacy reduce cleared
                            const currentOutstanding = driver.activeBalance.baseValue;
-                           const startOfToday = new Date('2026-05-27T00:00:00Z');
-                           const baselineOutstanding = calculateActiveBalance(driver, startOfToday).baseValue;
+                           const baselineOutstanding = driver.recoveryBaseline;
                            let labelText = 'Restored';
                            let valueText = '';
                            let progressPercent = 0;
@@ -1810,11 +1563,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                progressPercent = 100;
                                isNegativeProgress = true;
                                labelText = 'Slipped';
-                               valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(driver.weeklyRate || driver.rentalRate || 380)}`;
+                               valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(driver.rentalRate)}`;
                                barColorClass = 'bg-rose-500 animate-pulse';
                            }
-                           // totalOutstandingLimit legacy cleared
-                           // duplicate progressPercent cleared
                            const nextDueStr = nextDue && !isNaN(nextDue.getTime()) ? nextDue.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
                            const isRiskyAndSlipping = (m.status === DriverStatus.BAD || m.status === DriverStatus.MID) && v.isSlipping;
                            let behaviorText = 'Consistent Habit';
@@ -1963,19 +1714,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">NRIC</label>
-                                        <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => {
-                                            const val = e.target.value;
-                                            const cleaned = val.replace(/\D/g, '');
-                                            const truncated = cleaned.slice(0, 12);
-                                            let formatted = truncated;
-                                            if (truncated.length > 8) {
-                                                formatted = `${truncated.slice(0, 6)}-${truncated.slice(6, 8)}-${truncated.slice(8)}`;
-                                            } else if (truncated.length > 6) {
-                                                formatted = `${truncated.slice(0, 6)}-${truncated.slice(6)}`;
-                                            }
-                                            // Keep original value if user is deleting hyphens manually, but formatNric is safer to just apply on input
-                                            setFormData({...formData, nric: formatted});
-                                        }} placeholder="NRIC Number" />
+                                        <input required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => setFormData({...formData, nric: formatNric(e.target.value)})} placeholder="NRIC Number" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Plate Number</label>
@@ -2016,7 +1755,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         <datalist id="existing-tags">
                                             {Array.from(new Set(drivers.flatMap(d => d.tags || []))).sort().map(tag => <option key={tag} value={tag} />)}
                                         </datalist>
-                                        <input type="text" className="flex-1 border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. SUN" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(e); } }} />
                                         <button type="button" onClick={handleAddTag} className="bg-slate-800 text-white px-3 py-2 rounded text-sm font-bold hover:bg-slate-700 shrink-0">Add Tag</button>
                                     </div>
                                     {formData.tags.length > 0 && (
@@ -2189,172 +1927,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
                 )}
-      {/* Arrears/Week/Collection Modals - unchanged */}
-      {isArrearsModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
-              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                  <div>
-                      <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                          <TrendingUp className="w-5 h-5 text-red-600" /> Active Arrears Report
-                      </h2>
-                      <p className="text-sm text-gray-500 mt-1">Breakdown of all outstanding base amounts (penalties excluded).</p>
-                  </div>
-                  <button onClick={() => setIsArrearsModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
-              </div>
-              <div className="flex-1 overflow-auto p-0">
-                  <table className="w-full text-left text-sm">
-                      <thead className="bg-gray-100 text-xs uppercase font-bold text-gray-500 sticky top-0">
-                          <tr>
-                              <th className="px-6 py-3">Driver</th>
-                              <th className="px-6 py-3 text-center">Status</th>
-                              <th className="px-6 py-3 text-right">Base Outstanding</th>
-                              <th className="px-6 py-3 text-right">Cycles Owed</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                          {driverData.filter(d => !d.isDelisted && d.activeBalance.baseValue > 0)
-                            .sort((a, b) => b.activeBalance.baseValue - a.activeBalance.baseValue)
-                            .map(d => (
-                              <tr key={d.id} className="hover:bg-red-50/30">
-                                  <td className="px-6 py-4 font-medium text-gray-900">{d.name}</td>
-                                  <td className="px-6 py-4 text-center">
-                                      <span className={`px-2 py-1 rounded text-xs font-bold ${d.metrics.status === 'BAD' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{d.metrics.status}</span>
-                                  </td>
-                                  <td className="px-6 py-4 text-right font-mono text-red-600 font-bold">{formatCurrency(d.activeBalance.baseValue)}</td>
-                                  <td className="px-6 py-4 text-right">{d.metrics.cyclesOwed.toFixed(1)}</td>
-                              </tr>
-                          ))}
-                          {driverData.filter(d => !d.isDelisted && d.activeBalance.baseValue > 0).length === 0 && (
-                              <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 italic">No active arrears! Great job.</td></tr>
-                          )}
-                      </tbody>
-                  </table>
-              </div>
-              <div className="p-4 bg-gray-50 border-t border-gray-200 text-right">
-                   <span className="text-sm font-medium text-gray-500 mr-2">Total Arrears:</span>
-                   <span className="text-lg font-bold text-red-600">{formatCurrency(totalArrears)}</span>
-              </div>
-           </div>
-        </div>
-      )}
-      
-      {/* Monthly Collection Modal */}
-      {isCollectionModalOpen && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                 <div className="p-6 bg-green-600 text-white flex justify-between items-center">
-                     <h2 className="text-lg font-bold flex items-center gap-2"><PieChart className="w-5 h-5"/> Monthly Collections</h2>
-                     <button onClick={() => setIsCollectionModalOpen(false)} className="text-green-100 hover:text-white"><X className="w-5 h-5" /></button>
-                 </div>
-                 <div className="p-0 max-h-[60vh] overflow-y-auto">
-                     <table className="w-full text-left text-sm">
-                         <tbody className="divide-y divide-gray-100">
-                             {getMonthlyCollectionBreakdown().reverse().map((item, idx) => (
-                                 <tr key={item.month} className={idx === 0 ? "bg-green-50" : ""}>
-                                     <td className="px-6 py-4 font-medium text-gray-700">{item.month}</td>
-                                     <td className="px-6 py-4 text-right font-bold text-gray-900">{formatCurrency(item.amount)}</td>
-                                 </tr>
-                             ))}
-                         </tbody>
-                     </table>
-                 </div>
-             </div>
-          </div>
-      )}
-
-      {/* Week Details Modal */}
-      {selectedWeek && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-              <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                  <div>
-                      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                          <Activity className="w-5 h-5 text-blue-600" /> Week Breakdown
-                      </h2>
-                      <p className="text-sm text-gray-500">{selectedWeek.fullLabel}</p>
-                  </div>
-                  <button onClick={() => setSelectedWeek(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
-              </div>
-              
-              <div className="bg-white p-4 grid grid-cols-4 gap-4 border-b border-gray-100">
-                   <div className="p-3 bg-gray-50 rounded-lg">
-                       <div className="text-xs text-gray-500 uppercase font-bold">Expected</div>
-                       <div className="text-lg font-bold text-gray-800">{formatCurrency(selectedWeek.expected)}</div>
-                   </div>
-                   <div className="p-3 bg-green-50 rounded-lg">
-                       <div className="text-xs text-green-700 uppercase font-bold">Collected</div>
-                       <div className="text-lg font-bold text-green-700">{formatCurrency(selectedWeek.collected)}</div>
-                   </div>
-                   <div className="p-3 bg-gray-50 rounded-lg">
-                       <div className="text-xs text-gray-500 uppercase font-bold">Variance</div>
-                       <div className={`text-lg font-bold ${selectedWeek.variance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                           {selectedWeek.variance > 0 ? '+' : ''}{formatCurrency(selectedWeek.variance)}
-                       </div>
-                   </div>
-                   <div className="p-3 bg-gray-50 rounded-lg">
-                       <div className="text-xs text-gray-500 uppercase font-bold">Rate</div>
-                       <div className="text-lg font-bold text-blue-600">{Math.round(selectedWeek.rate)}%</div>
-                   </div>
-              </div>
-
-              <div className="flex-1 overflow-auto">
-                  <table className="w-full text-left text-sm">
-                      <thead className="bg-gray-100 text-xs uppercase font-bold text-gray-500 sticky top-0">
-                          <tr>
-                              <th className="px-6 py-3">Driver</th>
-                              <th className="px-6 py-3 text-right">Expected</th>
-                              <th className="px-6 py-3 text-right">Paid</th>
-                              <th className="px-6 py-3 text-right">Status</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                          {selectedWeek.details.map((d: any) => {
-                             const shortfall = d.expected - d.paid;
-                             const isFull = shortfall <= 0.01; // floating point tolerance
-                             const isZero = d.paid === 0;
-                             
-                             return (
-                                <tr key={d.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-3">
-                                        <div className="font-medium text-gray-900">{d.name}</div>
-                                        <div className="text-xs text-gray-500">{d.plate}</div>
-                                    </td>
-                                    <td className="px-6 py-3 text-right text-gray-500">
-                                        {formatCurrency(d.expected)}
-                                    </td>
-                                    <td className="px-6 py-3 text-right font-medium">
-                                        {formatCurrency(d.paid)}
-                                    </td>
-                                    <td className="px-6 py-3 text-right">
-                                        {d.contractEnded ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                                                Contract Ended
-                                            </span>
-                                        ) : isFull ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-800">
-                                                PAID
-                                            </span>
-                                        ) : isZero ? (
-                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">
-                                                MISSED
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-yellow-100 text-yellow-800">
-                                                PARTIAL
-                                            </span>
-                                        )}
-                                    </td>
-                                </tr>
-                             );
-                          })}
-                      </tbody>
-                  </table>
-              </div>
-           </div>
-        </div>
-      )}
-
       {/* Invoice Details Popup Modal */}
       {invoicePopupData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">

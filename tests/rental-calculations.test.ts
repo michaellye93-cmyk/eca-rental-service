@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateDriverMetrics, generateDriverInvoices } from '../utils.ts';
+import { buildWeeklyFinancials, calculateDriverMetrics, formatNric, generateDriverInvoices, getNextDueDate, latestInvoices } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const on = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -88,4 +88,51 @@ test('the balance and the invoice schedule agree on how many obligations are due
     assert.equal(metrics.cyclesElapsed, dueBy(d, on(reference)).length, `${name}: obligations due`);
     assert.ok(Math.abs(metrics.principalOutstanding - owedOnSchedule(d, on(reference))) < 0.005, `${name}: amount owed`);
   }
+});
+
+// Screens that used their own schedule copies now read the shared schedule.
+
+const ymd = (date: Date | null) => date && `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+test('the next due date is the oldest obligation not fully paid', () => {
+  const d = driver({ contractDuration: 4, paymentHistory: [pay('2026-08-03', 150)] });
+  assert.equal(ymd(getNextDueDate(d, on('2026-08-15'))), '2026-08-08');
+});
+
+test('while the contract continues, the next due date looks past the recorded length', () => {
+  const d = driver({ contractDuration: 2, paymentHistory: [pay('2026-08-01', 400)] });
+  assert.equal(ymd(getNextDueDate(d, on('2026-08-22'))), '2026-08-29');
+});
+
+test('an ended contract that is fully paid has no next due date', () => {
+  const d = driver({ contractDuration: 4, contractEndDate: '2026-08-15', paymentHistory: [pay('2026-08-01', 200)] });
+  assert.equal(getNextDueDate(d, on('2026-08-31')), null);
+});
+
+test('payments dated after the reference day do not move the next due date', () => {
+  const d = driver({ contractDuration: 4, paymentHistory: [pay('2026-08-20', 1000)] });
+  assert.equal(ymd(getNextDueDate(d, on('2026-08-15'))), '2026-08-01');
+});
+
+test('weekly figures come from the shared schedule, oldest week first', () => {
+  const d = driver({ contractStartDate: '2026-08-03', contractDuration: 1, paymentHistory: [pay('2026-08-04', 150), pay('2026-08-11', 60, 40)] });
+  const weeks = buildWeeklyFinancials([d], on('2026-08-19'), 3);
+  assert.deepEqual(weeks.map(w => w.label), ['3/8 - 9/8', '10/8 - 16/8', '17/8 - 23/8']);
+  assert.deepEqual(weeks.map(w => w.expected), [100, 100, 100]);
+  assert.deepEqual(weeks.map(w => w.performanceCollected), [100, 100, 50]);
+  assert.deepEqual(weeks.map(w => w.cashFlowCollected), [150, 100, 0]);
+});
+
+test('the expanded schedule lists the latest obligations due, newest first', () => {
+  const d = driver({ contractDuration: 10, paymentHistory: [pay('2026-08-01', 250)] });
+  const latest = latestInvoices(d, on('2026-08-29'), 3);
+  assert.deepEqual(latest.map(inv => [inv.dueDate, inv.status]), [['2026-08-29', 'UNPAID'], ['2026-08-22', 'UNPAID'], ['2026-08-15', 'PARTIAL']]);
+});
+
+test('NRIC input is reduced to 12 digits and hyphenated as it is typed', () => {
+  assert.equal(formatNric('900101011234'), '900101-01-1234');
+  assert.equal(formatNric('900101-01-1234'), '900101-01-1234');
+  assert.equal(formatNric('9001010'), '900101-0');
+  assert.equal(formatNric('900101'), '900101');
+  assert.equal(formatNric('9001010112345678'), '900101-01-1234');
 });

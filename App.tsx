@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
-import { Driver, PaymentTransaction, Car } from './types';
-import { calculateMomentum, parseDate, generateDriverInvoices } from './utils'; // Import frontend metric calculation
+import { Driver } from './types';
+import { calculateMomentum, parseDate, generateDriverInvoices, kualaLumpurNow } from './utils'; // Import frontend metric calculation
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
@@ -11,7 +11,6 @@ import { signInWithAccessId } from './services/accessIdAuth';
 
 const App: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [cars, setCars] = useState<Car[]>([]);
     const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -77,16 +76,6 @@ const App: React.FC = () => {
         }
         const paymentsData = allPayments;
         
-        const { data: carsData, error: carsError } = await supabase
-            .from('cars')
-            .select('*');
-        
-        if (carsError) {
-            console.warn('Cars table might not exist yet:', carsError);
-        } else {
-            setCars(carsData || []);
-        }
-
         const formattedDrivers: Driver[] = (driversData || []).map((d: any) => {
             const myPayments = (paymentsData || [])
             .filter((p: any) => p.driver_id === d.id)
@@ -442,43 +431,13 @@ const App: React.FC = () => {
   };
 
   const handleDelistDriver = async (driverId: string) => {
-    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    const today = kualaLumpurNow().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
     try {
       const { error } = await supabase.from('drivers').update({ is_delisted: true, delist_date: today }).eq('id', driverId);
       if (error) throw error;
       await fetchDriversAndPayments(true);
     } catch (err: any) {
       alert(`Error delisting driver: ${err.message}`);
-    }
-  };
-
-  const handleCreateCar = async (newCar: Car) => {
-    try {
-      const { error } = await supabase.from('cars').insert(newCar);
-      if (error) throw error;
-      await fetchDriversAndPayments(true);
-    } catch (err: any) {
-      alert(`Error creating car: ${err.message}`);
-    }
-  };
-
-  const handleUpdateCar = async (updatedCar: Car) => {
-    try {
-      const { error } = await supabase.from('cars').update(updatedCar).eq('id', updatedCar.id);
-      if (error) throw error;
-      await fetchDriversAndPayments(true);
-    } catch (err: any) {
-      alert(`Error updating car: ${err.message}`);
-    }
-  };
-
-  const handleDeleteCar = async (carId: string) => {
-    try {
-      const { error } = await supabase.from('cars').delete().eq('id', carId);
-      if (error) throw error;
-      await fetchDriversAndPayments(true);
-    } catch (err: any) {
-      alert(`Error deleting car: ${err.message}`);
     }
   };
 
@@ -578,7 +537,6 @@ const App: React.FC = () => {
     return (
       <AdminDashboard 
         drivers={drivers}
-        cars={cars}
                 userRole={userRole || 'staff'} // Default to staff safety if null
         onUpdatePayment={handleUpdatePayment}
         onEditPayment={handleEditPayment}
@@ -586,9 +544,6 @@ const App: React.FC = () => {
         onUpdateDriver={handleUpdateDriver}
         onDelistDriver={handleDelistDriver}
         onDeleteDriver={handleDeleteDriver}
-        onCreateCar={handleCreateCar}
-        onUpdateCar={handleUpdateCar}
-        onDeleteCar={handleDeleteCar}
         onLogout={handleLogout}
         onRefresh={() => fetchDriversAndPayments(true)}
       />

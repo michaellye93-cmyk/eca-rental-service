@@ -1,15 +1,4 @@
 
-export interface Car {
-  id: string;
-  make: string;
-  model: string;
-  plateNumber: string;
-  roadtaxExpiry: string; // YYYY-MM-DD
-  insuranceExpiry: string; // YYYY-MM-DD
-  inspectionExpiry: string; // YYYY-MM-DD
-  notes?: string;
-}
-
 // A const object rather than an enum so Node's built-in TypeScript support can load it in tests.
 export const DriverStatus = {
   GOOD: 'GOOD',
@@ -53,15 +42,6 @@ export interface Driver {
   avgDaysLate?: number;
   lastDaysLate?: number;
   performanceVelocity?: number;
-}
-
-export interface FleetSnapshot {
-  id: string;
-  snapshot_date: string; // YYYY-MM-DD
-  good_count: number;
-  mid_count: number;
-  bad_count: number;
-  created_at: string;
 }
 
 export interface DriverMetrics {

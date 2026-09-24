@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Driver } from '../types';
+import type { Driver, Invoice } from '../types';
 import TerminationReport from './TerminationReport';
-import { generateDriverInvoices, formatCurrency, parseDate } from '../utils';
+import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, kualaLumpurNow, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, ChevronLeft, ChevronRight, Eye, X, ShieldAlert, BadgeCheck, MessageSquareWarning } from 'lucide-react';
 
@@ -10,13 +10,10 @@ interface AnalyticsViewProps {
 }
 
 const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
-  const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }));
-  
+  const today = kualaLumpurNow();
+
   const [selectedMonth, setSelectedMonth] = useState<string>('');
-  
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [selectedWeekDetail, setSelectedWeekDetail] = useState<any | null>(null);
-  
+
   // Collapse/Expand state for inline breakdowns instead of intrusive modals
   const [showArrearsList, setShowArrearsList] = useState<boolean>(false);
   const [showCollectionsList, setShowCollectionsList] = useState<boolean>(false);
@@ -57,7 +54,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
   }, [drivers]);
 
   const currentMonthName = useMemo(() => {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" })).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return kualaLumpurNow().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   }, []);
 
   const currentMonthCollection = useMemo(() => {
@@ -70,6 +67,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
       const d = new Date(today.getFullYear(), today.getMonth() - (5 - i), 1);
       return d;
     });
+    const currentInvoicesByDriver = new Map<string, Invoice[]>(drivers.map((driver: Driver) => [driver.id, generateDriverInvoices(driver, today)]));
 
     return months.map(monthDate => {
       const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -118,7 +116,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           });
 
           // Performance Collection (Invoices issued IN this month)
-          const currentInvoices = generateDriverInvoices(driver, today);
+          const currentInvoices = currentInvoicesByDriver.get(driver.id) ?? [];
           currentInvoices.forEach(inv => {
             const dDate = parseDate(inv.dueDate);
             if (dDate >= startOfMonth && dDate <= endOfMonth) {
@@ -157,159 +155,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
   const activeSvcData = monthlyData.find(m => m.name === selectedMonth) || monthlyData[monthlyData.length - 1];
 
-  // 5. Weekly Financial calculations (Monday to Sunday) - Taken from old dashboard segment
-  const allWeeklyFinancials = useMemo(() => {
-    const weeks: any[] = [];
-    
-    const klString = new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" });
-    const klDateLocal = new Date(klString);
-    const todayUTC = new Date(Date.UTC(klDateLocal.getFullYear(), klDateLocal.getMonth(), klDateLocal.getDate()));
-    
-    // Setup 12-Week Buckets using UTC
-    const currentDay = todayUTC.getUTCDay(); 
-    const diff = todayUTC.getUTCDate() - currentDay + (currentDay === 0 ? -6 : 1);
-    const currentMonday = new Date(todayUTC);
-    currentMonday.setUTCDate(diff);
-
-    for (let i = 0; i < 12; i++) {
-        const startOfWeek = new Date(currentMonday);
-        startOfWeek.setUTCDate(currentMonday.getUTCDate() - (i * 7));
-        startOfWeek.setUTCHours(0,0,0,0);
-        
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
-        endOfWeek.setUTCHours(23,59,59,999);
-
-        weeks.push({
-            id: i,
-            start: startOfWeek,
-            end: endOfWeek,
-            label: `${startOfWeek.getDate()}/${startOfWeek.getMonth()+1} - ${endOfWeek.getDate()}/${endOfWeek.getMonth()+1}`,
-            fullLabel: `${startOfWeek.toLocaleDateString('en-MY')} - ${endOfWeek.toLocaleDateString('en-MY')}`,
-            expected: 0,
-            performanceCollected: 0,
-            cashFlowCollected: 0,
-            activeDriverCount: 0,
-            details: [] as any[]
-        });
-    }
-
-    // Process Each Driver
-    drivers.forEach(d => {
-        const contractStart = new Date(d.contractStartDate + 'T00:00:00Z');
-        let effectiveEnd: Date;
-        
-        if (d.contractEndDate) {
-            effectiveEnd = new Date(d.contractEndDate + 'T23:59:59.999Z');
-        } else {
-            let durationDays = d.contractDuration * (d.rentalCycle === 'MONTHLY' ? 30 : 7);
-            effectiveEnd = new Date(contractStart);
-            effectiveEnd.setUTCDate(effectiveEnd.getUTCDate() + durationDays);
-            effectiveEnd.setUTCHours(23,59,59,999);
-        }
-
-        if (d.isDelisted && d.delistDate) {
-             const delistDate = new Date(d.delistDate + 'T23:59:59.999Z');
-             if (delistDate < effectiveEnd) {
-                 effectiveEnd = delistDate;
-             }
-        }
-
-        // PERFORMANCE LOGIC (Accrual)
-        let paymentPool = d.paymentHistory 
-            ? d.paymentHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0) 
-            : 0;
-
-        let invoiceDate = new Date(contractStart);
-        let safetyCounter = 0;
-        const maxCycles = 500; 
-
-        while (invoiceDate <= effectiveEnd && safetyCounter < maxCycles) {
-            if (invoiceDate > weeks[0].end) break;
-            const invoiceAmount = d.rentalRate;
-            
-            let paidForThisInvoice = 0;
-            if (paymentPool >= invoiceAmount - 0.01) {
-                paidForThisInvoice = invoiceAmount;
-                paymentPool -= invoiceAmount;
-            } else if (paymentPool > 0) {
-                paidForThisInvoice = paymentPool;
-                paymentPool = 0;
-            }
-
-            const weekIndex = weeks.findIndex(w => invoiceDate >= w.start && invoiceDate <= w.end);
-            
-            if (weekIndex !== -1) {
-                const week = weeks[weekIndex];
-                week.expected += invoiceAmount;
-                week.performanceCollected += paidForThisInvoice;
-                week.activeDriverCount++;
-
-                let detail = week.details.find((x: any) => x.id === d.id);
-                if (!detail) {
-                    detail = {
-                        id: d.id,
-                        name: d.name,
-                        plate: d.carPlate,
-                        cycle: d.rentalCycle,
-                        expected: 0,
-                        performancePaid: 0,
-                        cashFlowPaid: 0,
-                        isActive: true,
-                        contractEnded: false
-                    };
-                    week.details.push(detail);
-                }
-                detail.expected += invoiceAmount;
-                detail.performancePaid += paidForThisInvoice;
-            }
-
-            if (d.rentalCycle === 'MONTHLY') invoiceDate.setUTCMonth(invoiceDate.getUTCMonth() + 1);
-            else invoiceDate.setUTCDate(invoiceDate.getUTCDate() + 7);
-            safetyCounter++;
-        }
-
-        // CASH FLOW LOGIC (Bank Deposits)
-        if (d.paymentHistory) {
-            d.paymentHistory.forEach(p => {
-                const pDate = new Date(p.date + 'T00:00:00Z');
-                const weekIndex = weeks.findIndex(w => pDate >= w.start && pDate <= w.end);
-                
-                if (weekIndex !== -1) {
-                    weeks[weekIndex].cashFlowCollected += p.amount + (p.serviceClaim || 0);
-                    
-                    let detail = weeks[weekIndex].details.find((x: any) => x.id === d.id);
-                    if (!detail) {
-                        detail = {
-                            id: d.id,
-                            name: d.name,
-                            plate: d.carPlate,
-                            cycle: d.rentalCycle,
-                            expected: 0,
-                            performancePaid: 0,
-                            cashFlowPaid: 0,
-                            isActive: true,
-                            contractEnded: false
-                        };
-                        weeks[weekIndex].details.push(detail);
-                    }
-                    detail.cashFlowPaid += p.amount + (p.serviceClaim || 0);
-                }
-            });
-        }
-    });
-
-    weeks.forEach(week => {
-        week.variance = week.performanceCollected - week.expected;
-        week.rate = week.expected > 0 ? (week.performanceCollected / week.expected) * 100 : 0;
-        // Sort by performance deficit
-        week.details.sort((a: any, b: any) => (b.expected - b.performancePaid) - (a.expected - a.performancePaid));
-    });
-
-    return weeks;
-  }, [drivers]);
-
-  // PAGINATION FOR WEEKLY DATA (8 weeks per page, total 12 weeks means 2 pages)
+  // 5. Weekly rent performance (Monday to Sunday) from the shared schedule, oldest week first
+  const allWeeklyFinancials = useMemo(() => buildWeeklyFinancials(drivers), [drivers]);
   
 
   return (
@@ -522,7 +369,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         <div className="p-6">
           <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={[...allWeeklyFinancials].reverse()} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <LineChart data={allWeeklyFinancials} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                 <XAxis 
                     dataKey="label" 
@@ -764,88 +611,6 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         </div>
       </div>
 
-      {/* --- WEEKLY DETAIL OVERLAY MODAL (Integrated cleanly) --- */}
-      {selectedWeekDetail && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                  <div>
-                      <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-                          <Activity className="w-5 h-5 text-blue-600" /> Week Financial Details
-                      </h3>
-                      <p className="text-xs text-gray-500 mt-1">Detailed agreements performance on index: {selectedWeekDetail.fullLabel}</p>
-                  </div>
-                  <button onClick={() => setSelectedWeekDetail(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                     <X className="w-5 h-5 text-gray-400 hover:text-gray-700" />
-                  </button>
-              </div>
-              
-              <div className="bg-white p-5 grid grid-cols-4 gap-4 border-b border-gray-100">
-                   <div className="p-3 bg-gray-55 bg-gray-50 border border-gray-200/50 rounded-lg">
-                       <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Expected Rent</span>
-                       <div className="text-lg font-black text-gray-900 mt-0.5">{formatCurrency(selectedWeekDetail.expected)}</div>
-                   </div>
-                   <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg">
-                       <span className="text-[10px] text-emerald-700 uppercase font-black tracking-wider text-emerald-800">Deposits Match</span>
-                       <div className="text-lg font-black text-emerald-700 mt-0.5">{formatCurrency(selectedWeekDetail.collected)}</div>
-                   </div>
-                   <div className="p-3 bg-gray-50 border border-gray-200/50 rounded-lg font-mono">
-                       <span className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Net Variance</span>
-                       <div className={`text-lg font-black mt-0.5 ${selectedWeekDetail.variance >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                           {selectedWeekDetail.variance > 0 ? '+' : ''}{formatCurrency(selectedWeekDetail.variance)}
-                       </div>
-                   </div>
-                   <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                       <span className="text-[10px] text-blue-700 uppercase font-black tracking-wider">Matched Rate</span>
-                       <div className="text-lg font-black text-blue-800 mt-0.5">{Math.round(selectedWeekDetail.rate)}%</div>
-                   </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-0">
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                      <thead className="bg-gray-50 font-bold text-xs uppercase text-gray-500 sticky top-0 border-b border-gray-100">
-                          <tr>
-                              <th className="px-6 py-3">Renter Name</th>
-                              <th className="px-6 py-3">Car Plate</th>
-                              <th className="px-6 py-3 text-right">Target Rate</th>
-                              <th className="px-6 py-3 text-right">Matched Received</th>
-                              <th className="px-6 py-3 text-right">Agreement Gap</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                          {selectedWeekDetail.details.map((driver: any, index: number) => {
-                              const shortfall = driver.expected - driver.paid;
-                              return (
-                                  <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                      <td className="px-6 py-4 font-bold text-gray-800">{driver.name}</td>
-                                      <td className="px-6 py-4 font-mono text-xs text-gray-600">{driver.plate}</td>
-                                      <td className="px-6 py-4 text-right font-semibold text-gray-500">{formatCurrency(driver.expected)}</td>
-                                      <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(driver.paid)}</td>
-                                      <td className="px-6 py-4 text-right">
-                                          <span className={`font-mono text-xs font-bold ${shortfall > 0.01 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                              {shortfall > 0.01 ? `Short: ${formatCurrency(shortfall)}` : 'Settle'}
-                                          </span>
-                                      </td>
-                                  </tr>
-                              );
-                          })}
-                          {selectedWeekDetail.details.length === 0 && (
-                              <tr>
-                                  <td colSpan={5} className="px-6 py-8 text-center text-gray-400 italic">No registrations listed in this week.</td>
-                              </tr>
-                          )}
-                      </tbody>
-                  </table>
-              </div>
-              
-              <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-                  <button onClick={() => setSelectedWeekDetail(null)} className="px-4 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
-                      Dismiss Breakdown
-                  </button>
-              </div>
-           </div>
-        </div>
-      )}
 
     </div>
   );
