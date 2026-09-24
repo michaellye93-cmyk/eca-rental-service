@@ -178,7 +178,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-500">Active Arrears</span>
-              <span className="p-1 px-2 text-[10px] bg-red-100 text-red-800 rounded font-bold uppercase">Base Sum</span>
+              <span className="p-1 px-2 text-xs bg-red-100 text-red-800 rounded font-bold uppercase">Base Sum</span>
             </div>
             <div className="text-3xl font-black text-rose-600 font-sans tracking-tight">
               {formatCurrency(totalArrears)}
@@ -205,7 +205,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-500">Current Month Inflow</span>
-              <span className="p-1 px-2 text-[10px] bg-emerald-100 text-emerald-800 rounded font-bold uppercase">Deposits</span>
+              <span className="p-1 px-2 text-xs bg-emerald-100 text-emerald-800 rounded font-bold uppercase">Deposits</span>
             </div>
             <div className="text-3xl font-black text-emerald-600 font-sans tracking-tight">
               {formatCurrency(currentMonthCollection)}
@@ -241,7 +241,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
               Recorded claims for the selected month: {selectedMonth.split(' ')[0]}
             </p>
           </div>
-          <div className="mt-4 text-[11px] text-gray-500 bg-amber-50/50 p-2 rounded border border-amber-100 italic">
+          <div className="mt-4 text-xs text-gray-500 bg-amber-50/50 p-2 rounded border border-amber-100 italic">
             Maintenance costs are logged in payments drawer
           </div>
         </div>
@@ -302,7 +302,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                         <tr key={d.id} className="hover:bg-red-50/20 transition-colors">
                             <td className="px-6 py-4 font-semibold text-gray-900">{d.name}</td>
                             <td className="px-6 py-4 text-center">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${d.metrics.status === 'BAD' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`}>{d.metrics.status}</span>
+                                <span className={`px-2 py-0.5 rounded text-xs font-bold border ${d.metrics.status === 'BAD' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200'}`}>{d.metrics.status}</span>
                             </td>
                             <td className="px-6 py-4 text-right font-mono text-rose-600 font-bold">{formatCurrency(d.activeBalance.baseValue)}</td>
                             <td className="px-6 py-4 text-right font-mono text-gray-600">{d.metrics.cyclesOwed.toFixed(1)}</td>

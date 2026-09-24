@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { Driver } from '../types';
-import { formatCurrency, formatDate, latestInvoices } from '../utils';
+import { formatDate, latestInvoices } from '../utils';
+import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { 
   Phone, 
   User, 
-  Calendar, 
   FileText, 
   Clock, 
   DollarSign, 
@@ -36,10 +36,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The latest six obligations from the shared rent schedule, newest first
-  const billingSchedule = React.useMemo(() => latestInvoices(driver).map(invoice => ({
-    ...invoice,
-    cycleLabel: driver.rentalCycle === 'MONTHLY' ? 'Monthly Rental' : 'Weekly Rental'
-  })), [driver]);
+  const billingSchedule = React.useMemo(() => latestInvoices(driver), [driver]);
 
   const saveReceipts = (newReceipts: Record<string, { name: string; size: string; previewUrl: string }>) => {
     setReceipts(newReceipts);
@@ -147,7 +144,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
             {/* Category */}
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Category</span>
-              <span className={`font-black uppercase tracking-wider text-[10px] px-2 py-0.5 rounded border ${
+              <span className={`font-black uppercase tracking-wider text-xs px-2 py-0.5 rounded border ${
                 driver.category === 'SEWABELI' 
                   ? 'bg-indigo-50 text-indigo-700 border-indigo-100' 
                   : 'bg-orange-50 text-orange-700 border-orange-100'
@@ -182,38 +179,11 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               <FileText className="w-4 h-4 text-gray-500" />
               Dynamic Billing & Rental Schedule
             </h5>
-            <span className="text-[10px] text-gray-500 font-black uppercase tracking-wider">Last 6 Billing Periods</span>
+            <span className="text-xs text-gray-500 font-black uppercase tracking-wider">Last 6 Billing Periods</span>
           </div>
 
-          <div className="border border-gray-200/80 rounded-xl overflow-hidden shadow-sm bg-white divide-y divide-gray-100">
-            {billingSchedule.map((inv) => (
-              <div key={inv.id} className="p-3.5 flex items-center justify-between hover:bg-gray-50 transition-colors text-xs">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg shrink-0 ${
-                    inv.status === 'PAID' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                    inv.status === 'UNPAID' ? 'bg-red-50 text-red-600 border border-red-100' :
-                    'bg-amber-50 text-amber-600 border border-amber-100'
-                  }`}>
-                    <Calendar className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-gray-800 block">{inv.cycleLabel}</span>
-                    <span className="text-gray-500 font-mono text-[11px]">Due: {formatDate(inv.dueDate, 'N/A')}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <span className="font-mono font-extrabold text-gray-900">{formatCurrency(inv.amount)}</span>
-                  <span className={`px-2.5 py-1 rounded-full font-black text-[10px] tracking-wider shrink-0 ${
-                    inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' :
-                    inv.status === 'UNPAID' ? 'bg-red-100 text-red-800' :
-                    'bg-amber-100 text-amber-800'
-                  }`}>
-                    {inv.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="space-y-1.5">
+            {billingSchedule.map(inv => <InvoiceRow key={inv.id} invoice={inv} />)}
           </div>
         </div>
 
@@ -246,14 +216,10 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                     <div className="bg-gray-50 rounded-xl p-4 border border-gray-200/60 hover:border-gray-300 hover:shadow-sm transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-extrabold text-base text-gray-950">
-                            {formatCurrency(pt.amount)}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-gray-200 text-gray-700 font-mono uppercase text-[9px] font-bold">
-                            {pt.paymentMethod || 'BANK TRANSFER'}
-                          </span>
+                          <PaymentAmount payment={pt} className="font-extrabold text-base text-gray-950" />
+                          <PaymentMethodBadge method={pt.paymentMethod} />
                         </div>
-                        <p className="text-gray-500 font-medium font-mono mt-1 text-[11px]">
+                        <p className="text-gray-500 font-medium font-mono mt-1 text-xs">
                           Paid on {formatDate(pt.date, 'N/A')}
                         </p>
                       </div>
@@ -280,8 +246,8 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                               <File className="w-5 h-5 text-emerald-600 shrink-0" />
                             )}
                             <div className="truncate max-w-[120px]">
-                              <span className="font-bold underline text-[10px] block truncate" title={uploadedData.name}>{uploadedData.name}</span>
-                              <span className="text-[9px] text-gray-500 block font-mono font-semibold">{uploadedData.size}</span>
+                              <span className="font-bold underline text-xs block truncate" title={uploadedData.name}>{uploadedData.name}</span>
+                              <span className="text-xs text-gray-500 block font-mono font-semibold">{uploadedData.size}</span>
                             </div>
                             <button 
                               type="button"
@@ -340,7 +306,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
             </div>
 
             <span className="text-xs text-gray-700 font-bold block mb-1">Drag receipts here or click</span>
-            <span className="text-[10px] text-gray-500 font-medium">JPEG, PNG, or PDF up to 5MB</span>
+            <span className="text-xs text-gray-500 font-medium">JPEG, PNG, or PDF up to 5MB</span>
             
             {isDragging && (
               <div className="absolute inset-0 bg-blue-50/90 backdrop-blur-sm rounded-2xl flex items-center justify-center font-bold text-blue-600 text-xs">
@@ -351,12 +317,12 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
 
           {Object.keys(receipts).length > 0 && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-              <span className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider block">Uploaded proofs ({Object.keys(receipts).length})</span>
+              <span className="text-xs text-gray-500 font-extrabold uppercase tracking-wider block">Uploaded proofs ({Object.keys(receipts).length})</span>
               <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                 {Object.entries(receipts).map(([id, rawR]) => {
                   const r = rawR as { name: string; size: string; previewUrl: string };
                   return (
-                    <div key={id} className="flex items-center justify-between p-2 rounded bg-white border border-gray-200 text-[11px]">
+                    <div key={id} className="flex items-center justify-between p-2 rounded bg-white border border-gray-200 text-xs">
                       <div className="flex items-center gap-2 truncate max-w-[170px]">
                         <File className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                         <span className="truncate font-semibold text-gray-700">{r.name}</span>
