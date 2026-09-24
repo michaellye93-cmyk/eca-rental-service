@@ -87,11 +87,10 @@ type Props = {
   setReason: (value: string) => void;
   onRefresh: () => void;
   onReady: () => void;
-  onClose: () => void;
+  onClose: (workshopAcknowledged: boolean) => void;
   onReopen: () => void;
   onFile: (kind: any, file?: File) => void;
   onReview: (section: WorkspaceSection, decision: "NONE" | "REVIEWED") => void;
-  onCopyPrevious: () => void;
   onShowAudit: () => void;
   onShowIssues: () => void;
   onOverview: () => void;
@@ -100,6 +99,7 @@ type Props = {
   onReviewSelected?: () => void;
 };
 export default function FinanceMonthClose(p: Props) {
+  const [workshopAcknowledged, setWorkshopAcknowledged] = React.useState(false);
   const { input, month, busy, workspaceMeta } = p;
   const draft = input.month.status === "DRAFT",
     closed = input.month.status === "CLOSED";
@@ -125,10 +125,17 @@ export default function FinanceMonthClose(p: Props) {
     },
     {
       key: "corporate_expense" as const,
-      title: "Shared / corporate opex",
+      title: "Operation Fix Cost",
       source: "Corporate Opex" as const,
       kind: "corporate_expense",
       hint: "Use Amount (RM). Monthly recurring costs use Start Month and optional End Month; Expense Date is optional.",
+    },
+    {
+      key: "other_income" as const,
+      title: "Other Income",
+      source: null,
+      kind: "other_income",
+      hint: "Confirmed manual income, attributed to a vehicle or business unit.",
     },
   ];
   const isReviewed = (key: WorkspaceSection) =>
@@ -153,6 +160,8 @@ export default function FinanceMonthClose(p: Props) {
       policy.coverage_start.slice(0, 7) <= month &&
       policy.coverage_end.slice(0, 7) >= month,
   );
+  const unallocatedWorkshop = p.report?.totals.workshop_unallocated ?? 0;
+  const hasUnallocatedWorkshop = unallocatedWorkshop > 0;
   const checks: [boolean, string][] = [
     [Boolean(input.month.refreshed_at), "E-Hailing revenue refreshed"],
     [Boolean(input.smart_import), "Smart Drive Sales Report approved"],
@@ -314,8 +323,8 @@ export default function FinanceMonthClose(p: Props) {
           </div>
         </section>
         {optional.map((section) => {
-          const rows = input.expenses.filter(
-              (row) => row.payment_source === section.source,
+          const rows = section.key === "other_income" ? (input.other_income ?? []).filter((row) => !row.cancelled_at) : input.expenses.filter(
+              (row) => !row.cancelled_at && row.payment_source === section.source,
             ),
             review = workspaceMeta?.reviews.find(
               (row) => row.section === section.key,
@@ -346,7 +355,7 @@ export default function FinanceMonthClose(p: Props) {
                 <p>
                   {rows.length} records
                   {section.source !== "Corporate Opex"
-                    ? ` · ${new Set(rows.map((row) => row.plate_key)).size} vehicles`
+                    ? ` · ${new Set(rows.map((row) => row.plate_key).filter(Boolean)).size} vehicles`
                     : ""}
                 </p>
                 {upload && <p>Last uploaded: {updated(upload.imported_at)}</p>}
@@ -360,7 +369,7 @@ export default function FinanceMonthClose(p: Props) {
                 )}
                 <p className="finance-column-hint">
                   Excel columns:{" "}
-                  {section.source === "Corporate Opex"
+                  {section.key === "other_income" ? "Finance Month, Income Type, Amount, Car Plate or Business Unit" : section.source === "Corporate Opex"
                     ? "Frequency, Start Month, End Month, Expense Date, Category, Amount (RM)"
                     : "Car Plate, Date, Amount"}
                   {section.source === "Vehicle Direct Cost" ? ", Category" : ""}
@@ -370,26 +379,17 @@ export default function FinanceMonthClose(p: Props) {
               <div className="finance-section-action">
                 {!closed && (
                   <>
-                    <button
+                    {section.source && <button
                       className="finance-secondary"
                       disabled={busy || !draft}
                       onClick={() => p.onExpenses(section.source)}
                     >
                       Add expense
-                    </button>
+                    </button>}
                     <Upload
                       disabled={busy || !draft}
                       onFile={(file) => p.onFile(section.kind, file)}
                     />
-                    {section.key === "corporate_expense" && (
-                      <button
-                        className="finance-secondary"
-                        disabled={busy || !draft}
-                        onClick={p.onCopyPrevious}
-                      >
-                        Copy previous month
-                      </button>
-                    )}
                     <button
                       className="finance-secondary"
                       disabled={busy || !draft || Boolean(review?.valid)}
@@ -408,12 +408,12 @@ export default function FinanceMonthClose(p: Props) {
                     </button>
                   </>
                 )}
-                <button
+                {section.source && <button
                   className="finance-link"
                   onClick={() => p.onExpenses(section.source)}
                 >
                   View records
-                </button>
+                </button>}
               </div>
             </section>
           );
@@ -466,6 +466,12 @@ export default function FinanceMonthClose(p: Props) {
           </button>
           {input.month.status === "READY FOR REVIEW" && (
             <>
+              {hasUnallocatedWorkshop && (
+                <label>
+                  <input type="checkbox" checked={workshopAcknowledged} onChange={(e) => setWorkshopAcknowledged(e.target.checked)} />{" "}
+                  I acknowledge {money(unallocatedWorkshop)} of workshop costs are not allocated to vehicles, so vehicle margins are incomplete.
+                </label>
+              )}
               <label>
                 <input
                   type="checkbox"
@@ -476,8 +482,8 @@ export default function FinanceMonthClose(p: Props) {
               </label>
               <button
                 className="finance-primary"
-                disabled={busy || !prepared || !p.acknowledged}
-                onClick={p.onClose}
+                disabled={busy || !prepared || !p.acknowledged || (hasUnallocatedWorkshop && !workshopAcknowledged)}
+                onClick={() => p.onClose(workshopAcknowledged)}
               >
                 Close {monthName}
               </button>

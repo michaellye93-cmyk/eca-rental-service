@@ -26,6 +26,9 @@ export const transitionMonth = (month: string, action: 'READY' | 'CLOSE' | 'REOP
   rpc<FinanceInput>('finance_transition_month', { p_month: financeMonth(month), p_action: action, p_revision: revision, p_acknowledgement: acknowledgement });
 export type RecordKind = 'vehicle' | 'recurring_cost' | 'insurance' | 'expense';
 export const saveRecord = (kind: RecordKind, record: object) => rpc<void>('finance_save_record', { p_kind: kind, p_record: recordPayload(kind, record) });
+export type RecordAction = 'ADD' | 'UPDATE' | 'OVERRIDE_MONTH' | 'STOP' | 'CANCEL' | 'CORRECT_PLATE';
+export const mutateRecord = (kind: RecordKind, action: RecordAction, record: object, effectiveMonth: string, revision: number, reason = '') =>
+  rpc<FinanceInput>('finance_mutate_record', { p_kind: kind, p_action: action, p_record: recordPayload(kind, record), p_effective_month: financeMonth(effectiveMonth), p_revision: revision, p_reason: reason });
 export const deleteVehicle = (month: string, plate: string, revision: number) =>
   rpc<FinanceInput>('finance_delete_vehicle', { p_month: financeMonth(month), p_plate: plate, p_revision: revision });
 export const postSmartDrive = (month: string, filename: string, rows: SmartDriveRow[], replace: boolean, revision: number, sourceHash: string | null = null) =>
@@ -37,3 +40,12 @@ export const postBankStatement = (month: string, filename: string, accountLabel:
   rpc<FinanceInput>('finance_post_bank_statement', { p_month: financeMonth(month), p_filename: filename, p_account_label: accountLabel, p_rows: rows, p_revision: revision, p_source_hash: sourceHash });
 export const reviewBankMatch = (month: string, importId: string, row: import('../../types/finance-bank').BankReviewRow, revision: number) =>
   rpc<FinanceInput>('finance_review_bank_match', { p_month: financeMonth(month), p_import_id: importId, p_source_row: row.source_row, p_decision: row.decision, p_matched_kind: row.matched_kind, p_matched_id: row.matched_id, p_note: row.review_note, p_revision: revision });
+export const generateFixedCosts = (month: string, revision: number) => rpc<FinanceInput>('finance_generate_fixed_costs', { p_month: financeMonth(month), p_revision: revision });
+export const saveFixedCost = (action: 'ADD' | 'UPDATE_FUTURE' | 'STOP' | 'DELETE', record: object, month: string, revision: number) => {
+  const payload = { ...record } as Record<string, unknown>;
+  for (const key of ['effective_from', 'effective_until']) if (typeof payload[key] === 'string') payload[key] = payload[key] ? financeMonth(payload[key] as string) : null;
+  return rpc<FinanceInput>('finance_save_fixed_cost', { p_action: action, p_record: payload, p_month: financeMonth(month), p_revision: revision });
+};
+export const saveWorkshopSummary = (action: 'ADD' | 'UPDATE' | 'CANCEL', record: object, revision: number) => rpc<FinanceInput>('finance_save_workshop_summary', { p_action: action, p_record: recordPayload('expense', record), p_revision: revision });
+export const linkWorkshopAllocation = (summaryId: string, expenseId: string, revision: number) => rpc<FinanceInput>('finance_link_workshop_allocation', { p_summary_id: summaryId, p_expense_id: expenseId, p_revision: revision });
+export const saveOtherIncome = (action: 'ADD' | 'UPDATE' | 'CANCEL', record: object, revision: number) => rpc<FinanceInput>('finance_save_other_income', { p_action: action, p_record: recordPayload('expense', record), p_revision: revision });

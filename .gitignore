@@ -53,3 +53,9 @@ supabase/.ignore/
 .superpowers/
 docs/superpowers/
 scripts/safety/
+
+# Finance working notes containing real vehicle plates and cost figures (public repository)
+docs/finance-august-2026-cleanup-proposal.md
+docs/finance-customization-astra-review.md
+docs/finance-customization-handover.md
+docs/finance-customization-requirement-coverage.md

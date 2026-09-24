@@ -6,10 +6,14 @@ export default function FinanceAudit({
   input,
   report,
   workspaceMeta,
+  onUndo,
+  onReplace,
 }: {
   input: FinanceInput | null;
   report: FinanceReport | null;
   workspaceMeta: WorkspaceMeta | null;
+  onUndo?: (uploadId: string) => Promise<boolean>;
+  onReplace?: (upload: { id: string; kind: string }, file?: File) => void;
 }) {
   if (!input) return <p>No month loaded.</p>;
   return (
@@ -40,16 +44,18 @@ export default function FinanceAudit({
       </section>
       <section className="finance-audit">
         <h3>Import history</h3>
-        <Table headers={["Type", "File", "Rows", "Imported", "Status"]}>
-          {[...input.imports, ...(workspaceMeta?.uploads ?? [])].map((item) => (
-            <tr key={item.id}>
+        <Table headers={["Type", "File", "Rows", "Imported", "Status", "Action"]}>
+          {[...input.imports, ...(workspaceMeta?.uploads ?? [])].map((item) => {
+            const reviewedUpload = workspaceMeta?.uploads.some((upload) => upload.id === item.id) ?? false;
+            return <tr key={item.id}>
               <td>{item.kind}</td>
               <td>{item.filename}</td>
               <td>{item.row_count}</td>
               <td>{item.imported_at}</td>
               <td>{"status" in item ? item.status : "POSTED"}</td>
+              <td>{reviewedUpload && "status" in item && item.status === "POSTED" ? <div className="finance-dialog-actions">{onUndo && <button type="button" className="finance-secondary" onClick={() => void onUndo(item.id)}>Undo import</button>}{onReplace && <label className="finance-secondary">Replace selected upload<input className="finance-file-input" type="file" accept=".xlsx" onChange={(event) => { onReplace({ id: item.id, kind: item.kind }, event.target.files?.[0]); event.target.value = ""; }} /></label>}</div> : "—"}</td>
             </tr>
-          ))}
+          })}
         </Table>
       </section>
       <details className="finance-audit">
@@ -132,7 +138,7 @@ export default function FinanceAudit({
             return (
               <tr key={row.id}>
                 <td>{row.id}</td>
-                <td>{row.payment_source}</td>
+                <td>{row.payment_source === "Corporate Opex" ? "Operation Fix Cost" : row.payment_source}</td>
                 <td>{row.sheet_name ?? "Manual / reviewed bank entry"}</td>
                 <td>{row.source_row ?? "—"}</td>
                 <td>{row.reference}</td>

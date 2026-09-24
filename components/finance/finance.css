@@ -271,6 +271,29 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+.finance-table-sort {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.finance-table-sort:focus-visible {
+  outline: 2px solid var(--f-accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.finance-sort-indicator {
+  color: var(--f-accent);
+  font-size: 10px;
+}
 .finance-table td {
   padding: 12px 8px;
   border-bottom: 1px solid #edf1f3;
@@ -613,6 +636,15 @@
   border-color: #b8dfd2;
   background: #f0faf6;
   color: #176a59;
+}
+.finance-inline-warning {
+  display: block;
+  max-width: 280px;
+  margin-top: 4px;
+  color: #805819;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
 }
 .finance-empty {
   padding: 13px 0;

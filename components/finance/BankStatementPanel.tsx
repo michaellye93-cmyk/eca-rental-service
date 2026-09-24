@@ -514,7 +514,7 @@ function ReviewRow({
               <option value="">Cost type</option>
               <option>Workshop Billing</option>
               <option>Vehicle Direct Cost</option>
-              <option>Corporate Opex</option>
+              <option value="Corporate Opex">Operation Fix Cost</option>
             </select>
             {row.payment_source !== "Corporate Opex" && (
               <select

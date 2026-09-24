@@ -65,6 +65,8 @@ type ExpenseProps = {
   source: FinanceExpense["payment_source"];
   disabled: boolean;
   onSave: (record: FinanceExpense) => Promise<boolean>;
+  onCancel?: (record: FinanceExpense, reason: string) => Promise<boolean>;
+  initialId?: string;
 };
 type MasterProps = {
   input: FinanceInput;
@@ -74,6 +76,8 @@ type MasterProps = {
     kind: "vehicle" | "recurring_cost" | "insurance",
     record: object,
   ) => Promise<boolean>;
+  initialId?: string;
+  onCancel?: (kind: "recurring_cost" | "insurance", record: object, reason: string) => Promise<boolean>;
 };
 type ExpenseValues = {
   plate_key: string;
@@ -83,9 +87,15 @@ type ExpenseValues = {
   supplier: string;
   reference: string;
   description: string;
+  frequency: "MONTHLY_RECURRING" | "MONTHLY_SUMMARY" | "ONE_OFF";
+  start_month: string;
+  end_month: string;
+  source: string;
+  notes: string;
 };
 type VehicleValues = {
   display_plate: string;
+  model: string;
   business_unit: BusinessUnit;
   ownership_type: string;
   status: string;
@@ -106,6 +116,9 @@ type PolicyValues = {
   coverage_start: string;
   coverage_end: string;
   payment_date: string;
+  supplier: string;
+  reference: string;
+  source: string;
 };
 
 const monthStart = (month: string) => `${month.slice(0, 7)}-01`;
@@ -154,6 +167,8 @@ export function ExpenseForm({
   source,
   disabled,
   onSave,
+  onCancel,
+  initialId,
 }: ExpenseProps) {
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<ExpenseValues>(() =>
@@ -181,10 +196,11 @@ export function ExpenseForm({
 
   useEffect(() => {
     generation.current++;
-    setSelected("");
-    setValues(blankExpense(month));
+    const record = input.expenses.find((item) => item.id === initialId && item.payment_source === source);
+    setSelected(record?.id ?? "");
+    setValues(record ? expenseValues(record) : blankExpense(month));
     setError(null);
-  }, [month, source]);
+  }, [month, source, initialId, input.expenses]);
   const choose = (id: string) => {
     setSelected(id);
     setError(null);
@@ -194,7 +210,8 @@ export function ExpenseForm({
     setValues(record ? expenseValues(record) : blankExpense(month));
   };
   const recurring = records.find((item, index) => recordKey(item, `expense-${index}`) === selected);
-  const isRecurring = isCorporate && recurring?.frequency === "MONTHLY_RECURRING";
+  const isRecurring = isCorporate && values.frequency === "MONTHLY_RECURRING";
+  const isMonthlySummary = !isCorporate && values.frequency === "MONTHLY_SUMMARY";
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (
@@ -210,7 +227,7 @@ export function ExpenseForm({
       ...original,
       id: original?.id,
       finance_month: monthStart(month),
-      billing_date: values.billing_date || null,
+      billing_date: isRecurring || isMonthlySummary ? null : values.billing_date || null,
       plate_key: isCorporate ? null : values.plate_key,
       category: values.category,
       payment_source: source,
@@ -218,6 +235,11 @@ export function ExpenseForm({
       amount: Number(values.amount),
       reference: nullable(values.reference),
       description: nullable(values.description),
+      frequency: values.frequency,
+      start_month: isRecurring ? monthStart(values.start_month || month) : isMonthlySummary ? monthStart(month) : null,
+      end_month: isRecurring && values.end_month ? monthStart(values.end_month) : isMonthlySummary ? monthStart(month) : null,
+      source: nullable(values.source),
+      notes: nullable(values.notes),
     };
     const current = generation.current;
     setPending(true);
@@ -255,8 +277,13 @@ export function ExpenseForm({
           ))}
         </select>
       </Field>
-      {isRecurring && <p className="finance-muted-action">Monthly recurring · {recurring.start_month?.slice(0, 7)} to {recurring.end_month?.slice(0, 7) ?? "ongoing"}. Expense Date is optional.</p>}
+      {isRecurring && <p className="finance-muted-action">Monthly recurring · {recurring?.start_month?.slice(0, 7) ?? values.start_month} to {(recurring?.end_month?.slice(0, 7) ?? values.end_month) || "ongoing"}. Expense Date is optional.</p>}
       <div className="finance-form-grid">
+        <Field label={isCorporate ? "Frequency" : "Entry basis"}>
+          <select value={values.frequency} disabled={locked} onChange={(event) => setValues({ ...values, frequency: event.target.value as ExpenseValues["frequency"] })}>
+            <option value="ONE_OFF">One-off with actual date</option>{isCorporate ? <option value="MONTHLY_RECURRING">Monthly recurring</option> : <option value="MONTHLY_SUMMARY">Monthly vehicle total (no exact date)</option>}
+          </select>
+        </Field>
         {!isCorporate && (
           <Field label="Vehicle">
             <select
@@ -276,7 +303,7 @@ export function ExpenseForm({
             </select>
           </Field>
         )}
-        <Field label={isRecurring ? "Expense Date (optional)" : "Date"}>
+        {!isMonthlySummary && <Field label={isRecurring ? "Expense Date (optional)" : "Actual date"}>
           <input
             required={!isRecurring}
             type="date"
@@ -288,7 +315,7 @@ export function ExpenseForm({
               setValues({ ...values, billing_date: event.target.value })
             }
           />
-        </Field>
+        </Field>}
         <Field label="Category">
           <select
             required
@@ -328,6 +355,8 @@ export function ExpenseForm({
             }
           />
         </Field>
+        {isRecurring && <><Field label="Start month"><input required type="month" value={values.start_month} disabled={locked} onChange={(event) => setValues({ ...values, start_month: event.target.value })} /></Field><Field label="End month (optional)"><input type="month" value={values.end_month} disabled={locked} onChange={(event) => setValues({ ...values, end_month: event.target.value })} /></Field></>}
+        <Field label="Source (optional)"><input value={values.source} disabled={locked} onChange={(event) => setValues({ ...values, source: event.target.value })} /></Field>
         <Field label="Reference (optional)">
           <input
             value={values.reference}
@@ -347,32 +376,37 @@ export function ExpenseForm({
           }
         />
       </Field>
+      <Field label="Internal notes (optional)"><input value={values.notes} disabled={locked} onChange={(event) => setValues({ ...values, notes: event.target.value })} /></Field>
       <ErrorLine error={error} />
       <Pending pending={pending} />
       <button className="finance-primary" disabled={locked}>
         {selected ? "Save changes" : "Save expense"}
       </button>
+      {recurring && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${recurring.category} for ${money.format(recurring.amount)} from ${recurring.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this expense"); if (reason?.trim()) void onCancel(recurring, reason.trim()); }}>Delete expense</button>}
     </form>
   );
 }
 
-export function VehicleForm({ input, month, disabled, onSave, onDelete }: MasterProps & {
+export function VehicleForm({ input, month, disabled, onSave, onDelete, initialId }: MasterProps & {
   onDelete: (vehicle: FinanceVehicle) => Promise<boolean>;
 }) {
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<VehicleValues>(blankVehicle);
   const [pending, setPending] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [plateCorrectionReason, setPlateCorrectionReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
   useEffect(() => {
     generation.current++;
-    setSelected("");
-    setValues(blankVehicle());
+    const vehicle = input.vehicles.find((item) => item.vehicle_id === initialId || item.plate_key === initialId);
+    setSelected(vehicle?.plate_key ?? "");
+    setValues(vehicle ? vehicleValues(vehicle) : blankVehicle());
     setError(null);
     setPending(false);
     setConfirmDelete(false);
-  }, [month]);
+    setPlateCorrectionReason("");
+  }, [month, initialId, input.vehicles]);
   const vehicles = input.vehicles.filter((vehicle) => !vehicle.deleted_at);
   const original = vehicles.find(
     (vehicle) => vehicle.plate_key === selected,
@@ -388,17 +422,35 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete }: Master
       (item) => item.plate_key === key,
     );
     setValues(vehicle ? vehicleValues(vehicle) : blankVehicle());
+    setPlateCorrectionReason("");
   };
+  const correctedPlate = normalizePlate(values.display_plate);
+  const isPlateCorrection = Boolean(
+    original && correctedPlate !== original.plate_key,
+  );
+  const linkedCount = original
+    ? input.recurring_costs.filter((row) => row.plate_key === original.plate_key).length +
+      input.insurance.filter((row) => row.plate_key === original.plate_key).length +
+      input.expenses.filter((row) => row.plate_key === original.plate_key).length +
+      (input.other_income ?? []).filter((row) => row.plate_key === original.plate_key).length
+    : 0;
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!values.display_plate.trim()) return;
+    if (isPlateCorrection && !plateCorrectionReason.trim()) {
+      setError("Enter a reason to confirm this plate correction.");
+      return;
+    }
     const current = generation.current;
     setPending(true);
     setError(null);
     const record = {
       ...original,
       display_plate: values.display_plate.trim(),
-      plate_key: original?.plate_key ?? normalizePlate(values.display_plate),
+      plate_key: correctedPlate,
+      old_plate: isPlateCorrection ? original?.plate_key : undefined,
+      correction_reason: isPlateCorrection ? plateCorrectionReason.trim() : null,
+      model: nullable(values.model),
       business_unit: values.business_unit,
       ownership_type: values.ownership_type.trim(),
       status: values.status,
@@ -463,7 +515,7 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete }: Master
           <input
             required
             value={values.display_plate}
-            disabled={locked || Boolean(original)}
+            disabled={locked}
             onChange={(event) =>
               setValues({ ...values, display_plate: event.target.value })
             }
@@ -486,6 +538,9 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete }: Master
               </option>
             ))}
           </select>
+        </Field>
+        <Field label="Vehicle model (optional)">
+          <input value={values.model} disabled={locked} onChange={(event) => setValues({ ...values, model: event.target.value })} />
         </Field>
         <Field label="Ownership type">
           <input
@@ -513,10 +568,25 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete }: Master
           </select>
         </Field>
       </div>
+      {isPlateCorrection && original && (
+        <section className="finance-message is-warning" aria-label="Plate correction confirmation">
+          <p>
+            Correct <strong>{original.display_plate}</strong> to <strong>{values.display_plate.trim()}</strong>. This updates {linkedCount} linked Finance record(s) and preserves the old plate as an alias. Operational driver and payment data are not changed.
+          </p>
+          <Field label="Plate correction reason">
+            <textarea
+              required
+              value={plateCorrectionReason}
+              disabled={locked}
+              onChange={(event) => setPlateCorrectionReason(event.target.value)}
+            />
+          </Field>
+        </section>
+      )}
       <ErrorLine error={error} />
       <Pending pending={pending} />
       <button className="finance-primary" disabled={locked}>
-        {selected ? "Save changes" : "Save vehicle"}
+        {isPlateCorrection ? "Confirm plate correction" : selected ? "Save changes" : "Save vehicle"}
       </button>
       {original && (
         <button type="button" className="finance-destructive" disabled={locked}
@@ -543,7 +613,7 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete }: Master
   );
 }
 
-export function RecurringForm({ input, month, disabled, onSave }: MasterProps) {
+export function RecurringForm({ input, month, disabled, onSave, initialId, onCancel }: MasterProps) {
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<CostValues>(() => blankCost(month));
   const [ending, setEnding] = useState(false);
@@ -552,11 +622,12 @@ export function RecurringForm({ input, month, disabled, onSave }: MasterProps) {
   const generation = useRef(0);
   useEffect(() => {
     generation.current++;
-    setSelected("");
-    setValues(blankCost(month));
+    const cost = input.recurring_costs.find((item) => item.id === initialId);
+    setSelected(cost?.id ?? "");
+    setValues(cost ? costValues(cost) : blankCost(month));
     setEnding(false);
     setError(null);
-  }, [month]);
+  }, [month, initialId, input.recurring_costs]);
   const original = input.recurring_costs.find(
     (cost, index) => recordKey(cost, `cost-${index}`) === selected,
   );
@@ -620,7 +691,7 @@ export function RecurringForm({ input, month, disabled, onSave }: MasterProps) {
           onChange={(event) => choose(event.target.value)}
         >
           <option value="">New monthly cost…</option>
-          {input.recurring_costs.map((cost, index) => (
+          {input.recurring_costs.filter((cost) => !cost.cancelled_at).map((cost, index) => (
             <option
               key={recordKey(cost, `cost-${index}`)}
               value={recordKey(cost, `cost-${index}`)}
@@ -731,11 +802,12 @@ export function RecurringForm({ input, month, disabled, onSave }: MasterProps) {
             type="button"
             className="finance-secondary"
             disabled={locked}
-            onClick={() => setEnding(true)}
+            onClick={() => { if (window.confirm(`Stop ${original.cost_type} at ${money.format(original.monthly_amount)} per month? The selected end month remains included; later open months stop contributing and closed reports stay unchanged.`)) setEnding(true); }}
           >
             End cost
           </button>
         )}
+        {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${original.cost_type} at ${money.format(original.monthly_amount)} from open calculations for ${original.start_month.slice(0, 7)} through ${original.end_month?.slice(0, 7) ?? "ongoing"}? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this monthly cost"); if (reason?.trim()) void onCancel("recurring_cost", original, reason.trim()); }}>Delete cost</button>}
         {ending && (
           <>
             <button
@@ -761,7 +833,7 @@ export function RecurringForm({ input, month, disabled, onSave }: MasterProps) {
   );
 }
 
-export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
+export function InsuranceForm({ input, month, disabled, onSave, initialId, onCancel }: MasterProps) {
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<PolicyValues>(blankPolicy);
   const [pending, setPending] = useState(false);
@@ -769,10 +841,11 @@ export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
   const generation = useRef(0);
   useEffect(() => {
     generation.current++;
-    setSelected("");
-    setValues(blankPolicy());
+    const policy = input.insurance.find((item) => item.id === initialId);
+    setSelected(policy?.id ?? "");
+    setValues(policy ? policyValues(policy) : blankPolicy());
     setError(null);
-  }, [month]);
+  }, [month, initialId, input.insurance]);
   const original = input.insurance.find(
     (policy, index) => recordKey(policy, `policy-${index}`) === selected,
   );
@@ -784,7 +857,10 @@ export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
       responsibility: values.responsibility || undefined,
       coverage_start: nullable(values.coverage_start),
       coverage_end: nullable(values.coverage_end),
-      payment_date: input.calculation_version === 1 && original ? original.payment_date : values.responsibility === "ECA_PAID" && Number(values.premium) > 0 ? nullable(values.coverage_start) : null,
+      payment_date: nullable(values.payment_date),
+      supplier: nullable(values.supplier),
+      reference: nullable(values.reference),
+      source: nullable(values.source),
     }),
     [original, values, input.calculation_version],
   );
@@ -836,7 +912,7 @@ export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
           onChange={(event) => choose(event.target.value)}
         >
           <option value="">New policy…</option>
-          {input.insurance.map((policy, index) => (
+          {input.insurance.filter((policy) => !policy.cancelled_at).map((policy, index) => (
             <option
               key={recordKey(policy, `policy-${index}`)}
               value={recordKey(policy, `policy-${index}`)}
@@ -908,6 +984,18 @@ export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
             }
           />
         </Field>
+        <Field label="Payment date (optional)">
+          <input type="date" value={values.payment_date} disabled={locked} onChange={(event) => setValues({ ...values, payment_date: event.target.value })} />
+        </Field>
+        <Field label="Supplier (optional)">
+          <input value={values.supplier} disabled={locked} onChange={(event) => setValues({ ...values, supplier: event.target.value })} />
+        </Field>
+        <Field label="Reference (optional)">
+          <input value={values.reference} disabled={locked} onChange={(event) => setValues({ ...values, reference: event.target.value })} />
+        </Field>
+        <Field label="Source (optional)">
+          <input value={values.source} disabled={locked} onChange={(event) => setValues({ ...values, source: event.target.value })} />
+        </Field>
       </div>
       <p className="finance-muted-action">
         Selected-month ECA allocation: {money.format(allocation)}
@@ -931,6 +1019,7 @@ export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
           setValues({...blankPolicy(), plate_key: original.plate_key, coverage_start: start?.toISOString().slice(0, 10) ?? ""});
         }}>Add renewal</button>
       )}
+      {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete this ${money.format(original.premium)} policy covering ${original.coverage_start ?? "no start date"} through ${original.coverage_end ?? "no end date"}? It stops contributing to open-month calculations; closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this insurance policy"); if (reason?.trim()) void onCancel("insurance", original, reason.trim()); }}>Delete policy</button>}
     </form>
   );
 }
@@ -938,12 +1027,17 @@ export function InsuranceForm({ input, month, disabled, onSave }: MasterProps) {
 function blankExpense(month: string): ExpenseValues {
   return {
     plate_key: "",
-    billing_date: monthStart(month),
+    billing_date: "",
     category: "",
     amount: "",
     supplier: "",
     reference: "",
     description: "",
+    frequency: "ONE_OFF",
+    start_month: month.slice(0, 7),
+    end_month: "",
+    source: "Manual",
+    notes: "",
   };
 }
 function expenseValues(record: FinanceExpense): ExpenseValues {
@@ -955,11 +1049,17 @@ function expenseValues(record: FinanceExpense): ExpenseValues {
     supplier: record.supplier ?? "",
     reference: record.reference ?? "",
     description: record.description ?? "",
+    frequency: record.frequency ?? "ONE_OFF",
+    start_month: record.start_month?.slice(0, 7) ?? record.finance_month.slice(0, 7),
+    end_month: record.end_month?.slice(0, 7) ?? "",
+    source: record.source ?? "",
+    notes: record.notes ?? "",
   };
 }
 function blankVehicle(): VehicleValues {
   return {
     display_plate: "",
+    model: "",
     business_unit: "E-HAILING",
     ownership_type: "",
     status: "Active",
@@ -968,6 +1068,7 @@ function blankVehicle(): VehicleValues {
 function vehicleValues(vehicle: FinanceVehicle): VehicleValues {
   return {
     display_plate: vehicle.display_plate,
+    model: vehicle.model ?? "",
     business_unit: vehicle.business_unit,
     ownership_type: vehicle.ownership_type,
     status: vehicle.status,
@@ -1003,6 +1104,9 @@ function blankPolicy(): PolicyValues {
     coverage_start: "",
     coverage_end: "",
     payment_date: "",
+    supplier: "",
+    reference: "",
+    source: "Manual",
   };
 }
 function policyValues(policy: Insurance): PolicyValues {
@@ -1013,6 +1117,9 @@ function policyValues(policy: Insurance): PolicyValues {
     coverage_start: policy.coverage_start ?? "",
     coverage_end: policy.coverage_end ?? "",
     payment_date: policy.payment_date ?? "",
+    supplier: policy.supplier ?? "",
+    reference: policy.reference ?? "",
+    source: policy.source ?? "",
   };
 }
 function vehicleName(vehicles: FinanceVehicle[], plateKey: string) {

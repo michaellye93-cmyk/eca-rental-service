@@ -35,7 +35,7 @@ test('calculates e-hailing revenue as cash plus claim while treating the claim a
     car_plate_snapshot: 'XAA 1001', plate_key: 'xaa 1001', payment_date: '2026-08-03', cash_amount: 150, service_claim: 300,
     gross_rental_revenue: 450, payment_method: null, refreshed_at: '2026-08-31', finance_month: '2026-08', attribution_changed: false }] }));
   assert.deepEqual(report.totals, { cash: 150, revenue: 450, service_claim: 300, commission: 0, recurring: 0, workshop: 0,
-    insurance: 0, direct_costs: 0, contribution: 150, margin: 1 / 3 });
+    workshop_unallocated: 0, insurance: 0, direct_costs: 0, contribution: 150, margin: 1 / 3 });
   assert.equal(report.vehicles[0].service_claim, 300);
 });
 
@@ -86,4 +86,38 @@ test('retains unmatched revenue and reports duplicate and incomplete source data
   assert.equal(unmatched.revenue, 50);
   const codes = new Set(report.issues.map((issue) => issue.code));
   for (const code of ['DUPLICATE_SOURCE_ID', 'MISSING_DRIVER', 'MISSING_PLATE', 'HISTORICAL_ATTRIBUTION_CHANGED', 'HISTORICAL_ATTRIBUTION_POSSIBLE', 'UNMATCHED_PLATE']) assert.equal(codes.has(code), true);
+});
+
+test('adds confirmed Other Income once and excludes drafts or cancelled receipts', () => {
+  const report = calculateFinance(input({ other_income: [
+    { id: 'income-1', finance_month: '2026-08-01', status: 'CONFIRMED', income_type: 'Sambung Bayar', amount: 1400, plate_key: 'XAA1001', business_unit: 'E-HAILING', receipt_date: null, reference: 'SB-AUG', notes: null, source: 'Manual / Other Income', confirmation_key: 'one', record_version: 1, cancelled_at: null },
+    { id: 'income-2', finance_month: '2026-08-01', status: 'DRAFT', income_type: 'Expected', amount: 500, plate_key: 'XAA1001', business_unit: 'E-HAILING', receipt_date: null, reference: null, notes: null, source: 'Manual / Other Income', confirmation_key: 'two', record_version: 1, cancelled_at: null },
+    { id: 'income-3', finance_month: '2026-08-01', status: 'CONFIRMED', income_type: 'Cancelled', amount: 900, plate_key: null, business_unit: 'E-HAILING', receipt_date: null, reference: null, notes: null, source: 'Manual / Other Income', confirmation_key: 'three', record_version: 2, cancelled_at: '2026-08-20T00:00:00Z' },
+  ] }));
+  assert.equal(report.vehicles[0].revenue, 1400);
+  assert.equal(report.businesses['E-HAILING'].revenue, 1400);
+  assert.equal(report.totals.revenue, 1400);
+  assert.equal(report.management_profit, 1400);
+});
+
+test('keeps a workshop monthly summary fixed while allocations move cost to vehicles', () => {
+  const report = calculateFinance(input({
+    expenses: [{ id: 'work-1', finance_month: '2026-08-01', billing_date: '2026-08-15', plate_key: 'XAA1001', category: 'Service & Maintenance', payment_source: 'Workshop Billing', supplier: null, amount: 2000, reference: null, description: null, cancelled_at: null }],
+    workshop_summaries: [{ id: 'summary-1', finance_month: '2026-08-01', business_unit: 'E-HAILING', amount: 3000, supplier: null, reference: null, note: null, allocated_amount: 2000, unallocated_amount: 1000, record_version: 1, cancelled_at: null }],
+  }));
+  assert.equal(report.vehicles[0].workshop, 2000);
+  assert.equal(report.businesses['E-HAILING'].workshop_unallocated, 1000);
+  assert.equal(report.totals.workshop, 3000);
+  assert.equal(report.totals.direct_costs, 0);
+  assert.equal(report.management_profit, -3000);
+});
+
+test('excludes softly cancelled Finance costs without removing their history', () => {
+  const report = calculateFinance(input({
+    recurring_costs: [{ id: 'cancelled', obligation_id: 'obligation', version_no: 1, record_version: 2, plate_key: 'XAA1001', start_month: '2026-08-01', end_month: null, cost_type: 'Owner Payout', monthly_amount: 750, payee: null, notes: null, cancelled_at: '2026-08-20T00:00:00Z' }],
+    expenses: [{ id: 'cancelled-expense', finance_month: '2026-08-01', billing_date: '2026-08-15', plate_key: 'XAA1001', category: 'Service & Maintenance', payment_source: 'Workshop Billing', supplier: null, amount: 200, reference: null, description: null, cancelled_at: '2026-08-20T00:00:00Z' }],
+  }));
+  assert.equal(report.totals.recurring, 0);
+  assert.equal(report.totals.workshop, 0);
+  assert.equal(report.totals.direct_costs, 0);
 });

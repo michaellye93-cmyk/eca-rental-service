@@ -19,11 +19,13 @@ export default function FinanceImportPreview({
   onRevalidate,
   validated,
   validationError,
+  onResolve,
 }: any) {
   const value = preview.value,
     workbook = preview.workbook as WorkbookReadResult,
     mapping = preview.mapping as FieldMapping;
   const [limit, setLimit] = useState(50);
+  const [targets, setTargets] = useState<Record<number, string>>({});
   const sheet =
     workbook.sheets.find((s) => s.name === mapping.sheet) ?? workbook.sheets[0];
   const smart = preview.kind === "SMART_DRIVE",
@@ -55,6 +57,7 @@ export default function FinanceImportPreview({
   const errors = value.issues?.some((issue: any) => issue.severity === "error");
   const hasInsurance = rows.some((row: any) => row.coverage_start !== undefined);
   const insuranceSummary = preview.kind === "insurance" ? value.insurance_summary : undefined;
+  const safe = preview.safe;
   const total = preview.kind === "corporate_expense" ? value.total_amount :
     value.gross_revenue ||
     value.total_amount ||
@@ -145,6 +148,17 @@ export default function FinanceImportPreview({
         )}
       </div>}
       {!!value.skipped_rows && <p className="finance-dialog-copy">{value.skipped_rows} recurring {value.skipped_rows === 1 ? "row is" : "rows are"} outside the selected month and will not be posted.</p>}
+      {safe && <div className="finance-preview-stats">
+        <Stat label="New" value={String(safe.counts.new)} />
+        <Stat label="Updated" value={String(safe.counts.updated)} />
+        <Stat label="Unchanged" value={String(safe.counts.unchanged)} />
+        <Stat label="Needs review" value={String(safe.counts.needs_review)} />
+        <Stat label="Current total" value={money(safe.current_total)} />
+        <Stat label="Proposed total" value={money(safe.proposed_total)} />
+      </div>}
+      {safe && safe.counts.unchanged > 0 && safe.counts.new === 0 && safe.counts.updated === 0 && safe.counts.cancelled === 0 && safe.counts.needs_review === 0 && (
+        <p className="finance-dialog-copy" role="status">Already imported — no changes</p>
+      )}
       {smart && (
         <div aria-live="polite">
           {validated ? (
@@ -199,6 +213,7 @@ export default function FinanceImportPreview({
               <thead>
                 <tr>
                   <th>Vehicle</th>
+                  {safe && <th>Change</th>}
                   <th>Date / coverage</th>
                   <th>Category / business</th>
                   <th>{insuranceSummary ? "Premium (RM)" : preview.kind === "corporate_expense" ? "Amount (RM)" : "Amount"}</th>
@@ -219,6 +234,17 @@ export default function FinanceImportPreview({
                     <td>
                       {row.display_plate ?? row.plate_key ?? "Shared cost"}
                     </td>
+                    {safe && <td>
+                      {safe.changes[index]?.action ?? "—"}
+                      {safe.changes[index]?.action === "NEEDS_REVIEW" && <div className="finance-dialog-actions">
+                        {!!safe.changes[index]?.candidates?.length && <select aria-label={`Existing target for row ${index + 1}`} value={targets[index] ?? ""} onChange={(event) => setTargets({ ...targets, [index]: event.target.value })}><option value="">Select existing record</option>{safe.changes[index].candidates.map((candidate: any) => <option key={candidate.record_id} value={candidate.record_id}>{candidate.cost_type ?? candidate.category ?? "Existing record"} · {candidate.payee ?? candidate.supplier ?? "No payee"} · {money(Number(candidate.monthly_amount ?? candidate.amount ?? 0))} · {(candidate.start_month ?? candidate.billing_date)?.slice(0, 7) ?? "—"}{candidate.cancelled_at ? " · Cancelled" : " · Active"}</option>)}</select>}
+                        {safe.changes[index]?.before?.cancelled_at ? <button type="button" className="finance-secondary" disabled={disabled} onClick={() => onResolve(index, "RESTORE", safe.changes[index]?.record_id)}>Restore cancelled record</button> : <>
+                          {safe.changes[index]?.before && <button type="button" className="finance-secondary" disabled={disabled} onClick={() => onResolve(index, "KEEP_EXISTING", safe.changes[index]?.record_id)}>Keep existing</button>}
+                          {(safe.changes[index]?.before || targets[index]) && <button type="button" className="finance-secondary" disabled={disabled || (!safe.changes[index]?.before && !targets[index])} onClick={() => { const target = safe.changes[index]?.record_id ?? targets[index]; const candidate = safe.changes[index]?.candidates?.find((item: any) => item.record_id === target); onResolve(index, candidate?.cancelled_at ? "RESTORE" : "UPDATE_EXISTING", target); }}>{targets[index] && safe.changes[index]?.candidates?.find((item: any) => item.record_id === targets[index])?.cancelled_at ? "Restore selected" : "Update selected"}</button>}
+                          <button type="button" className="finance-secondary" disabled={disabled} onClick={() => onResolve(index, "ADD_SEPARATE")}>Add as separate</button>
+                        </>}
+                      </div>}
+                    </td>}
                     <td>
                       {row.frequency === "MONTHLY_RECURRING" ? `${row.start_month?.slice(0, 7) ?? "—"} – ${row.end_month?.slice(0, 7) ?? "ongoing"}` : row.billing_date ??
                         (row.pickup_date
