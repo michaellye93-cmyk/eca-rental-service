@@ -10,11 +10,13 @@ export interface Car {
   notes?: string;
 }
 
-export enum DriverStatus {
-  GOOD = 'GOOD',
-  MID = 'MID',
-  BAD = 'BAD'
-}
+// A const object rather than an enum so Node's built-in TypeScript support can load it in tests.
+export const DriverStatus = {
+  GOOD: 'GOOD',
+  MID: 'MID',
+  BAD: 'BAD'
+} as const;
+export type DriverStatus = typeof DriverStatus[keyof typeof DriverStatus];
 
 export interface PaymentTransaction {
   id: string;

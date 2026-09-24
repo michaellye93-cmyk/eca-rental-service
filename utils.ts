@@ -1,4 +1,5 @@
-import { Driver, DriverMetrics, DriverStatus } from './types';
+import { DriverStatus } from './types.ts';
+import type { Driver, DriverMetrics, Invoice } from './types.ts';
 
 export const parseDate = (dateVal: string | Date | number | null | undefined): Date => {
   if (!dateVal) return new Date(NaN);
@@ -11,208 +12,128 @@ export const parseDate = (dateVal: string | Date | number | null | undefined): D
   return new Date(str);
 };
 
-export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }))): DriverMetrics => {
-  const now = new Date(referenceDate);
-  now.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
-  const startDate = parseDate(driver.contractStartDate);
-  
-  // Determine effective end date
-  let effectiveEndDate = now;
-  
-  // 1. Cap at Contract End Date if exists (Ghost Record Logic)
-  // Requirement: Exclude invoices dated exactly on the return date or after.
-  if (driver.contractEndDate) {
-      const cEndDate = parseDate(driver.contractEndDate);
-      // If the contract ended, we cap the effective end date.
-      // We subtract 1 millisecond to ensure the invoice ON the end date is excluded (since we use <= comparison or math)
-      // effectively making it strictly < contractEndDate
-      cEndDate.setMilliseconds(cEndDate.getMilliseconds() - 1);
-      
-      if (cEndDate < now) {
-          effectiveEndDate = cEndDate;
-      }
-  }
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-  // 2. Logic: If driver is delisted, stop clock at delist date
-  if (driver.isDelisted) {
-    const delistStr = driver.delistDate || driver.contractEndDate || driver.contractStartDate;
-    if (delistStr) {
-      const dDate = parseDate(delistStr);
-      dDate.setMilliseconds(dDate.getMilliseconds() - 1);
-      if (dDate < effectiveEndDate) {
-        effectiveEndDate = dDate;
-      }
-    }
-  }
-  
-  // Calculate Cycles Elapsed
-  let cyclesElapsed = 0;
-  
-  if (driver.rentalCycle === 'MONTHLY') {
-      // Monthly Logic
-      // We use a loop to count valid invoice dates
-      const timeDiff = effectiveEndDate.getTime() - startDate.getTime();
-      if (timeDiff >= 0) {
-          let d = new Date(startDate);
-          let count = 0;
-          // Loop: while invoice date <= effectiveEndDate
-          // Since we subtracted 1ms from EndDate, an invoice ON the original EndDate will be > effectiveEndDate
-          while (d <= effectiveEndDate) {
-              count++;
-              d.setMonth(d.getMonth() + 1);
-          }
-          cyclesElapsed = count;
-      }
-      
-  } else {
-      // Weekly Logic (Default)
-      const timeDiff = effectiveEndDate.getTime() - startDate.getTime();
-      const millisecondsPerWeek = 1000 * 60 * 60 * 24 * 7;
-      
-      if (timeDiff >= 0) {
-        // Math.floor will count full weeks.
-        // If effectiveEndDate is 6 days after start, result 0.
-        // If effectiveEndDate is 7 days after start (exact next cycle), result 1.
-        // But we want to include the START date invoice (cycle 0).
-        // Standard formula: floor(diff / week) + 1
-        // If effectiveEndDate is reduced by 1ms (just before next cycle), floor is 0. +1 = 1. Correct.
-        cyclesElapsed = Math.floor(timeDiff / millisecondsPerWeek) + 1;
-      }
-  }
+/** The current wall-clock time in Kuala Lumpur as a local Date: the app's business clock. */
+export const kualaLumpurNow = (): Date => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' }));
 
-  const expectedPrincipal = cyclesElapsed * driver.rentalRate;
-  
-  // BASE OUTSTANDING: Pure Rent Arrears
-  // Will be recalculated based on remaining invoice principals
-  
-  // --- COMPOUNDING PENALTY CALCULATION ---
-  // Rate: 18% per annum => Daily Rate
-  const dailyRate = 0.18 / 365;
-  // Grace Period Logic:
-  // We want penalties to start accruing strictly from Due Date + 2 Days.
-  // Example: Due Jan 1. +2 Days = Jan 3.
-  // We want Jan 3 to be the first day of penalty (1 day late).
-  // So Threshold must be Jan 2.
-  // Threshold = DueDate + gracePeriodDays.
-  // Jan 2 = Jan 1 + 1.
-  // So gracePeriodDays must be 1.
-  const gracePeriodDays = 1;
+const endOfDay = (value: Date): Date => {
+  const end = new Date(value);
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
 
-  let totalPenalty = 0;
-  let totalDailyInterest = 0;
-  let sumRemainingPrincipal = 0;
+/** Due date of rent cycle `index`, anchored to the contract start (months use calendar rollover). */
+const dueDateOf = (start: Date, cycle: Driver['rentalCycle'], index: number): Date => {
+  const due = new Date(start);
+  if (cycle === 'MONTHLY') due.setMonth(start.getMonth() + index);
+  else due.setDate(start.getDate() + index * 7);
+  return due;
+};
 
-  // Clone payments to consume them (FIFO)
-  // Sort by date ascending AND Filter by referenceDate
-  let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: parseDate(p.date), amount: p.amount + (p.serviceClaim || 0) }))
-    .filter(p => p.date <= now) // Filter payments made after the reference date
+/** Rent stops before the contract end date or the effective delist date, whichever comes first. */
+const accrualStop = (driver: Driver): Date | null => {
+  const candidates = [driver.contractEndDate];
+  if (driver.isDelisted) candidates.push(driver.delistDate || driver.contractEndDate || driver.contractStartDate);
+  const stops = candidates.filter(Boolean).map(parseDate).filter(date => !isNaN(date.getTime()));
+  return stops.length ? new Date(Math.min(...stops.map(date => date.getTime()))) : null;
+};
+
+interface RentObligation {
+  index: number;
+  dueDate: Date;
+  allocations: { date: Date; amount: number }[];
+  remaining: number;
+}
+
+const MAX_RENT_CYCLES = 5000;
+
+/**
+ * The single rent schedule behind balances, invoices and due dates.
+ * Rent falls due each cycle from the contract start and keeps accruing past the recorded contract
+ * length until an end date or delist. Cash and service claims dated on or before the reference day
+ * settle the oldest obligations first. With `includeUpcoming`, obligations not yet due within the
+ * recorded contract length are listed too and receive any advance payment.
+ */
+const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming: boolean): RentObligation[] => {
+  const start = parseDate(driver.contractStartDate);
+  if (isNaN(start.getTime())) return [];
+  const referenceEnd = endOfDay(referenceDate);
+  const stop = accrualStop(driver);
+  const recordedLength = Number.isFinite(driver.contractDuration) ? driver.contractDuration : 0;
+  const payments = (driver.paymentHistory || [])
+    .map(p => ({ date: parseDate(p.date), amount: p.amount + (p.serviceClaim || 0) }))
+    .filter(p => p.date <= referenceEnd)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  // Iterate through each cycle that has elapsed
-  for (let i = 0; i < cyclesElapsed; i++) {
-    // Determine the invoice date (Due Date) for this cycle
-    const invoiceDate = new Date(startDate);
-    if (driver.rentalCycle === 'MONTHLY') {
-      invoiceDate.setMonth(startDate.getMonth() + i);
-    } else {
-      invoiceDate.setDate(startDate.getDate() + (i * 7));
+  const obligations: RentObligation[] = [];
+  for (let index = 0; index < MAX_RENT_CYCLES; index++) {
+    const dueDate = dueDateOf(start, driver.rentalCycle, index);
+    if (stop && dueDate >= stop) break;
+    if (dueDate > referenceEnd && (!includeUpcoming || index >= recordedLength)) break;
+    let remaining = driver.rentalRate;
+    const allocations: RentObligation['allocations'] = [];
+    while (remaining > 0.01 && payments.length) {
+      const payment = payments[0];
+      const amount = Math.min(remaining, payment.amount);
+      allocations.push({ date: payment.date, amount });
+      remaining -= amount;
+      payment.amount -= amount;
+      if (payment.amount <= 0.01) payments.shift();
     }
+    obligations.push({ index, dueDate, allocations, remaining });
+  }
+  return obligations;
+};
 
-    let invoicePrincipal = driver.rentalRate;
-    
-    // Penalty Start Date: Interest begins accruing on the 3rd day after the invoice date
-    // Grace Period = 3 days.
-    // Example: Invoice Jan 1. Grace Jan 2, Jan 3, Jan 4. Interest starts Jan 5.
-    // So threshold is InvoiceDate + 3 days.
-    const penaltyStartDate = new Date(invoiceDate);
+export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = kualaLumpurNow()): DriverMetrics => {
+  const now = endOfDay(referenceDate);
+  const obligations = buildRentSchedule(driver, referenceDate, false);
+  const cyclesElapsed = obligations.length;
+
+  // The penalty is a projection compounding daily at 18% p.a. It starts on the second day after the
+  // due date (due 1 Jan: first penalty day 3 Jan) and is never part of totalOutstanding.
+  const dailyRate = 0.18 / 365;
+  const gracePeriodDays = 1;
+  let totalPenalty = 0;
+  let totalDailyInterest = 0;
+  let principalOutstanding = 0;
+
+  for (const obligation of obligations) {
+    const penaltyStartDate = new Date(obligation.dueDate);
     penaltyStartDate.setDate(penaltyStartDate.getDate() + gracePeriodDays);
-
-    // Consumption Logic: Pay off this invoice with available payments
-    while (invoicePrincipal > 0.01) { // Float tolerance
-        if (availablePayments.length === 0) break; // No more payments
-        
-        let payment = availablePayments[0];
-        let allocation = Math.min(invoicePrincipal, payment.amount);
-        
-        // Check if this allocation was late
-        // Late if payment date is AFTER the penalty start date
-        if (payment.date > penaltyStartDate) {
-            const diffTime = payment.date.getTime() - penaltyStartDate.getTime();
-            const daysLate = Math.ceil(diffTime / (1000 * 3600 * 24));
-            
-            if (daysLate > 0) {
-                // Calculate Interest on this chunk: Principal * ((1+r)^t - 1)
-                // This is the penalty accrued for the duration it was unpaid
-                const interest = allocation * (Math.pow(1 + dailyRate, daysLate) - 1);
-                totalPenalty += interest;
-            }
-        }
-        
-        invoicePrincipal -= allocation;
-        payment.amount -= allocation;
-        
-        if (payment.amount <= 0.01) {
-            availablePayments.shift(); // Payment exhausted
-        }
+    for (const allocation of obligation.allocations) {
+      const daysLate = Math.ceil((allocation.date.getTime() - penaltyStartDate.getTime()) / DAY_MS);
+      if (allocation.date > penaltyStartDate && daysLate > 0) {
+        totalPenalty += allocation.amount * (Math.pow(1 + dailyRate, daysLate) - 1);
+      }
     }
-    
-    // If invoice is still outstanding (partially or fully)
-    if (invoicePrincipal > 0.01) {
-        sumRemainingPrincipal += invoicePrincipal;
-
-        // Calculate penalty up to NOW if currently late
-        if (now > penaltyStartDate) {
-            const diffTime = now.getTime() - penaltyStartDate.getTime();
-            const daysLate = Math.ceil(diffTime / (1000 * 3600 * 24));
-            
-            if (daysLate > 0) {
-                // Current Debt for this chunk = Principal * (1+r)^t
-                const currentDebt = invoicePrincipal * Math.pow(1 + dailyRate, daysLate);
-                const interest = currentDebt - invoicePrincipal;
-                totalPenalty += interest;
-                
-                // Calculate Daily Interest for Today (on the compounded debt)
-                // Interest added today = CurrentDebt * dailyRate
-                totalDailyInterest += currentDebt * dailyRate;
-            }
-        }
+    if (obligation.remaining > 0.01) {
+      principalOutstanding += obligation.remaining;
+      const daysLate = Math.ceil((now.getTime() - penaltyStartDate.getTime()) / DAY_MS);
+      if (now > penaltyStartDate && daysLate > 0) {
+        const currentDebt = obligation.remaining * Math.pow(1 + dailyRate, daysLate);
+        totalPenalty += currentDebt - obligation.remaining;
+        totalDailyInterest += currentDebt * dailyRate;
+      }
     }
   }
 
-  // TOTAL DEBT
-  // Constraint: Admin treats penalty as projection. So exposed "totalOutstanding" should be Base only.
-  const principalOutstanding = sumRemainingPrincipal;
-  const totalOutstanding = principalOutstanding; 
-  
-  // Cycles owed based on Principal only (fairness metric)
-  const cyclesOwed = driver.rentalRate > 0 
-    ? principalOutstanding / driver.rentalRate 
-    : 0;
-
-  let status = DriverStatus.GOOD;
-  
-  // Thresholds
+  const cyclesOwed = driver.rentalRate > 0 ? principalOutstanding / driver.rentalRate : 0;
   const badThreshold = driver.rentalCycle === 'MONTHLY' ? 1.1 : 3;
-  const midThreshold = 0;
-
-  if (cyclesOwed >= badThreshold) {
-    status = DriverStatus.BAD;
-  } else if (cyclesOwed > midThreshold) {
-    status = DriverStatus.MID;
-  }
-
-  const progressPercent = Math.min(100, Math.max(0, (cyclesElapsed / driver.contractDuration) * 100));
+  let status: DriverStatus = DriverStatus.GOOD;
+  if (cyclesOwed >= badThreshold) status = DriverStatus.BAD;
+  else if (cyclesOwed > 0) status = DriverStatus.MID;
 
   return {
     cyclesElapsed,
-    expectedPayment: expectedPrincipal,
-    principalOutstanding, // Explicit Base
-    penaltyAmount: totalPenalty, // Explicit Penalty
-    totalOutstanding, // Now strictly Base
+    expectedPayment: cyclesElapsed * driver.rentalRate,
+    principalOutstanding,
+    penaltyAmount: totalPenalty,
+    totalOutstanding: principalOutstanding, // Base only: the admin view never includes the penalty projection
     cyclesOwed,
     status,
-    progressPercent,
+    progressPercent: Math.min(100, Math.max(0, (cyclesElapsed / driver.contractDuration) * 100)),
     dailyInterest: totalDailyInterest
   };
 };
@@ -315,89 +236,24 @@ export const calculateMomentum = (driver: Driver) => {
     return { avgLateness, lastLateness, velocity, isSlipping, trend, isPerfect };
 };
 
-import { Invoice } from './types';
-
-export const generateDriverInvoices = (driver: Driver, referenceDate: Date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kuala_Lumpur" }))): Invoice[] => {
-  const invoices: Invoice[] = [];
-  const startDate = parseDate(driver.contractStartDate);
-  const refDate = new Date(referenceDate);
-  refDate.setHours(23, 59, 59, 999); // Set to end of day to prevent timezone/hour differences from excluding today's payments
-  
-  // Clone payments to consume them (FIFO)
-  // Sort by date ascending AND Filter by referenceDate
-  let availablePayments = (driver.paymentHistory || [])
-    .map(p => ({ ...p, date: parseDate(p.date), amount: p.amount + (p.serviceClaim || 0) }))
-    .filter(p => p.date <= refDate)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-  // Generate invoices for the whole contract duration
-  for (let i = 0; i < driver.contractDuration; i++) {
-    const invoiceDate = new Date(startDate);
-    if (driver.rentalCycle === 'MONTHLY') {
-      invoiceDate.setMonth(startDate.getMonth() + i);
-    } else {
-      invoiceDate.setDate(startDate.getDate() + (i * 7));
-    }
-
-    // Stop generating if contract effectively ended before this invoice
-    if (driver.contractEndDate) {
-      const cEndDate = parseDate(driver.contractEndDate);
-      cEndDate.setMilliseconds(cEndDate.getMilliseconds() - 1);
-      if (invoiceDate > cEndDate) break;
-    }
-    
-    if (driver.isDelisted) {
-      const delistStr = driver.delistDate || driver.contractEndDate || driver.contractStartDate;
-      if (delistStr) {
-        const dDate = parseDate(delistStr);
-        dDate.setMilliseconds(dDate.getMilliseconds() - 1);
-        if (invoiceDate > dDate) break;
-      }
-    }
-
-    let invoicePrincipal = driver.rentalRate;
-    let amountPaidToThisInvoice = 0;
-
-    // Consumption Logic: Pay off this invoice with available payments
-    while (invoicePrincipal > 0.01) {
-        if (availablePayments.length === 0) break;
-        
-        let payment = availablePayments[0];
-        let allocation = Math.min(invoicePrincipal, payment.amount);
-        
-        invoicePrincipal -= allocation;
-        amountPaidToThisInvoice += allocation;
-        payment.amount -= allocation;
-        
-        if (payment.amount <= 0.01) {
-            availablePayments.shift();
-        }
-    }
-
-    let status: 'PAID' | 'PARTIAL' | 'UNPAID' | 'FUTURE' | 'CANCELLED' = 'UNPAID';
-    if (invoicePrincipal <= 0.01) {
-      status = 'PAID';
-    } else if (amountPaidToThisInvoice > 0) {
-      status = 'PARTIAL';
-    } else if (invoiceDate > refDate) {
-      status = 'FUTURE';
-    }
-
-    invoices.push({
-      id: `${driver.id}_${i}`,
+export const generateDriverInvoices = (driver: Driver, referenceDate: Date = kualaLumpurNow()): Invoice[] => {
+  const referenceEnd = endOfDay(referenceDate);
+  return buildRentSchedule(driver, referenceDate, true).map(obligation => {
+    const amountPaid = obligation.allocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+    let status: Invoice['status'] = 'UNPAID';
+    if (obligation.remaining <= 0.01) status = 'PAID';
+    else if (amountPaid > 0) status = 'PARTIAL';
+    else if (obligation.dueDate > referenceEnd) status = 'FUTURE';
+    const due = obligation.dueDate;
+    return {
+      id: `${driver.id}_${obligation.index}`,
       driverId: driver.id,
-      cycleIndex: i,
-      dueDate: `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, '0')}-${String(invoiceDate.getDate()).padStart(2, '0')}`,
+      cycleIndex: obligation.index,
+      dueDate: `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`,
       amount: driver.rentalRate,
-      amountPaid: amountPaidToThisInvoice,
-      remainingBalance: invoicePrincipal > 0.01 ? invoicePrincipal : 0,
+      amountPaid,
+      remainingBalance: obligation.remaining > 0.01 ? obligation.remaining : 0,
       status
-    });
-  }
-
-  return invoices;
+    };
+  });
 };
-
-
-
-
