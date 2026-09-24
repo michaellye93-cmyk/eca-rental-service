@@ -1,7 +1,7 @@
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Driver, DriverStatus } from '../types';
-import { calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
+import { buildCollectionQueues, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -15,17 +15,14 @@ import {
   Pencil,
   CalendarCheck,
   History,
-  Archive,
   UserMinus,
   Trash2,
   Calendar,
-  Activity,
   PieChart,
   AlertTriangle,
   Filter,
   Users,
   TrendingDown,
-  Siren,
   Shield,
   ChevronUp,
   ChevronDown,
@@ -54,11 +51,16 @@ interface AdminDashboardProps {
 // Fixed baseline for the "Restored / Slipped" recovery bar on each driver row.
 const RECOVERY_BASELINE_DATE = new Date('2026-05-27T00:00:00Z');
 
-/** A text setting remembered in this browser under `key`; falls back when storage is empty or unavailable. */
-function usePersistedState<T extends string>(key: string, fallback: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+/**
+ * A text setting remembered in this browser under `key`; falls back when storage is empty or unavailable.
+ * `parse` maps a stored value to a current one (or null to use the fallback), e.g. to translate old tab names.
+ */
+function usePersistedState<T extends string>(key: string, fallback: T, parse?: (stored: string) => T | null): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [value, setValue] = useState<T>(() => {
     try {
-      return (localStorage.getItem(key) as T | null) || fallback;
+      const stored = localStorage.getItem(key);
+      if (stored === null) return fallback;
+      return (parse ? parse(stored) : (stored as T)) || fallback;
     } catch {
       return fallback;
     }
@@ -97,6 +99,102 @@ class ScreenLoadBoundary extends React.Component<{ children: React.ReactNode }, 
   }
 }
 
+type Section = 'DRIVERS' | 'ANALYTICS' | 'RECONCILE' | 'FINANCE';
+
+/** Saved tab values, including the ones used before the Drivers section existed. */
+const SECTION_FROM_STORED: Record<string, Section> = {
+  DRIVERS: 'DRIVERS',
+  ACTIVE: 'DRIVERS',
+  DELISTED: 'DRIVERS',
+  DRIVER_LIST: 'DRIVERS',
+  ANALYTICS: 'ANALYTICS',
+  RECONCILE: 'RECONCILE',
+  FINANCE: 'FINANCE',
+};
+
+const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
+  { id: 'DRIVERS', label: 'Drivers', Icon: Users },
+  { id: 'ANALYTICS', label: 'Analytics', Icon: PieChart },
+  { id: 'RECONCILE', label: 'Bank Recon', Icon: CheckCircle2 },
+  { id: 'FINANCE', label: 'Finance', Icon: DollarSign },
+];
+
+type ChipTone = 'emerald' | 'amber' | 'rose' | 'orange' | 'red' | 'slate';
+const CHIP_DOT: Record<ChipTone, string> = {
+  emerald: 'bg-emerald-500',
+  amber: 'bg-amber-500',
+  rose: 'bg-rose-500',
+  orange: 'bg-orange-500',
+  red: 'bg-red-600',
+  slate: 'bg-slate-500',
+};
+const CHIP_PRESSED: Record<ChipTone, string> = {
+  emerald: 'bg-emerald-50 border-emerald-600 text-emerald-900',
+  amber: 'bg-amber-50 border-amber-600 text-amber-900',
+  rose: 'bg-rose-50 border-rose-600 text-rose-900',
+  orange: 'bg-orange-50 border-orange-600 text-orange-900',
+  red: 'bg-red-50 border-red-600 text-red-900',
+  slate: 'bg-slate-100 border-slate-600 text-slate-900',
+};
+
+type FollowUp = 'TODAY' | 'LATE_1_3' | 'LATE_4_PLUS' | 'NO_PAYMENT_8';
+const FOLLOW_UPS: { id: FollowUp; label: string; tone: ChipTone }[] = [
+  { id: 'TODAY', label: 'Due today', tone: 'orange' },
+  { id: 'LATE_1_3', label: '1–3 days late', tone: 'amber' },
+  { id: 'LATE_4_PLUS', label: '4+ days late', tone: 'red' },
+  { id: 'NO_PAYMENT_8', label: 'No payment 8+ days', tone: 'slate' },
+];
+
+/** A filter button showing how many drivers it covers; pressed while its filter is on. */
+function FilterChip({ label, count, tone, pressed, onClick }: { label: string; count: number; tone: ChipTone; pressed: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-sm font-semibold transition-colors ${pressed ? CHIP_PRESSED[tone] : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+    >
+      <span aria-hidden="true" className={`w-2 h-2 rounded-full ${CHIP_DOT[tone]}`} />
+      {label}{' '}
+      <span className="rounded-full bg-gray-100 px-2 text-xs font-bold text-gray-700">{count}<span className="sr-only"> drivers</span></span>
+    </button>
+  );
+}
+
+/** One figure in the collections summary strip, with an optional progress bar (0 to 1). */
+function SummaryStat({ label, value, detail, progress, hint }: { label: string; value: string; detail?: string; progress?: number; hint?: string }) {
+  return (
+    <div className="min-w-0" title={hint}>
+      <p className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
+        <span className="text-base font-bold text-gray-900">{value}</span>
+        {detail && <span className="text-sm text-gray-500">{detail}</span>}
+        {hint && <span className="sr-only">({hint})</span>}
+      </p>
+      {progress !== undefined && (
+        <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden" aria-hidden="true">
+          <div className="h-full bg-blue-600 rounded-full" style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const shareOf = ({ due, paid }: { due: number; paid: number }) => (due > 0 ? paid / due : 0);
+
+/** Contact-details order: by name or category when chosen, otherwise the list's own order. */
+function sortForDetails<T extends Driver>(rows: T[], config: { key: 'CATEGORY' | 'NAME' | null; direction: 'asc' | 'desc' | null }): T[] {
+  if (!config.key || !config.direction) return rows;
+  const value = (d: T) => (config.key === 'CATEGORY' ? d.category || '' : (d.name || '').toLowerCase());
+  return [...rows].sort((a, b) => {
+    const A = value(a);
+    const B = value(b);
+    if (A < B) return config.direction === 'asc' ? -1 : 1;
+    if (A > B) return config.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   drivers,
   userRole,
@@ -111,14 +209,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   // Search, tab and filters are remembered in this browser between visits.
   const [searchTerm, setSearchTerm] = usePersistedState<string>('eca_admin_search_term', '');
-  const [viewMode, setViewMode] = usePersistedState<'ACTIVE' | 'DELISTED' | 'ANALYTICS' | 'RECONCILE' | 'DRIVER_LIST' | 'FINANCE'>('eca_admin_view_mode', 'ACTIVE');
+  // Before the Drivers section, the saved tab could be ACTIVE, DELISTED or DRIVER_LIST; read it once to carry that over.
+  const [legacyView] = useState<string | null>(() => {
+    try { return localStorage.getItem('eca_admin_view_mode'); } catch { return null; }
+  });
+  const [section, setSection] = usePersistedState<Section>('eca_admin_view_mode', 'DRIVERS', stored => SECTION_FROM_STORED[stored] ?? null);
+  const [driverScope, setDriverScope] = usePersistedState<'ACTIVE' | 'DELISTED'>('eca_admin_driver_scope', legacyView === 'DELISTED' ? 'DELISTED' : 'ACTIVE', stored => stored === 'ACTIVE' || stored === 'DELISTED' ? stored : null);
+  const [listView, setListView] = usePersistedState<'COLLECTIONS' | 'DETAILS'>('eca_admin_driver_list_view', legacyView === 'DRIVER_LIST' ? 'DETAILS' : 'COLLECTIONS', stored => stored === 'COLLECTIONS' || stored === 'DETAILS' ? stored : null);
+  // Staff see the Drivers section only, and contact details are for admins
+  const activeSection: Section = userRole === 'admin' ? section : 'DRIVERS';
+  const showDetails = userRole === 'admin' && listView === 'DETAILS';
   const [statusFilter, setStatusFilter] = usePersistedState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('eca_admin_status_filter', 'ALL');
   const [selectedTagFilter, setSelectedTagFilter] = usePersistedState<string>('eca_admin_selected_tag_filter', 'ALL');
 
-  const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'OVERDUE'>('ALL');
+  const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | FollowUp>('ALL');
 
   const [expandedDriverIds, setExpandedDriverIds] = useState<string[]>([]);
-  const [highlightedDriverId, setHighlightedDriverId] = useState<string | null>(null);
 
   const [sortConfig, setSortConfig] = useState<{ key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT', direction: 'asc' | 'desc' }>({ key: 'DEFAULT', direction: 'desc' });
   const [driverListSortConfig, setDriverListSortConfig] = useState<{ key: 'CATEGORY' | 'NAME' | null, direction: 'asc' | 'desc' | null }>({ key: null, direction: null });
@@ -155,9 +261,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDriverForPayment, setSelectedDriverForPayment] = useState<Driver | null>(null);
 
-  // Invoice Popup State
-  const [invoicePopupData, setInvoicePopupData] = useState<{ title: string; invoices: any[] } | null>(null);
-  
   // Past Payment Edit State
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<string>('');
@@ -175,10 +278,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }, 150);
     }
   }, [isPaymentModalOpen, liveDriverForPayment?.id]);
-
-  // Refs for navigation
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // New Driver Form State
   const initialFormState = {
@@ -384,168 +483,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return new Date(todayNormalized.getFullYear(), todayNormalized.getMonth() + 1, 0);
   }, [todayNormalized]);
 
-  const yesterdayEnd = useMemo(() => {
-    const d = new Date(todayNormalized);
-    d.setDate(todayNormalized.getDate() - 1);
-    return d;
-  }, [todayNormalized]);
-
-  const yesterdayStart = useMemo(() => {
-    const d = new Date(todayNormalized);
-    d.setDate(todayNormalized.getDate() - 3);
-    return d;
-  }, [todayNormalized]);
-
-  const allInvoices = useMemo(() => {
-    let invoicesList: any[] = [];
-    drivers.forEach(driver => {
-      if (driver.isDelisted) return; // Only process active fleet
-      const invoices = generateDriverInvoices(driver, todayNormalized);
-      invoices.forEach(inv => {
-        invoicesList.push({
-          ...inv,
-          driverName: driver.name,
-          carPlate: driver.carPlate,
-          driver
-        });
-      });
-    });
-    return invoicesList;
-  }, [drivers, todayNormalized]);
-
-  const weeklyTargetAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = parseDate(inv.dueDate);
-    if (dDate >= startOfWeek && dDate <= endOfWeek) {
-      return acc + inv.amount;
-    }
-    return acc;
-  }, 0), [allInvoices, startOfWeek, endOfWeek]);
-
-  const weeklyCollectedAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = parseDate(inv.dueDate);
-    if (dDate >= startOfWeek && dDate <= endOfWeek) {
-      return acc + inv.amountPaid;
-    }
-    return acc;
-  }, 0), [allInvoices, startOfWeek, endOfWeek]);
-
-  const monthlyTargetAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = parseDate(inv.dueDate);
-    if (dDate >= startOfMonth && dDate <= endOfMonth) {
-      return acc + inv.amount;
-    }
-    return acc;
-  }, 0), [allInvoices, startOfMonth, endOfMonth]);
-
-  const monthlyCollectedAmount = useMemo(() => allInvoices.reduce((acc, inv) => {
-    const dDate = parseDate(inv.dueDate);
-    if (dDate >= startOfMonth && dDate <= endOfMonth) {
-      return acc + inv.amountPaid;
-    }
-    return acc;
-  }, 0), [allInvoices, startOfMonth, endOfMonth]);
-
-  const unpaidInvoices = useMemo(() => allInvoices.filter(inv => inv.status !== 'PAID'), [allInvoices]);
-
-  const mustCollectToday = useMemo(() => unpaidInvoices.filter(inv => {
-    return inv.dueDate === todayStr;
-  }), [unpaidInvoices, todayStr]);
-
-  const yesterdayDue = useMemo(() => unpaidInvoices.filter(inv => {
-    const dDate = parseDate(inv.dueDate);
-    return dDate >= yesterdayStart && dDate <= yesterdayEnd;
-  }), [unpaidInvoices, yesterdayStart, yesterdayEnd]);
-
-  const overdue = useMemo(() => unpaidInvoices.filter(inv => {
-    const dDate = parseDate(inv.dueDate);
-    return dDate < yesterdayStart;
-  }), [unpaidInvoices, yesterdayStart]);
-
-
-  // Calculate top 10 active drivers whose last paid was 8 or more days ago
-  const habitualLateAlerts = useMemo(() => {
-    const alerts: { driver: Driver; daysSinceLastPay: number }[] = [];
-    const todayRef = kualaLumpurNow();
-    todayRef.setHours(0,0,0,0);
-
-    driverData.filter(d => !d.isDelisted).forEach(d => {
-      const lastPayment = d.paymentHistory && d.paymentHistory.length > 0 ? d.paymentHistory[0] : null;
-      if (lastPayment) {
-        const lastPaymentDate = parseDate(lastPayment.date);
-        lastPaymentDate.setHours(0,0,0,0);
-        const diffTime = todayRef.getTime() - lastPaymentDate.getTime();
-        const daysSinceLastPay = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (daysSinceLastPay >= 8) {
-          alerts.push({
-            driver: d,
-            daysSinceLastPay
-          });
-        }
-      } else {
-        // Rent started, no payment yet
-        const contractStartDate = parseDate(d.contractStartDate);
-        contractStartDate.setHours(0,0,0,0);
-        const diffTime = todayRef.getTime() - contractStartDate.getTime();
-        const daysSinceStart = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        if (daysSinceStart >= 8) {
-          alerts.push({
-            driver: d,
-            daysSinceLastPay: daysSinceStart
-          });
-        }
-      }
-    });
-
-    // Sort descending by delay time
-    return alerts.sort((a, b) => b.daysSinceLastPay - a.daysSinceLastPay);
-  }, [driverData]);
-
-  const handleAlertClick = (driverId: string) => {
-    setViewMode('ACTIVE');
-    setStatusFilter('ALL');
-    setSearchTerm('');
-    setHighlightedDriverId(driverId);
-    
-    // Scroll and flash
-    setTimeout(() => {
-      const element = document.getElementById(`driver-row-${driverId}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
-
-    // Clear highlight after 4.5 seconds
-    setTimeout(() => {
-      setHighlightedDriverId(null);
-    }, 4500);
+  // Follow-up queue and this week's / month's rent, from the shared rent schedule (active drivers)
+  const queues = useMemo(() => buildCollectionQueues(drivers, todayNormalized), [drivers, todayNormalized]);
+  const weekTotals = useMemo(() => rentDueAndPaid(drivers, startOfWeek, endOfWeek, todayNormalized), [drivers, startOfWeek, endOfWeek, todayNormalized]);
+  const monthTotals = useMemo(() => rentDueAndPaid(drivers, startOfMonth, endOfMonth, todayNormalized), [drivers, startOfMonth, endOfMonth, todayNormalized]);
+  const followUpDrivers: Record<FollowUp, Set<string>> = {
+    TODAY: queues.dueToday,
+    LATE_1_3: queues.late1to3,
+    LATE_4_PLUS: queues.late4plus,
+    NO_PAYMENT_8: queues.noPayment8plus,
   };
 
+  // Drivers in the chosen scope, before the other filters
+  const scopeDrivers = useMemo(() => driverData.filter(d => driverScope === 'DELISTED' ? d.isDelisted : !d.isDelisted), [driverData, driverScope]);
 
-  // Filter based on View Mode, Search, Tags, and Risk Sort
+  // Filter by risk, follow-up group, search and staff group, then sort
   const filteredDrivers = useMemo(() => {
-    let result = driverData;
+    let result = scopeDrivers;
 
-    // 1. View Mode
-    if (viewMode === 'ACTIVE') result = result.filter(d => !d.isDelisted);
-    if (viewMode === 'DELISTED') result = result.filter(d => d.isDelisted);
-
-    // 1.5 Fleet Health statusFilter click
     if (statusFilter !== 'ALL') {
       result = result.filter(d => d.metrics.status === statusFilter);
     }
 
-    // 1.75 Urgency Categorization Filtering
-    if (urgencyFilter !== 'ALL') {
-      const driverIdsToKeep = new Set<string>();
-      if (urgencyFilter === 'TODAY') {
-        mustCollectToday.forEach(inv => driverIdsToKeep.add(inv.driver.id));
-      } else if (urgencyFilter === 'YESTERDAY') {
-        yesterdayDue.forEach(inv => driverIdsToKeep.add(inv.driver.id));
-      } else if (urgencyFilter === 'OVERDUE') {
-        overdue.forEach(inv => driverIdsToKeep.add(inv.driver.id));
-      }
-      result = result.filter(d => driverIdsToKeep.has(d.id));
+    // The follow-up queue covers active drivers only
+    if (urgencyFilter !== 'ALL' && driverScope === 'ACTIVE') {
+      const keep = followUpDrivers[urgencyFilter];
+      result = result.filter(d => keep.has(d.id));
     }
 
     // 2. Search
@@ -563,8 +526,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       result = result.filter(d => d.tags?.includes(selectedTagFilter));
     }
 
-    // 4. Sorting
-    return result.sort((a, b) => {
+    // 4. Sorting (on a copy, so the shared driver list keeps its order)
+    return [...result].sort((a, b) => {
       if (sortConfig.key === 'RISK_STATUS') {
         const statusPriority = { [DriverStatus.BAD]: 3, [DriverStatus.MID]: 2, [DriverStatus.GOOD]: 1 };
         const diff = statusPriority[b.metrics.status] - statusPriority[a.metrics.status];
@@ -600,19 +563,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
     });
-  }, [driverData, viewMode, searchTerm, selectedTagFilter, sortConfig, statusFilter, urgencyFilter, mustCollectToday, yesterdayDue, overdue]);
+  }, [scopeDrivers, driverScope, searchTerm, selectedTagFilter, sortConfig, statusFilter, urgencyFilter, queues]);
 
-  // Summary Stats
-  const badDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.BAD).length;
-  const midDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.MID).length;
-  const goodDriversCount = driverData.filter(d => !d.isDelisted && d.metrics.status === DriverStatus.GOOD).length;
+  // Summary counts
   const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
+  const delistedCount = driverData.length - activeFleetCount;
+  const riskCounts = {
+    GOOD: scopeDrivers.filter(d => d.metrics.status === DriverStatus.GOOD).length,
+    MID: scopeDrivers.filter(d => d.metrics.status === DriverStatus.MID).length,
+    BAD: scopeDrivers.filter(d => d.metrics.status === DriverStatus.BAD).length,
+  };
+  const screenedActiveCount = driverData.filter(d => !d.isDelisted && screenedDriverIds.includes(d.id)).length;
+  const filtersActive = statusFilter !== 'ALL' || urgencyFilter !== 'ALL' || selectedTagFilter !== 'ALL' || searchTerm !== '';
+  const resetFilters = () => {
+    setStatusFilter('ALL');
+    setUrgencyFilter('ALL');
+    setSelectedTagFilter('ALL');
+    setSearchTerm('');
+  };
+  const chooseScope = (scope: 'ACTIVE' | 'DELISTED') => {
+    setDriverScope(scope);
+    if (scope === 'DELISTED') setUrgencyFilter('ALL');
+  };
 
   // --- Handlers ---
-  const handleSearchFocus = () => {
-    tableContainerRef.current?.scrollIntoView({ behavior: 'smooth' });
-    setTimeout(() => { searchInputRef.current?.focus(); }, 500);
-  };
 
   const handleOpenPaymentModal = (driver: Driver) => {
     handleScreenDriver(driver.id);
@@ -811,803 +785,423 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
 
+  const followUpLabel = (id: FollowUp) => FOLLOW_UPS.find(item => item.id === id)?.label ?? id;
+  const detailsRows = sortForDetails(filteredDrivers, driverListSortConfig);
+  const sortArrow = (key: 'NAME' | 'CATEGORY') =>
+    driverListSortConfig.key === key && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === key && driverListSortConfig.direction === 'desc' ? '▼' : '↕';
+  const cycleDetailsSort = (key: 'NAME' | 'CATEGORY') => setDriverListSortConfig(prev => ({
+    key,
+    direction: prev.key === key ? (prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc') : 'asc'
+  }));
+  const riskSortIcon = (key: 'RISK_STATUS' | 'OUTSTANDING') => sortConfig.key === key && (
+    sortConfig.direction === 'asc' ? <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+  );
+
   return (
     <div className="min-h-screen bg-gray-100 font-sans print:bg-white">
-      {/* Top Navigation - unchanged */}
-      <div className="bg-gray-900 text-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-3 shadow-md sticky top-0 z-20 print:hidden">
-        <h1 className="text-lg sm:text-xl font-bold tracking-tight shrink-0">Admin<span className="text-blue-400">Control</span></h1>
+      {/* Top bar: sections (admins), add driver, log out */}
+      <header className="bg-gray-900 text-white shadow-md print:hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 min-h-14 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight shrink-0">Admin<span className="text-blue-400">Control</span></h1>
 
-        <div className="flex items-center gap-2 sm:gap-4">
-           {/* Current Role Indicator (hidden on phones so Add Driver and Logout stay on screen) */}
-           <div className="hidden sm:flex bg-gray-800 rounded-lg p-1.5 px-3 items-center gap-2 border border-gray-700">
-              {userRole === 'admin' ? <Shield className="w-3 h-3 text-blue-400" /> : <UserPlus className="w-3 h-3 text-indigo-400" />}
+          {userRole === 'admin' && (
+            <nav aria-label="Sections" className="order-last basis-full md:order-none md:basis-auto flex gap-1 overflow-x-auto">
+              {SECTIONS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-current={activeSection === id ? 'page' : undefined}
+                  onClick={() => setSection(id)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${activeSection === id ? 'bg-white/15 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
+                >
+                  <Icon className="w-4 h-4" aria-hidden="true" /> {label}
+                </button>
+              ))}
+            </nav>
+          )}
+
+          <div className="ml-auto flex items-center gap-2 sm:gap-4">
+            {/* Current role (hidden on phones so Add Driver and Log out stay on screen) */}
+            <div className="hidden sm:flex bg-gray-800 rounded-lg p-1.5 px-3 items-center gap-2 border border-gray-700">
+              {userRole === 'admin' ? <Shield className="w-3 h-3 text-blue-400" aria-hidden="true" /> : <UserPlus className="w-3 h-3 text-indigo-400" aria-hidden="true" />}
               <span className="text-xs font-bold uppercase tracking-wide text-gray-300">
                 {userRole === 'admin' ? 'Administrator' : 'Staff View'}
               </span>
-           </div>
+            </div>
 
-           <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
+            <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
 
-           <button onClick={handleOpenCreateModal} aria-label="Add driver" title="Add driver" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-blue-900/50">
-            <UserPlus className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Add Driver</span>
-          </button>
+            <button type="button" onClick={handleOpenCreateModal} aria-label="Add driver" title="Add driver" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-blue-900/50">
+              <UserPlus className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Add Driver</span>
+            </button>
 
-          <button onClick={onLogout} aria-label="Log out" title="Log out" className="text-gray-400 hover:text-white flex items-center gap-2 text-sm transition-colors p-2 sm:p-0">
-            <LogOut className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Log out</span>
-          </button>
+            <button type="button" onClick={onLogout} aria-label="Log out" title="Log out" className="text-gray-400 hover:text-white flex items-center gap-2 text-sm transition-colors p-2 sm:p-0">
+              <LogOut className="w-4 h-4" aria-hidden="true" /><span className="hidden sm:inline">Log out</span>
+            </button>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 print:p-0 print:m-0 print:w-full print:max-w-none">
-        
-        {/* Merged Fleet Overview & Fleet Health Card Grid */}
-        {(viewMode === 'ACTIVE' || viewMode === 'DELISTED') && (
-          <div className="space-y-6">
-            
-            {/* Grid container for Fleet Status and Late Alerts */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Fleet Overview & Health Status */}
-              <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-md p-6 space-y-6 font-sans">
-                <div className="flex items-center gap-2.5">
-                  <Activity className="w-6 h-6 text-blue-600" />
-                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">Fleet Overview & Health Status</h2>
-                </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3 print:p-0 print:m-0 print:w-full print:max-w-none">
+        {activeSection === 'DRIVERS' ? (
+          <>
+            {/* Collections summary for the active fleet */}
+            {driverScope === 'ACTIVE' && (
+              <section aria-label="Collections summary" className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 grid grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-3 print:hidden">
+                <SummaryStat label="This week" value={formatCurrency(weekTotals.paid)} detail={`of ${formatCurrency(weekTotals.due)} due`} progress={shareOf(weekTotals)} hint={`Rent due ${formatDate(startOfWeek)} – ${formatDate(endOfWeek)} and paid so far`} />
+                <SummaryStat label="This month" value={formatCurrency(monthTotals.paid)} detail={`of ${formatCurrency(monthTotals.due)} due`} progress={shareOf(monthTotals)} hint={`Rent due in ${startOfMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} and paid so far`} />
+                <SummaryStat label="Active drivers" value={String(activeFleetCount)} detail={`${delistedCount} delisted`} />
+                <SummaryStat label="Screened today" value={`${screenedActiveCount} / ${activeFleetCount}`} progress={activeFleetCount ? screenedActiveCount / activeFleetCount : 0} hint="Resets at midnight, Malaysia time" />
+              </section>
+            )}
 
-                {/* Status Counters Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* GOOD STATUS */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextVal = statusFilter === 'GOOD' ? 'ALL' : 'GOOD';
-                      setStatusFilter(nextVal);
-                      if (nextVal !== 'ALL') {
-                        setViewMode('ACTIVE');
-                        setTimeout(() => {
-                          tableContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 50);
-                      }
-                    }}
-                    className={`bg-gray-50/40 rounded-xl p-5 border text-center transition-all duration-300 flex flex-col items-center justify-between hover:shadow-md cursor-pointer hover:scale-[1.01] ${
-                      statusFilter === 'GOOD' ? 'ring-2 ring-emerald-500 border-transparent bg-emerald-50/10' : 'border-gray-200/60'
-                    }`}
-                  >
-                    <span className="text-gray-500 font-extrabold text-xs uppercase tracking-wider">GOOD STATUS</span>
-                    <span className="text-5xl font-black text-emerald-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((goodDriversCount / activeFleetCount) * 100) : 0}%</span>
-                    <span className="text-sm font-bold text-gray-500 mb-2">{goodDriversCount} drivers</span>
-                    
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
-                  </button>
-
-                  {/* MID STATUS */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextVal = statusFilter === 'MID' ? 'ALL' : 'MID';
-                      setStatusFilter(nextVal);
-                      if (nextVal !== 'ALL') {
-                        setViewMode('ACTIVE');
-                        setTimeout(() => {
-                          tableContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 50);
-                      }
-                    }}
-                    className={`bg-gray-50/40 rounded-xl p-5 border text-center transition-all duration-300 flex flex-col items-center justify-between hover:shadow-md cursor-pointer hover:scale-[1.01] ${
-                      statusFilter === 'MID' ? 'ring-2 ring-amber-500 border-transparent bg-amber-50/10' : 'border-gray-200/60'
-                    }`}
-                  >
-                    <span className="text-gray-500 font-extrabold text-xs uppercase tracking-wider">MID STATUS</span>
-                    <span className="text-5xl font-black text-amber-500 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((midDriversCount / activeFleetCount) * 100) : 0}%</span>
-                    <span className="text-sm font-bold text-gray-500 mb-2">{midDriversCount} drivers</span>
-                    
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
-                  </button>
-
-                  {/* BAD STATUS */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextVal = statusFilter === 'BAD' ? 'ALL' : 'BAD';
-                      setStatusFilter(nextVal);
-                      if (nextVal !== 'ALL') {
-                        setViewMode('ACTIVE');
-                        setTimeout(() => {
-                          tableContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 50);
-                      }
-                    }}
-                    className={`bg-gray-50/40 rounded-xl p-5 border text-center transition-all duration-300 flex flex-col items-center justify-between hover:shadow-md cursor-pointer hover:scale-[1.01] ${
-                      statusFilter === 'BAD' ? 'ring-2 ring-rose-500 border-transparent bg-rose-50/10' : 'border-gray-200/60'
-                    }`}
-                  >
-                    <span className="text-gray-500 font-extrabold text-xs uppercase tracking-wider">BAD STATUS</span>
-                    <span className="text-5xl font-black text-rose-600 mt-2 mb-0 font-sans">{activeFleetCount ? Math.round((badDriversCount / activeFleetCount) * 100) : 0}%</span>
-                    <span className="text-sm font-bold text-gray-500 mb-2">{badDriversCount} drivers</span>
-                    
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-3">CLICK TO FILTER</span>
-                  </button>
-                </div>
-
-                {/* Fleet Metric & Screening Progress Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                  {/* TOTAL ACTIVE FLEET (jumps to the driver search) */}
-                  <button
-                    type="button"
-                    onClick={handleSearchFocus}
-                    className="w-full text-left bg-gray-50/60 rounded-xl p-5 border border-gray-200/60 flex items-center justify-between shadow-sm cursor-pointer hover:bg-gray-50/80 transition-all font-sans"
-                  >
-                    <span className="flex items-center gap-3">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                      <span className="text-gray-700 font-extrabold text-xs uppercase tracking-wider">TOTAL ACTIVE FLEET</span>
-                    </span>
-                    <span className="flex items-baseline gap-1.5">
-                      <span className="text-3xl font-black text-gray-900 font-sans">{activeFleetCount}</span>
-                      <span className="text-xs text-gray-500 font-semibold">vehicles total</span>
-                    </span>
-                  </button>
-
-                  {/* DAILY SCREENING PROGRESS */}
-                  <div className="bg-white rounded-xl p-5 border border-black shadow-sm space-y-3.5 relative overflow-hidden font-sans">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#E11D48]" />
-                        <span className="text-[#991B1B] font-extrabold text-xs uppercase tracking-wider">DAILY SCREENING PROGRESS</span>
-                      </div>
-                      <span className="text-sm font-mono font-black text-gray-950">
-                        {screenedDriverIds.length} / {activeFleetCount}
-                      </span>
-                    </div>
-
-                    {/* Red progress bar */}
-                    <div className="w-full bg-gray-100 rounded-full h-3 border border-gray-200/40 shadow-inner overflow-hidden p-0.5">
-                      <div 
-                        className="bg-[#E11D48] h-full rounded-full transition-all duration-700"
-                        style={{ width: `${activeFleetCount > 0 ? (screenedDriverIds.length / activeFleetCount) * 100 : 0}%` }}
-                      />
-                    </div>
-
-                    <div className="flex justify-between items-center text-[10px] font-bold uppercase">
-                      <span className="text-gray-500">KL GMT+8 (Resets at 00:00:00)</span>
-                      <span className="text-[#E11D48]">
-                        {activeFleetCount - screenedDriverIds.length} pending manual screening
-                      </span>
-                    </div>
-                  </div>
-                </div>
+            {/* Risk and follow-up filters */}
+            <section aria-label="Filters" className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-col xl:flex-row gap-3 xl:items-center print:hidden">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Risk</span>
+                <FilterChip label="Good" count={riskCounts.GOOD} tone="emerald" pressed={statusFilter === 'GOOD'} onClick={() => setStatusFilter(statusFilter === 'GOOD' ? 'ALL' : 'GOOD')} />
+                <FilterChip label="Mid" count={riskCounts.MID} tone="amber" pressed={statusFilter === 'MID'} onClick={() => setStatusFilter(statusFilter === 'MID' ? 'ALL' : 'MID')} />
+                <FilterChip label="Bad" count={riskCounts.BAD} tone="rose" pressed={statusFilter === 'BAD'} onClick={() => setStatusFilter(statusFilter === 'BAD' ? 'ALL' : 'BAD')} />
               </div>
-
-              {/* Late Alerts Feed */}
-              <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-md p-6 flex flex-col max-h-[440px] overflow-hidden font-sans">
-                <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-3 mt-0.5">
-                  <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-amber-500" />
-                    Late Alerts (8d+)
-                  </h3>
-                  <span className="bg-red-50 text-red-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase border border-red-200 tracking-wider">
-                    {habitualLateAlerts.length} Drivers
-                  </span>
+              {driverScope === 'ACTIVE' && (
+                <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible xl:border-l xl:border-gray-200 xl:pl-3 [&>*]:shrink-0">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500" title="Late groups use each driver's oldest unpaid rent">Follow up</span>
+                  {FOLLOW_UPS.map(({ id, label, tone }) => (
+                    <FilterChip key={id} label={label} count={followUpDrivers[id].size} tone={tone} pressed={urgencyFilter === id} onClick={() => setUrgencyFilter(urgencyFilter === id ? 'ALL' : id)} />
+                  ))}
                 </div>
+              )}
+            </section>
 
-                <div className="flex-1 overflow-y-auto max-h-[310px] space-y-2.5 pr-2">
-                  {habitualLateAlerts.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-gray-50/25 rounded-xl border border-dashed border-gray-200">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
-                      <p className="text-xs text-gray-500 font-bold">All accounts are safe and active.</p>
-                    </div>
-                  ) : (
-                    habitualLateAlerts.map(({ driver, daysSinceLastPay }) => (
+            {/* Driver list */}
+            <section aria-label="Drivers" className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-clip print:shadow-none print:border-none">
+              {/* Controls stay in view while scrolling the list */}
+              <div className="lg:sticky lg:top-0 lg:z-10 bg-white border-b border-gray-200 print:hidden">
+                <div className="px-3 sm:px-4 py-3 flex flex-col lg:flex-row gap-3 lg:items-center">
+                  <div role="group" aria-label="Which drivers" className="flex bg-gray-100 p-1 rounded-lg shrink-0">
+                    {([['ACTIVE', 'Active', activeFleetCount], ['DELISTED', 'Delisted / Returned', delistedCount]] as const).map(([id, label, count]) => (
                       <button
-                        key={driver.id}
+                        key={id}
                         type="button"
-                        onClick={() => handleAlertClick(driver.id)}
-                        className="w-full text-left flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-all text-xs cursor-pointer group"
+                        aria-pressed={driverScope === id}
+                        onClick={() => chooseScope(id)}
+                        className={`flex-1 lg:flex-none px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${driverScope === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
-                        <div className="flex items-center gap-2.5 overflow-hidden">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0 group-hover:scale-125 transition-transform" />
-                          <div className="truncate font-bold text-gray-800 group-hover:text-orange-950 leading-tight">
-                            {driver.name}
-                            <span className="block text-[10px] text-gray-500 font-mono font-normal mt-0.5">
-                              {driver.carPlate}
-                            </span>
-                          </div>
-                        </div>
-                        <span className="bg-orange-100/90 text-orange-950 font-mono font-extrabold px-2 py-1 rounded-lg shrink-0 leading-none">
-                          {daysSinceLastPay}d
-                        </span>
+                        {label} <span className="text-gray-500">{count}</span>
                       </button>
-                    ))
+                    ))}
+                  </div>
+
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
+                    <input
+                      type="search"
+                      aria-label="Search drivers by name, car plate or NRIC"
+                      placeholder="Search driver, car plate, NRIC..."
+                      className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm focus:outline-none placeholder-gray-400"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="relative lg:w-52 shrink-0">
+                    <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
+                    <select
+                      aria-label="Staff group"
+                      className="w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white appearance-none cursor-pointer font-medium text-gray-700"
+                      value={selectedTagFilter}
+                      onChange={(e) => setSelectedTagFilter(e.target.value)}
+                    >
+                      <option value="ALL">All Staff Groups</option>
+                      {allTags.map(tag => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
+                  </div>
+
+                  {userRole === 'admin' && (
+                    <div role="group" aria-label="List view" className="flex bg-gray-100 p-1 rounded-lg shrink-0">
+                      <button type="button" aria-pressed={!showDetails} onClick={() => setListView('COLLECTIONS')} className={`flex-1 lg:flex-none px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${!showDetails ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>Collections</button>
+                      <button type="button" aria-pressed={showDetails} onClick={() => setListView('DETAILS')} className={`flex-1 lg:flex-none px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${showDetails ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>Contact details</button>
+                    </div>
                   )}
                 </div>
-              </div>
 
-            </div>
-
-            {/* Section 1: The Macro Header (Financial Targets) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
-              {/* Weekly Target Card */}
-              <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg p-6 flex flex-col justify-between min-h-[175px]">
-                <div className="absolute top-0 right-0 w-36 h-36 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-gray-950 font-bold flex items-center gap-2 tracking-tight">
-                      <CalendarCheck className="w-5 h-5 text-blue-600" />
-                      Weekly Target
-                    </h3>
-                    <p className="text-[11px] text-gray-500 font-medium mt-1 uppercase tracking-wider">
-                      Mon - Sun ({formatDate(startOfWeek)} - {formatDate(endOfWeek)})
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <div>
-                    <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Collected</span>
-                    <div className="text-3xl font-black text-blue-950 tracking-tight mt-1 font-mono">
-                      {formatCurrency(weeklyCollectedAmount)}
-                    </div>
-                  </div>
-                  <div className="text-right font-mono">
-                    <span className="text-[11px] text-gray-500 block font-bold uppercase tracking-wider">Target</span>
-                    <span className="text-base font-extrabold text-gray-500">/ {formatCurrency(weeklyTargetAmount)}</span>
-                  </div>
-                </div>
-                {/* Progress Bar */}
-                <div className="w-full bg-gray-200/60 rounded-full h-3.5 mt-4 overflow-hidden p-0.5 border border-white/40 shadow-inner">
-                  <div 
-                    className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2.5 rounded-full transition-all duration-1000" 
-                    style={{ width: `${weeklyTargetAmount > 0 ? Math.min(100, (weeklyCollectedAmount / weeklyTargetAmount) * 100) : 0}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Monthly Target Card */}
-              <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg p-6 flex flex-col justify-between min-h-[175px]">
-                <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-gray-950 font-bold flex items-center gap-2 tracking-tight">
-                      <Calendar className="w-5 h-5 text-indigo-600" />
-                      Monthly Target
-                    </h3>
-                    <p className="text-[11px] text-gray-500 font-medium mt-1 uppercase tracking-wider">
-                      Period: {startOfMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-baseline justify-between">
-                  <div>
-                    <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Collected</span>
-                    <div className="text-3xl font-black text-indigo-950 tracking-tight mt-1 font-mono">
-                      {formatCurrency(monthlyCollectedAmount)}
-                    </div>
-                  </div>
-                  <div className="text-right font-mono">
-                    <span className="text-[11px] text-gray-500 block font-bold uppercase tracking-wider">Target</span>
-                    <span className="text-base font-extrabold text-gray-500">/ {formatCurrency(monthlyTargetAmount)}</span>
-                  </div>
-                </div>
-                {/* Progress Bar */}
-                <div className="w-full bg-gray-200/60 rounded-full h-3.5 mt-4 overflow-hidden p-0.5 border border-white/40 shadow-inner">
-                  <div 
-                    className="bg-gradient-to-r from-indigo-500 to-purple-600 h-2.5 rounded-full transition-all duration-1000" 
-                    style={{ width: `${monthlyTargetAmount > 0 ? Math.min(100, (monthlyCollectedAmount / monthlyTargetAmount) * 100) : 0}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: The Urgency Row (KPI Alerts) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
-              {/* Due today (counts unpaid rent cycles, not drivers) */}
-              <button
-                type="button"
-                onClick={() => setInvoicePopupData({ title: 'Must Collect Today', invoices: mustCollectToday })}
-                className="w-full text-left cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-orange-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500"
-              >
-                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-orange-500"></span>
-                <span className="flex justify-between items-start">
-                  <span>
-                    <span className="block font-bold text-base tracking-tight text-gray-900">Must Collect Today</span>
-                    <span className="block text-xs text-gray-500 mt-0.5 font-medium">Unpaid rent cycles due today</span>
-                  </span>
-                  <span className="text-3xl font-black text-orange-600 tracking-tight font-mono">{mustCollectToday.length}</span>
-                </span>
-                <span className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-                  <span className="text-[11px] font-black text-orange-600 flex items-center gap-1 uppercase tracking-wider">
-                    <span className="font-bold text-xs mr-0.5">RM</span> Payment
-                  </span>
-                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                    View Invoices
-                  </span>
-                </span>
-              </button>
-
-              {/* Due 1-3 days ago (today - 3 through yesterday) */}
-              <button
-                type="button"
-                onClick={() => setInvoicePopupData({ title: '1–3 Days Late', invoices: yesterdayDue })}
-                className="w-full text-left cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
-              >
-                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500"></span>
-                <span className="flex justify-between items-start">
-                  <span>
-                    <span className="block font-bold text-base tracking-tight text-gray-900">1–3 Days Late</span>
-                    <span className="block text-xs text-gray-500 mt-0.5 font-medium">Unpaid rent cycles due 1–3 days ago</span>
-                  </span>
-                  <span className="text-3xl font-black text-amber-500 tracking-tight font-mono">{yesterdayDue.length}</span>
-                </span>
-                <span className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-                  <span className="text-[11px] font-black text-amber-600 flex items-center gap-1 uppercase tracking-wider">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> Follow up
-                  </span>
-                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                    View Invoices
-                  </span>
-                </span>
-              </button>
-
-              {/* Due 4 or more days ago */}
-              <button
-                type="button"
-                onClick={() => setInvoicePopupData({ title: '4+ Days Late', invoices: overdue })}
-                className="w-full text-left cursor-pointer bg-white rounded-2xl border p-6 relative overflow-hidden transition-all duration-300 shadow-md flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg min-h-[140px] border-gray-200 hover:border-red-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
-              >
-                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600"></span>
-                <span className="flex justify-between items-start">
-                  <span>
-                    <span className="block font-bold text-base tracking-tight text-gray-900">4+ Days Late</span>
-                    <span className="block text-xs text-gray-500 mt-0.5 font-medium">Unpaid rent cycles due 4 or more days ago</span>
-                  </span>
-                  <span className="text-3xl font-black text-red-600 tracking-tight font-mono">{overdue.length}</span>
-                </span>
-                <span className="flex justify-between items-center mt-4 pt-3 border-t border-gray-100">
-                  <span className="text-[11px] font-black text-red-600 flex items-center gap-1 uppercase tracking-wider">
-                    <Siren className="w-3.5 h-3.5 shrink-0 text-red-600" aria-hidden="true" /> Urgent action
-                  </span>
-                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                    View Invoices
-                  </span>
-                </span>
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* View Toggle Tabs - unchanged */}
-        <div className="flex space-x-1 bg-gray-200 p-1 rounded-lg w-fit max-w-full overflow-x-auto print:hidden">
-          <button onClick={() => setViewMode('ACTIVE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${viewMode === 'ACTIVE' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}>Active Fleet</button>
-          <button onClick={() => setViewMode('DELISTED')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DELISTED' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Archive className="w-4 h-4" /> Delisted / Returned</button>
-          
-          {userRole === 'admin' && (
-            <>
-              
-              <button onClick={() => setViewMode('DRIVER_LIST')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'DRIVER_LIST' ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><Users className="w-4 h-4" /> Driver List</button>
-              <button onClick={() => setViewMode('ANALYTICS')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'ANALYTICS' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><PieChart className="w-4 h-4" /> Analytics</button>
-              <button onClick={() => setViewMode('RECONCILE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'RECONCILE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><CheckCircle2 className="w-4 h-4" /> Bank Recon</button>
-              <button onClick={() => setViewMode('FINANCE')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 whitespace-nowrap ${viewMode === 'FINANCE' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-300'}`}><DollarSign className="w-4 h-4" /> Finance</button>
-            </>
-          )}
-        </div>
-
-        {/* Main Table Section - unchanged */}
-        <div ref={tableContainerRef} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
-          {viewMode === 'FINANCE' && userRole === 'admin' ? (
-            <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense></ScreenLoadBoundary>
-          ) : viewMode === 'ANALYTICS' && userRole === 'admin' ? (
-             <div className="p-6 bg-gray-50/50">
-               <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
-             </div>
-          ) : viewMode === 'RECONCILE' && userRole === 'admin' ? (
-             <div className="p-6 bg-gray-50/50">
-               <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
-             </div>
-          ) : viewMode === 'DRIVER_LIST' && userRole === 'admin' ? (
-             <div className="bg-white">
-                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                    <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                        <Users className="w-5 h-5 text-orange-600" /> Driver List
-                    </h2>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
-                            <tr>
-                                <th className="px-6 py-3 hover:text-gray-800 transition-colors group select-none">
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 uppercase font-bold cursor-pointer"
-                                    onClick={() => setDriverListSortConfig(prev => ({
-                                        key: 'NAME',
-                                        direction: prev.key === 'NAME' ? (prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc') : 'asc'
-                                    }))}
-                                  >
-                                    Full Name
-                                    <span aria-hidden="true" className={`text-[10px] ${driverListSortConfig.key === 'NAME' && driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-500'}`}>
-                                      {driverListSortConfig.key === 'NAME' && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === 'NAME' && driverListSortConfig.direction === 'desc' ? '▼' : '↕'}
-                                    </span>
-                                  </button>
-                                </th>
-                                <th className="px-6 py-3">Email Address</th>
-                                <th className="px-6 py-3">Address</th>
-                                <th className="px-6 py-3">NRIC</th>
-                                <th className="px-6 py-3">Plate Number</th>
-                                <th className="px-6 py-3 hover:text-gray-800 transition-colors group select-none">
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 uppercase font-bold cursor-pointer"
-                                    onClick={() => setDriverListSortConfig(prev => ({
-                                        key: 'CATEGORY',
-                                        direction: prev.key === 'CATEGORY' ? (prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc') : 'asc'
-                                    }))}
-                                  >
-                                    Category
-                                    <span aria-hidden="true" className={`text-[10px] ${driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-300 group-hover:text-gray-500'}`}>
-                                      {driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction === 'desc' ? '▼' : '↕'}
-                                    </span>
-                                  </button>
-                                </th>
-                                <th className="px-6 py-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {(() => {
-                                const driverListSorted = [...driverData.filter(d => !d.isDelisted)];
-                                if (driverListSortConfig.direction && driverListSortConfig.key) {
-                                  driverListSorted.sort((a, b) => {
-                                    let valA = '';
-                                    let valB = '';
-                                    
-                                    if (driverListSortConfig.key === 'CATEGORY') {
-                                      valA = a.category || '';
-                                      valB = b.category || '';
-                                    } else if (driverListSortConfig.key === 'NAME') {
-                                      valA = (a.name || '').toLowerCase();
-                                      valB = (b.name || '').toLowerCase();
-                                    }
-
-                                    if (valA < valB) return driverListSortConfig.direction === 'asc' ? -1 : 1;
-                                    if (valA > valB) return driverListSortConfig.direction === 'asc' ? 1 : -1;
-                                    return 0;
-                                  });
-                                }
-                                return driverListSorted.map(driver => {
-                                    let isNew = false;
-                                    if (driver.contractStartDate) {
-                                      const start = new Date(driver.contractStartDate + 'T00:00:00');
-                                      const now = kualaLumpurNow();
-                                      const diffTime = Math.abs(now.getTime() - start.getTime());
-                                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                      isNew = diffDays <= 30;
-                                    }
-                                    return (
-                                    <tr key={driver.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-bold text-gray-900 flex items-center gap-2">
-                                          {driver.name}
-                                          {isNew && (
-                                            <span className="text-[10px] text-red-500 font-black tracking-widest border border-red-500/30 px-1.5 py-0.5 rounded-sm bg-red-50">NEW</span>
-                                          )}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
-                                        <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={driver.address || ''}>{driver.address || '-'}</td>
-                                        <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
-                                        <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
-                                        <td className="px-6 py-4 text-gray-600">
-                                          <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                              driver.category === 'SEWABELI' ? 'bg-blue-100 text-blue-800' :
-                                              driver.category === 'SEWA_BIASA' ? 'bg-purple-100 text-purple-800' :
-                                              'bg-gray-100 text-gray-800'
-                                          }`}>
-                                            {driver.category}
-                                          </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button 
-                                                onClick={() => handleOpenEditModal(driver)} 
-                                                className="text-xs text-blue-600 font-semibold hover:bg-blue-50 px-3 py-1.5 rounded transition-colors border border-blue-100 bg-white shadow-sm"
-                                            >
-                                                Edit Details
-                                            </button>
-                                        </td>
-                                    </tr>
-                                )});
-                            })()}
-                            {driverData.filter(d => !d.isDelisted).length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">No active drivers found.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-             </div>
-          ) : (
-            /* --- ACTIVE / DELISTED VIEW --- */
-            <>
-                {/* Section 3: The Control Ribbon */}
-                <div className="px-6 py-4 border-b border-gray-200 bg-white flex flex-col xl:flex-row gap-4 justify-between items-stretch xl:items-center sticky top-0 z-10 shadow-sm">
-                  {/* Search and Staff Group Dropdown */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
-                    <div className="relative flex-1">
-                      <Search className="w-4 h-4 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-500" />
-                      <input 
-                        ref={searchInputRef}
-                        type="text" 
-                        placeholder="Search driver, car plate, NRIC..." 
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm transition-all focus:outline-none placeholder-gray-400 font-sans"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Filter by Staff / Group */}
-                    <div className="relative min-w-[200px]">
-                      <Filter className="w-4 h-4 absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-500" />
-                      <select 
-                        className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm appearance-none cursor-pointer hover:bg-gray-50/50 transition-colors font-medium text-gray-700"
-                        value={selectedTagFilter}
-                        onChange={(e) => setSelectedTagFilter(e.target.value)}
-                      >
-                        <option value="ALL">All Staff Groups</option>
-                        {allTags.map(tag => (
-                          <option key={tag} value={tag}>{tag}</option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
-                        <ChevronDown className="h-4 w-4" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Active Indicator Badges */}
-                {(statusFilter !== 'ALL' || selectedTagFilter !== 'ALL' || urgencyFilter !== 'ALL' || searchTerm !== '') && (
-                  <div className="px-6 py-3 bg-blue-50/60 border-b border-blue-100 flex justify-between items-center text-xs text-blue-800 font-semibold sticky top-[68px] z-10 backdrop-blur-md font-sans">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
-                      <span>Viewing Matched Queue:</span>
-                      {statusFilter !== 'ALL' && (
-                        <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-blue-200">
-                          Risk: {statusFilter}
-                        </span>
-                      )}
-                      {urgencyFilter !== 'ALL' && (
-                        <span className="bg-orange-100 text-orange-950 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-orange-200">
-                          Urgency: {urgencyFilter === 'TODAY' ? 'Must Collect Today' : urgencyFilter === 'YESTERDAY' ? '1–3 Days Late' : '4+ Days Late'}
-                        </span>
-                      )}
-                      {selectedTagFilter !== 'ALL' && (
-                        <span className="bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] border border-purple-200">
-                          Staff: {selectedTagFilter}
-                        </span>
-                      )}
-                      {searchTerm !== '' && (
-                        <span className="bg-gray-100 text-gray-800 px-2.5 py-0.5 rounded-full font-bold text-[10px] border border-gray-200">
-                          Query: "{searchTerm}"
-                        </span>
-                      )}
-                      <span className="text-gray-500 font-semibold">({filteredDrivers.length} matching entries)</span>
-                    </div>
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        setStatusFilter('ALL');
-                        setUrgencyFilter('ALL');
-                        setSelectedTagFilter('ALL');
-                        setSearchTerm('');
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-3 py-1.5 rounded-lg shadow-sm text-[10px] cursor-pointer"
-                    >
-                      RESET ALL FILTERS
-                    </button>
+                {filtersActive && (
+                  <div className="px-3 sm:px-4 py-2 bg-blue-50 border-t border-blue-100 flex flex-wrap items-center gap-2 text-xs text-blue-900">
+                    <span className="font-semibold">Showing {filteredDrivers.length} of {scopeDrivers.length}:</span>
+                    {statusFilter !== 'ALL' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Risk: {statusFilter}</span>}
+                    {urgencyFilter !== 'ALL' && driverScope === 'ACTIVE' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">{followUpLabel(urgencyFilter)}</span>}
+                    {selectedTagFilter !== 'ALL' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Staff: {selectedTagFilter}</span>}
+                    {searchTerm !== '' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Search: “{searchTerm}”</span>}
+                    <button type="button" onClick={resetFilters} className="ml-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg">Reset filters</button>
                   </div>
                 )}
+              </div>
 
-                {/* DRIVERS LISTING STAGE */}
-                    <div className="space-y-6">
-                        {/* Table Header */}
+              {showDetails ? (
+                /* Contact details (admins) */
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-600">
-                    <thead className="bg-gray-100 text-xs uppercase font-bold text-gray-500 tracking-wider">
-                        <tr>
-                            <th colSpan={4} className="p-2 border-b border-gray-200 pb-3">
-                                <div className="pr-4 pl-6 flex items-center justify-between gap-4">
-                                     <div className="flex-1 text-left">DRIVER PROFILE</div>
-                                     <button
-                                        type="button"
-                                        className="w-56 shrink-0 px-8 flex items-center justify-center gap-1 cursor-pointer hover:text-gray-800 transition-colors uppercase font-bold tracking-wider"
-                                        onClick={() => handleSort('RISK_STATUS')}
-                                     >
-                                         Risk Status
-                                         {sortConfig.key === 'RISK_STATUS' && (
-                                            sortConfig.direction === 'asc' ? <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-                                         )}
-                                     </button>
-                                      <button
-                                        type="button"
-                                        className="w-[320px] shrink-0 px-6 flex items-center justify-end gap-1 cursor-pointer hover:text-gray-800 transition-colors uppercase font-bold tracking-wider"
-                                        onClick={() => handleSort('OUTSTANDING')}
-                                     >
-                                         Outstanding (Base)
-                                         {sortConfig.key === 'OUTSTANDING' && (
-                                            sortConfig.direction === 'asc' ? <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
-                                         )}
-                                     </button>
-                                     <div className="w-[170px] shrink-0 text-center pl-4">Actions</div>
-                                </div>
-                            </th>
-                        </tr>
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
+                      <tr>
+                        <th className="px-6 py-3 group select-none">
+                          <button type="button" className="flex items-center gap-1 uppercase font-bold cursor-pointer hover:text-gray-800" onClick={() => cycleDetailsSort('NAME')}>
+                            Full Name <span aria-hidden="true" className={driverListSortConfig.key === 'NAME' && driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'}>{sortArrow('NAME')}</span>
+                          </button>
+                        </th>
+                        <th className="px-6 py-3">Email Address</th>
+                        <th className="px-6 py-3">Address</th>
+                        <th className="px-6 py-3">NRIC</th>
+                        <th className="px-6 py-3">Plate Number</th>
+                        <th className="px-6 py-3 group select-none">
+                          <button type="button" className="flex items-center gap-1 uppercase font-bold cursor-pointer hover:text-gray-800" onClick={() => cycleDetailsSort('CATEGORY')}>
+                            Category <span aria-hidden="true" className={driverListSortConfig.key === 'CATEGORY' && driverListSortConfig.direction ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'}>{sortArrow('CATEGORY')}</span>
+                          </button>
+                        </th>
+                        <th className="px-6 py-3 text-right">Actions</th>
+                      </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
-                        {filteredDrivers.map((driver, index) => {
-                           // (Row Rendering unchanged)
-                           const m = driver.metrics;
-                           const v = driver.velocityData;
-                           const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
-                           const lastPayment = driver.paymentHistory[0]; 
-                           const lastPaymentDate = lastPayment && lastPayment.date ? parseDate(lastPayment.date) : null;
-                           let showLastPayWarning = false;
-                           if (lastPaymentDate && !isNaN(lastPaymentDate.getTime())) {
-                               const today = kualaLumpurNow();
-                               const diffTime = Math.abs(today.getTime() - lastPaymentDate.getTime());
-                               const daysSinceLastPay = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                               const threshold = driver.rentalCycle === 'MONTHLY' ? 30 : 7;
-                               showLastPayWarning = daysSinceLastPay > threshold;
-                           }
-                           const nextDue = getNextDueDate(driver);
-                           const currentOutstanding = driver.activeBalance.baseValue;
-                           const baselineOutstanding = driver.recoveryBaseline;
-                           let labelText = 'Restored';
-                           let valueText = '';
-                           let progressPercent = 0;
-                           let barColorClass = 'bg-gray-300';
-                           if (baselineOutstanding > 0) {
-                               if (currentOutstanding < baselineOutstanding) {
-                                   const restoredAmount = baselineOutstanding - currentOutstanding;
-                                   progressPercent = (restoredAmount / baselineOutstanding) * 100;
-                                   labelText = 'Restored';
-                                   valueText = `${formatCurrency(restoredAmount)} / ${formatCurrency(baselineOutstanding)}`;
-                                   barColorClass = progressPercent > 75 ? 'bg-emerald-500' : progressPercent > 35 ? 'bg-teal-500' : 'bg-indigo-500';
-                               } else if (currentOutstanding > baselineOutstanding) {
-                                   const addedDebt = currentOutstanding - baselineOutstanding;
-                                   progressPercent = (addedDebt / baselineOutstanding) * 105; // allow some visibility scale
-                                   labelText = 'Slipped';
-                                   valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(baselineOutstanding)}`;
-                                   barColorClass = 'bg-rose-500';
-                               } else {
-                                   labelText = 'Restored';
-                                   valueText = `${formatCurrency(0)} / ${formatCurrency(baselineOutstanding)}`;
-                                   progressPercent = 0;
-                                   barColorClass = 'bg-gray-200';
-                               }
-                           } else if (currentOutstanding > 0) {
-                               const addedDebt = currentOutstanding;
-                               progressPercent = 100;
-                               labelText = 'Slipped';
-                               valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(driver.rentalRate)}`;
-                               barColorClass = 'bg-rose-500';
-                           }
-                           const nextDueStr = formatDate(nextDue, 'N/A');
-                           let behaviorText = 'Consistent Habit';
-                           let behaviorColor = 'text-gray-500';
-                           if (v.isSlipping) { behaviorText = 'Behavior Worsening'; behaviorColor = 'text-red-600 font-bold'; } 
-                           else if (v.isRecovering) { behaviorText = 'Habit Improving'; behaviorColor = 'text-green-600 font-medium'; }
-
+                    <tbody className="divide-y divide-gray-100">
+                      {detailsRows.map(driver => {
+                        let isNew = false;
+                        if (driver.contractStartDate) {
+                          const start = new Date(driver.contractStartDate + 'T00:00:00');
+                          const diffDays = Math.ceil(Math.abs(kualaLumpurNow().getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                          isNew = diffDays <= 30;
+                        }
                         return (
-                           <React.Fragment key={driver.id}>
-                               
-                             <tr id={`driver-row-${driver.id}`}>
-                                         <td colSpan={4} className="p-2 border-b border-slate-100 bg-white">
-                                             <div className={`bg-white px-4 py-3 rounded-lg shadow-sm border border-slate-200 relative group hover:border-slate-300 transition-colors ${highlightedDriverId === driver.id ? 'ring-2 ring-orange-500 scale-[1.01]' : ''}`}>
-                                                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${m.status === 'GOOD' ? 'bg-emerald-500' : m.status === 'MID' ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
-                                                 
-                                                 <div className="flex items-center justify-between gap-4 pl-2">
-                                                     {/* DRIVER PROFILE */}
-                                                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                         <button type="button" aria-expanded={expandedDriverIds.includes(driver.id)} aria-label={`${expandedDriverIds.includes(driver.id) ? "Hide" : "Show"} details for ${driver.name}`} onClick={(e) => { e.stopPropagation(); toggleRowExpand(driver.id); }} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-50 text-slate-500 hover:text-slate-600 transition-colors shrink-0 -ml-1">
-                                                             <ChevronRight className={`w-4 h-4 transform transition-transform duration-300 ${expandedDriverIds.includes(driver.id) ? 'rotate-90 text-blue-600' : ''}`} />
-                                                         </button>
-                                                         <div className="min-w-0 flex-1">
-                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                 <h3 className="font-bold text-slate-900 text-base truncate">{driver.name}</h3>
-                                                                 {!screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
-                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleScreenDriver(driver.id); }} className="relative flex h-3 w-3 items-center justify-center cursor-pointer group/reddot shrink-0" title="Not screened today (click to mark screened)" aria-label={`Mark ${driver.name} as screened today`}>
-                                                                        
-                                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 border border-white hover:bg-rose-700 shadow-sm"></span>
-                                                                    </button>
-                                                                 )}
-                                                                 {screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
-                                                                    <span title="Screened today" role="img" aria-label="Screened today" className="inline-flex"><CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-emerald-500 stroke-[3]" /></span>
-                                                                 )}
-                                                                 {driver.debtTrend.isStreak && <span className="text-sm" title="3-Week Debt Streak">⚠️</span>}
-                                                                 {v.isSlipping && <div title="Driver's payment behavior is worsening" className="cursor-help inline-flex"><TrendingDown className="w-4 h-4 text-rose-500" /></div>}
-                                                                 {v.isRecovering && <div title="Driver's payment behavior is improving" className="cursor-help inline-flex"><TrendingUp className="w-4 h-4 text-emerald-500" /></div>}
-                                                             </div>
-                                                             <div className="flex items-center gap-2 mt-0.5 text-[11px] flex-wrap w-full">
-                                                                 <span className="font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">{driver.carPlate}</span>
-                                                                 <span className="flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"><Calendar className="w-3 h-3" /> Due {nextDueStr}</span>
-                                                                 {/* TAGS & CATEGORY PLACED TOGETHER TIGHTLY */}
-                                                                 {driver.category && <span className={`font-bold px-1.5 py-0.5 uppercase tracking-wider rounded border ${driver.category === 'SEWABELI' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>{driver.category === 'SEWABELI' ? 'Sewabeli' : 'Sewa Biasa'}</span>}
-                                                                 {driver.tags?.map((tag, i) => <span key={i} className="bg-slate-50 border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-medium">{tag}</span>)}
-                                                             </div>
-                                                         </div>
-                                                     </div>
+                          <tr key={driver.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-gray-900">
+                              <span className="flex items-center gap-2">
+                                {driver.name}
+                                {isNew && <span className="text-xs text-red-700 font-black tracking-widest border border-red-500/30 px-1.5 py-0.5 rounded-sm bg-red-50">NEW</span>}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
+                            <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={driver.address || ''}>{driver.address || '-'}</td>
+                            <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
+                            <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
+                            <td className="px-6 py-4 text-gray-600">
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                driver.category === 'SEWABELI' ? 'bg-blue-100 text-blue-800' :
+                                driver.category === 'SEWA_BIASA' ? 'bg-purple-100 text-purple-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {driver.category}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button type="button" onClick={() => handleOpenEditModal(driver)} className="text-xs text-blue-700 font-semibold hover:bg-blue-50 px-3 py-1.5 rounded transition-colors border border-blue-100 bg-white shadow-sm">
+                                Edit Details
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {detailsRows.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-8 text-center text-gray-500">No drivers match these filters.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Collections list */
+                <div className="p-2 sm:p-3">
+                  {/* Column headings and sorting (on phones, just the sort buttons) */}
+                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_14rem_18rem_11rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
+                    <span className="hidden lg:block lg:pl-10">Driver</span>
+                    <span className="lg:hidden">Sort</span>
+                    <button type="button" aria-pressed={sortConfig.key === 'RISK_STATUS'} onClick={() => handleSort('RISK_STATUS')} className="flex items-center justify-center gap-1 rounded px-2 py-1 border border-gray-200 lg:border-0 lg:px-3 uppercase font-bold tracking-wider hover:text-gray-800 transition-colors">
+                      Risk Status {riskSortIcon('RISK_STATUS')}
+                    </button>
+                    <button type="button" aria-pressed={sortConfig.key === 'OUTSTANDING'} onClick={() => handleSort('OUTSTANDING')} className="flex items-center justify-center lg:justify-end gap-1 rounded px-2 py-1 border border-gray-200 lg:border-0 lg:px-4 uppercase font-bold tracking-wider hover:text-gray-800 transition-colors">
+                      Outstanding (Base) {riskSortIcon('OUTSTANDING')}
+                    </button>
+                    <span className="hidden lg:block text-center">Actions</span>
+                  </div>
 
-                                                     {/* RISK STATUS & BEHAVIOR */}
-                                                     <div className="flex flex-col items-center justify-center w-56 shrink-0 border-l border-slate-100 px-8">
-                                                          <div className="flex items-center gap-2">
-                                                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${m.status === 'GOOD' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : m.status === 'MID' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>{m.status}</span>
-                                                          </div>
-                                                          <div className="text-[10px] font-bold text-slate-500 mt-1">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</div>
-                                                          <div className={`text-[10px] ${behaviorColor} font-bold mt-1 text-center`}>{behaviorText}</div>
-                                                          {/* LAST PAY POSITIONED RIGHT BELOW BEHAVIOR WORSENING */}
-                                                          {lastPaymentDate && !isNaN(lastPaymentDate.getTime()) ? <div className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-1 ${showLastPayWarning ? 'text-rose-600' : 'text-slate-500'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" />}Last Pay: {formatDate(lastPaymentDate)}</div> : <div className="text-[9px] text-slate-500 mt-1 text-center">No payment yet</div>}
-                                                     </div>
+                  <ul role="list" className="space-y-2">
+                    {filteredDrivers.map(driver => {
+                      const m = driver.metrics;
+                      const v = driver.velocityData;
+                      const expanded = expandedDriverIds.includes(driver.id);
+                      const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
+                      const lastPayment = driver.paymentHistory[0];
+                      const lastPaymentDate = lastPayment && lastPayment.date ? parseDate(lastPayment.date) : null;
+                      let showLastPayWarning = false;
+                      if (lastPaymentDate && !isNaN(lastPaymentDate.getTime())) {
+                        const diffTime = Math.abs(kualaLumpurNow().getTime() - lastPaymentDate.getTime());
+                        const daysSinceLastPay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        showLastPayWarning = daysSinceLastPay > (driver.rentalCycle === 'MONTHLY' ? 30 : 7);
+                      }
+                      const nextDueStr = formatDate(getNextDueDate(driver), 'N/A');
+                      const currentOutstanding = driver.activeBalance.baseValue;
+                      const baselineOutstanding = driver.recoveryBaseline;
+                      let labelText = 'Restored';
+                      let valueText = '';
+                      let progressPercent = 0;
+                      let barColorClass = 'bg-gray-300';
+                      if (baselineOutstanding > 0) {
+                        if (currentOutstanding < baselineOutstanding) {
+                          const restoredAmount = baselineOutstanding - currentOutstanding;
+                          progressPercent = (restoredAmount / baselineOutstanding) * 100;
+                          labelText = 'Restored';
+                          valueText = `${formatCurrency(restoredAmount)} / ${formatCurrency(baselineOutstanding)}`;
+                          barColorClass = progressPercent > 75 ? 'bg-emerald-500' : progressPercent > 35 ? 'bg-teal-500' : 'bg-indigo-500';
+                        } else if (currentOutstanding > baselineOutstanding) {
+                          const addedDebt = currentOutstanding - baselineOutstanding;
+                          progressPercent = (addedDebt / baselineOutstanding) * 105; // allow some visibility scale
+                          labelText = 'Slipped';
+                          valueText = `+${formatCurrency(addedDebt)} / ${formatCurrency(baselineOutstanding)}`;
+                          barColorClass = 'bg-rose-500';
+                        } else {
+                          labelText = 'Restored';
+                          valueText = `${formatCurrency(0)} / ${formatCurrency(baselineOutstanding)}`;
+                          progressPercent = 0;
+                          barColorClass = 'bg-gray-200';
+                        }
+                      } else if (currentOutstanding > 0) {
+                        progressPercent = 100;
+                        labelText = 'Slipped';
+                        valueText = `+${formatCurrency(currentOutstanding)} / ${formatCurrency(driver.rentalRate)}`;
+                        barColorClass = 'bg-rose-500';
+                      }
+                      // Payment timing compared with the driver's own usual timing
+                      let behaviorText = 'Usual payment timing';
+                      let behaviorColor = 'text-slate-500';
+                      if (v.isSlipping) { behaviorText = 'Paying later than usual'; behaviorColor = 'text-red-700 font-bold'; }
+                      else if (v.isRecovering) { behaviorText = 'Paying earlier than usual'; behaviorColor = 'text-green-700 font-semibold'; }
 
-                                                     {/* OUTSTANDING ALIGNED RIGHT */}
-                                                     <div className="flex flex-col items-end w-[320px] shrink-0 border-l border-slate-100 px-6">
-                                                         <div className="flex flex-col items-end gap-1">
-                                                             <div className="font-mono font-bold text-xl text-slate-900">
-                                                                 {currentOutstanding > 0 ? <span className="text-rose-600">{formatCurrency(currentOutstanding)}</span> : <span className="text-emerald-600">PAID</span>}
-                                                             </div>
-                                                             {driver.debtTrend.direction !== 'FLAT' && (
-                                                                 <div className={`text-[10px] font-bold flex items-center justify-end ${driver.debtTrend.direction === 'UP' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                                     {driver.debtTrend.direction === 'UP' ? <TrendingUp className="w-3 h-3 mr-0.5" /> : <TrendingDown className="w-3 h-3 mr-0.5" />}
-                                                                     {driver.debtTrend.direction === 'UP' ? '+' : '-'}{formatCurrency(driver.debtTrend.value)}
-                                                                 </div>
-                                                             )}
-                                                         </div>
-                                                         
-                                                         {(currentOutstanding > 0 || baselineOutstanding > 0) && (
-                                                             <div className="w-full mt-2 text-left">
-                                                                 <div className="flex justify-between items-center text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-1.5 px-0.5 whitespace-nowrap">
-                                                                     <span>{labelText}</span>
-                                                                     <span className="font-mono ml-2 text-right">{valueText}</span>
-                                                                 </div>
-                                                                 <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                                                                     <div className={`h-full ${barColorClass} transition-all duration-500`} style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}></div>
-                                                                 </div>
-                                                             </div>
-                                                         )}
-                                                     </div>
+                      return (
+                        <li key={driver.id} id={`driver-row-${driver.id}`}>
+                          <div className="relative bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
+                            <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1.5 rounded-l-lg ${m.status === 'GOOD' ? 'bg-emerald-500' : m.status === 'MID' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
+                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_14rem_18rem_11rem] lg:items-center lg:gap-0">
+                              {/* Driver */}
+                              <div className="flex items-start gap-2 min-w-0 lg:pr-4">
+                                <button
+                                  type="button"
+                                  aria-expanded={expanded}
+                                  aria-label={`${expanded ? 'Hide' : 'Show'} details for ${driver.name}`}
+                                  onClick={() => toggleRowExpand(driver.id)}
+                                  className="w-11 h-11 lg:w-8 lg:h-8 -ml-1 shrink-0 rounded-full flex items-center justify-center hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"
+                                >
+                                  <ChevronRight className={`w-4 h-4 transform transition-transform duration-300 ${expanded ? 'rotate-90 text-blue-600' : ''}`} aria-hidden="true" />
+                                </button>
+                                <div className="min-w-0 flex-1 pt-1 lg:pt-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-bold text-slate-900 text-base truncate">{driver.name}</h3>
+                                    {!screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
+                                      <button type="button" onClick={() => handleScreenDriver(driver.id)} className="relative flex h-6 w-6 -m-1.5 items-center justify-center cursor-pointer shrink-0" title="Not screened today (click to mark screened)" aria-label={`Mark ${driver.name} as screened today`}>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600 border border-white hover:bg-rose-700 shadow-sm"></span>
+                                      </button>
+                                    )}
+                                    {screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
+                                      <span title="Screened today" role="img" aria-label="Screened today" className="inline-flex"><CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" /></span>
+                                    )}
+                                    {driver.debtTrend.isStreak && (
+                                      <span title="Outstanding has gone up three weeks in a row" className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Debt up 3 weeks</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 mt-1 text-xs flex-wrap">
+                                    <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{driver.carPlate}</span>
+                                    <span className="flex items-center gap-1 font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"><Calendar className="w-3 h-3" aria-hidden="true" /> Due {nextDueStr}</span>
+                                    {driver.category && <span className={`font-bold px-1.5 py-0.5 uppercase tracking-wider rounded border ${driver.category === 'SEWABELI' ? 'bg-purple-50 text-purple-800 border-purple-200' : 'bg-orange-50 text-orange-800 border-orange-200'}`}>{driver.category === 'SEWABELI' ? 'Sewabeli' : 'Sewa Biasa'}</span>}
+                                    {driver.tags?.map((tag, i) => <span key={i} className="bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">{tag}</span>)}
+                                  </div>
+                                </div>
+                              </div>
 
-                                                     {/* ACTIONS STRIP */}
-                                                     <div className="flex items-center gap-3 shrink-0 border-l border-slate-100 pl-4 h-full w-[170px]">
-                                                          <button onClick={() => handleOpenPaymentModal(driver)} className="w-[90px] justify-center py-2 bg-emerald-500 text-white text-sm font-normal rounded hover:bg-emerald-600 shadow-sm flex items-center gap-1 transition-colors">
-                                                              <span className="font-bold text-xs">RM</span> Payment
-                                                          </button>
-                                                          <div className="flex items-center gap-1 text-slate-500 shrink-0">
-                                                              <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="hover:text-slate-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><Pencil className="w-3.5 h-3.5" /></button>
-                                                              {viewMode === 'ACTIVE' ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="hover:text-rose-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><UserMinus className="w-3.5 h-3.5" /></button> : <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="hover:text-rose-600 p-1.5 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200"><Trash2 className="w-3.5 h-3.5" /></button>}
-                                                          </div>
-                                                     </div>
-                                                 </div>
-                                             </div>
-                                         </td>
-                                     </tr>
-                                     {expandedDriverIds.includes(driver.id) && (
-                                       <tr className="bg-slate-50">
-                                         <td colSpan={4} className="px-6 py-4 border-b border-slate-200 shadow-inner">
-                                           <ExpandedDriverDetails 
-                                             driver={driver} 
-                                             onLogPaymentClick={() => handleOpenPaymentModal(driver)} 
-                                           />
-                                         </td>
-                                       </tr>
-                                     )}
-                                   </React.Fragment>
+                              {/* Risk status and payment timing */}
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs lg:flex-col lg:justify-center lg:gap-1 lg:border-l lg:border-slate-100 lg:px-3 lg:text-center">
+                                <span className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${m.status === 'GOOD' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : m.status === 'MID' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>{m.status}</span>
+                                  <span className="font-bold text-slate-600">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</span>
+                                </span>
+                                <span className={behaviorColor}>{behaviorText}</span>
+                                {lastPaymentDate && !isNaN(lastPaymentDate.getTime())
+                                  ? <span className={`font-semibold flex items-center gap-1 ${showLastPayWarning ? 'text-rose-700' : 'text-slate-500'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}Last pay: {formatDate(lastPaymentDate)}</span>
+                                  : <span className="text-slate-500">No payment yet</span>}
+                              </div>
+
+                              {/* Outstanding */}
+                              <div className="flex flex-col gap-1 lg:items-end lg:border-l lg:border-slate-100 lg:px-4">
+                                <div className="flex flex-wrap items-baseline justify-between gap-x-3 lg:justify-end lg:gap-x-2">
+                                  <span className="font-bold text-lg">
+                                    {currentOutstanding > 0 ? <span className="text-rose-700">{formatCurrency(currentOutstanding)}</span> : <span className="text-emerald-700">PAID</span>}
+                                  </span>
+                                  {driver.debtTrend.direction !== 'FLAT' && (
+                                    <span title="Change in outstanding over the last 7 days" className={`text-xs font-bold flex items-center gap-1 ${driver.debtTrend.direction === 'UP' ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                      {driver.debtTrend.direction === 'UP' ? <TrendingUp className="w-3.5 h-3.5" aria-hidden="true" /> : <TrendingDown className="w-3.5 h-3.5" aria-hidden="true" />}
+                                      {driver.debtTrend.direction === 'UP' ? '+' : '−'}{formatCurrency(driver.debtTrend.value)} in 7 days
+                                    </span>
+                                  )}
+                                </div>
+                                {(currentOutstanding > 0 || baselineOutstanding > 0) && (
+                                  <div className="w-full text-left">
+                                    <div className="flex flex-wrap justify-between items-center gap-x-2 text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                      <span>{labelText}</span>
+                                      <span className="font-mono normal-case tracking-normal">{valueText}</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                      <div className={`h-full ${barColorClass} transition-all duration-500`} style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}></div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Actions */}
+                              <div className="flex items-center gap-2 lg:justify-center lg:border-l lg:border-slate-100 lg:pl-3">
+                                <button type="button" onClick={() => handleOpenPaymentModal(driver)} aria-label={`Record payment for ${driver.name}`} className="flex-1 lg:flex-none min-h-11 lg:min-h-0 px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1 transition-colors">
+                                  <span className="font-bold text-xs">RM</span> Payment
+                                </button>
+                                <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-4 h-4" aria-hidden="true" /></button>
+                                {driverScope === 'ACTIVE'
+                                  ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><UserMinus className="w-4 h-4" aria-hidden="true" /></button>
+                                  : <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>}
+                              </div>
+                            </div>
+                          </div>
+                          {expanded && (
+                            <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 sm:p-4">
+                              <ExpandedDriverDetails driver={driver} onLogPaymentClick={() => handleOpenPaymentModal(driver)} />
+                            </div>
+                          )}
+                        </li>
                       );
-                   })}
-                </tbody>
-             </table>
+                    })}
+                  </ul>
+
+                  {filteredDrivers.length === 0 && (
+                    <p className="px-6 py-10 text-center text-sm text-gray-500">
+                      No drivers match these filters.{' '}
+                      {filtersActive && <button type="button" onClick={resetFilters} className="font-semibold text-blue-700 underline">Reset filters</button>}
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          </>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
+            {activeSection === 'FINANCE' ? (
+              <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense></ScreenLoadBoundary>
+            ) : activeSection === 'ANALYTICS' ? (
+              <div className="p-6 bg-gray-50/50">
+                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
+              </div>
+            ) : (
+              <div className="p-6 bg-gray-50/50">
+                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driverData} /></React.Suspense></ScreenLoadBoundary>
+              </div>
+            )}
           </div>
-       </div>
-
-
-                
-            </>
-         )}
-      </div>
+        )}
+      </main>
 
       {/* Driver form */}
       {isDriverModalOpen && (
@@ -1841,45 +1435,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </Dialog>
       )}
-
-      {/* Invoice list for a collection card */}
-      {invoicePopupData && (
-        <Dialog title={invoicePopupData.title} description={`Showing ${invoicePopupData.invoices.length} invoices`} size="lg" onClose={() => setInvoicePopupData(null)}>
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-100 text-xs uppercase font-bold text-gray-500 sticky top-0">
-              <tr>
-                <th className="px-6 py-3">Driver / Car</th>
-                <th className="px-6 py-3">Due Date</th>
-                <th className="px-6 py-3">Paid / Due</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {invoicePopupData.invoices.map((inv: any) => (
-                <tr key={inv.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-gray-900">{inv.driverName}</div>
-                    <div className="text-xs text-gray-500 mt-1 uppercase tracking-wider">{inv.carPlate}</div>
-                  </td>
-                  <td className="px-6 py-4 font-medium text-gray-600">{formatDate(inv.dueDate, 'N/A')}</td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-500 mb-1">{formatCurrency(inv.amountPaid)} / {formatCurrency(inv.amount)}</div>
-                    <div className="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-orange-500" style={{ width: `${Math.min(100, Math.max(0, (inv.amountPaid / inv.amount) * 100))}%` }}></div>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {invoicePopupData.invoices.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic">No invoices found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Dialog>
-      )}
-
-        </div>
     </div>
   );
 };
