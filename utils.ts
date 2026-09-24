@@ -294,6 +294,15 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
   return weeks;
 };
 
+/** Recorded contract length implied by the start and end dates (months approximated as 30 days). */
+export const contractCyclesBetween = (startDate: string, endDate: string, cycle: Driver['rentalCycle']): number | null => {
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  if (!startDate || !endDate || isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return null;
+  const days = Math.ceil((end.getTime() - start.getTime()) / DAY_MS);
+  return Math.ceil(days / (cycle === 'MONTHLY' ? 30 : 7));
+};
+
 /** Malaysian NRIC as typed: digits only, at most 12, hyphenated as XXXXXX-XX-XXXX. */
 export const formatNric = (value: string): string => {
   const digits = value.replace(/\D/g, '').slice(0, 12);

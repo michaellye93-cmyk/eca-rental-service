@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Driver, DriverStatus } from '../types';
-import { calculateDriverMetrics, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
+import { calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -53,15 +53,6 @@ interface AdminDashboardProps {
 
 // Fixed baseline for the "Restored / Slipped" recovery bar on each driver row.
 const RECOVERY_BASELINE_DATE = new Date('2026-05-27T00:00:00Z');
-
-// Recorded contract length implied by the start and end dates (months approximated as 30 days).
-const contractCyclesBetween = (startDate: string, endDate: string, cycle: Driver['rentalCycle']): number | null => {
-  const start = new Date(startDate + 'T00:00:00');
-  const end = new Date(endDate + 'T00:00:00');
-  if (!startDate || !endDate || isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return null;
-  const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  return Math.ceil(days / (cycle === 'MONTHLY' ? 30 : 7));
-};
 
 /** A text setting remembered in this browser under `key`; falls back when storage is empty or unavailable. */
 function usePersistedState<T extends string>(key: string, fallback: T): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -1644,12 +1635,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <input id="driver-plate" required type="text" className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" value={formData.carPlate} onChange={e => setFormData({...formData, carPlate: e.target.value})} placeholder="ABC 1234" />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="driver-category" className="block text-sm font-bold text-gray-700 mb-1">Category</label>
                 <select id="driver-category" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as 'SEWABELI' | 'SEWA_BIASA'})}>
                   <option value="SEWABELI">SEWABELI</option>
                   <option value="SEWA_BIASA">SEWA BIASA</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="driver-cycle" className="block text-sm font-bold text-gray-700 mb-1">Rental cycle</label>
+                <select id="driver-cycle" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.rentalCycle} onChange={e => setFormData({...formData, rentalCycle: e.target.value as 'WEEKLY' | 'MONTHLY'})}>
+                  <option value="WEEKLY">Weekly</option>
+                  <option value="MONTHLY">Monthly</option>
                 </select>
               </div>
               <div>
@@ -1664,7 +1662,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div>
                 <label htmlFor="driver-duration" className="block text-sm font-bold text-gray-700 mb-1">Duration ({formData.rentalCycle === 'MONTHLY' ? 'months' : 'weeks'})</label>
-                <input id="driver-duration" required type="number" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractDuration} onChange={e => setFormData({...formData, contractDuration: Number(e.target.value)})} min="1" />
+                <input id="driver-duration" required type="number" readOnly={!!formData.contractEndDate} aria-describedby={formData.contractEndDate ? 'driver-duration-note' : undefined} className={`w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none ${formData.contractEndDate ? 'bg-gray-100 text-gray-600' : ''}`} value={formData.contractDuration} onChange={e => setFormData({...formData, contractDuration: Number(e.target.value)})} min="1" />
+                {formData.contractEndDate && <p id="driver-duration-note" className="text-xs text-gray-500 mt-1">Calculated from the end date</p>}
               </div>
               <div>
                 <label htmlFor="driver-end" className="block text-sm font-bold text-gray-700 mb-1">End Date</label>
@@ -1690,6 +1689,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
             </div>
+            {editingId && drivers.find(d => d.id === editingId)?.rentalCycle !== formData.rentalCycle && (
+              <p role="note" className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                Changing the rental cycle moves every due date for this driver and recalculates their balance from the contract start.
+              </p>
+            )}
             {driverFormError && <p role="alert" className="text-sm font-medium text-rose-600">{driverFormError}</p>}
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
               <button type="button" onClick={() => setIsDriverModalOpen(false)} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
