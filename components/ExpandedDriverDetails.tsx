@@ -205,7 +205,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                   </div>
                   <div>
                     <span className="font-bold text-gray-800 block">{inv.cycleLabel}</span>
-                    <span className="text-gray-400 font-mono text-[11px]">Due: {inv.dueDate ? (inv.dueDate instanceof Date ? inv.dueDate : parseDate(inv.dueDate)).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                    <span className="text-gray-400 font-mono text-[11px]">Due: {inv.dueDate ? parseDate(inv.dueDate).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</span>
                   </div>
                 </div>
 

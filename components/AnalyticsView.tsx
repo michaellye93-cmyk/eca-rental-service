@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import type { Driver, Invoice } from '../types';
+import type { Driver, DriverWithMetrics, Invoice } from '../types';
 import TerminationReport from './TerminationReport';
 import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, kualaLumpurNow, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, ChevronLeft, ChevronRight, Eye, X, ShieldAlert, BadgeCheck, MessageSquareWarning } from 'lucide-react';
 
 interface AnalyticsViewProps {
-  drivers: Driver[];
+  drivers: DriverWithMetrics[];
 }
 
 const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {

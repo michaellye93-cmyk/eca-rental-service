@@ -31,7 +31,6 @@ const App: React.FC = () => {
 
   // --- Data Fetching ---
   const fetchDriversAndPayments = async (silent: boolean = false) => {
-    let isMounted = true;
     try {
       if (!silent) {
         setLoading(true);
@@ -131,23 +130,13 @@ const App: React.FC = () => {
 
       // Race the fetch against the timeout
       const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[] };
-      
-      if (isMounted) {
-        setDrivers(result.formattedDrivers);
-        
-      }
-
+      setDrivers(result.formattedDrivers);
     } catch (err: any) {
       console.error('Error fetching data:', err);
-      if (isMounted) {
-        setError(err.message || 'Failed to connect to database');
-      }
+      setError(err.message || 'Failed to connect to database');
     } finally {
-        if (isMounted) {
-            setLoading(false);
-        }
+      setLoading(false);
     }
-    return () => { isMounted = false; };
   };
 
   const fetchUserRole = useCallback(async (userId: string, generation: number) => {
@@ -515,7 +504,7 @@ const App: React.FC = () => {
                </div>
             )}
 
-            <button onClick={fetchDriversAndPayments} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => void fetchDriversAndPayments()} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4" /> Retry Connection
             </button>
         </div>

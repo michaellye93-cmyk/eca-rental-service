@@ -22,6 +22,14 @@ interface ReconcileTransaction {
   ref_num?: string;
   balance?: number;
   original_index?: number;
+  // Alternative field names some extracted statements use.
+  date?: string;
+  branchDescription?: string;
+  reference_1?: string;
+  reference1?: string;
+  reference_2?: string;
+  reference2?: string;
+  refNum?: string;
 }
 
 interface ReconciliationResult {

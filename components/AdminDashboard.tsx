@@ -1598,7 +1598,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                                     </button>
                                                                  )}
                                                                  {screenedDriverIds.includes(driver.id) && !driver.isDelisted && (
-                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 stroke-[3]" title="Screened Today" />
+                                                                    <span title="Screened today" role="img" aria-label="Screened today" className="inline-flex"><CheckCircle2 aria-hidden="true" className="w-3.5 h-3.5 text-emerald-500 stroke-[3]" /></span>
                                                                  )}
                                                                  {driver.debtTrend.isStreak && <span className="text-sm" title="3-Week Debt Streak">⚠️</span>}
                                                                  {v.isSlipping && <div title="Driver's payment behavior is worsening" className="cursor-help inline-flex"><TrendingDown className="w-4 h-4 text-rose-500 animate-bounce" /></div>}
@@ -1724,7 +1724,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Category</label>
-                                        <select className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                                        <select className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as 'SEWABELI' | 'SEWA_BIASA'})}>
                                             <option value="SEWABELI">SEWABELI</option>
                                             <option value="SEWA_BIASA">SEWA BIASA</option>
                                         </select>

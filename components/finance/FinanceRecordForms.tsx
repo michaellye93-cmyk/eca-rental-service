@@ -138,7 +138,9 @@ const Field = ({
   <label className="finance-field">
     <span>{label}</span>
     {React.Children.map(children, (child) =>
-      React.cloneElement(child, { "aria-label": label }),
+      React.isValidElement<{ "aria-label"?: string }>(child)
+        ? React.cloneElement(child, { "aria-label": label })
+        : child,
     )}
   </label>
 );

@@ -24,7 +24,7 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactElement;
+  children: React.ReactElement<{ "aria-label"?: string }>;
 }) {
   return (
     <label className="finance-field">

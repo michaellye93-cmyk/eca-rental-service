@@ -587,7 +587,7 @@ export default function FinanceView() {
               month={month}
               disabled={busy || !isOpen}
               onSave={(action, record) => invoke(() => saveOtherIncome(action, record, revise), "Other Income saved.")}
-              onExport={() => exportRecords("other_income", (input.other_income ?? []).filter((row) => !row.cancelled_at && row.finance_month.slice(0, 7) === month))}
+              onExport={() => exportRecords("other_income", (input.other_income ?? []).filter((row) => !row.cancelled_at && row.finance_month.slice(0, 7) === month) as unknown as Record<string, unknown>[])}
             /><MonthClose
               month={month}
               input={input}
@@ -1115,8 +1115,8 @@ function Expenses({
       />}
       {isExpenseTab && tab !== "Corporate Opex" && <section className="finance-panel">
         <SectionHeading
-          title={tab === "Corporate Opex" ? "Standalone and additional monthly entries" : groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
-          detail={tab === "Corporate Opex" ? "One-off costs and any selected-month entries not represented by a recurring schedule above." : groups.find((x) => x[0] === tab)?.[2]}
+          title={groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
+          detail={groups.find((x) => x[0] === tab)?.[2]}
           action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : tab === "Vehicle Direct Cost" ? "vehicle_expenses" : "company_expenses", visible)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
               disabled={disabled}
               label="Upload Excel"
@@ -1146,7 +1146,7 @@ function Expenses({
                       )?.display_plate ?? "Unmatched")
                     : "—"}
                 </td>
-                <td>{row.category}{tab === "Corporate Opex" && (row.description || row.notes) && <><br /><small>{row.description || row.notes}</small></>}</td>
+                <td>{row.category}</td>
                 <td>{row.supplier ?? "—"}</td>
                 <td className="finance-strong">{formatMoney(row.amount)}</td>
                 <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={() => { if (!window.confirm(`Delete ${row.category} for ${formatMoney(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
@@ -1155,7 +1155,7 @@ function Expenses({
           ) : (
             <tr>
               <td colSpan={6}>
-                <Empty text={tab === "Corporate Opex" ? "No standalone or additional costs for the selected month." : "No records in this section for the selected month."} />
+                <Empty text="No records in this section for the selected month." />
               </td>
             </tr>
           )}

@@ -59,6 +59,12 @@ export interface DriverMetrics {
   dailyInterest: number;        // Next day's penalty increment
 }
 
+/** A driver with the balance figures the admin screens derive from the shared rent schedule. */
+export interface DriverWithMetrics extends Driver {
+  metrics: DriverMetrics;
+  activeBalance: { baseValue: number; accruedInterest: number };
+}
+
 export interface Invoice {
   id: string;             // driverId_cycleIndex
   driverId: string;
