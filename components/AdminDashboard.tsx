@@ -1344,7 +1344,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             {editingId && drivers.find(d => d.id === editingId)?.rentalCycle !== formData.rentalCycle && (
               <p role="note" className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                Changing the rental cycle moves every due date for this driver and recalculates their balance from the contract start. Check that the rent and duration above are per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'}.
+                Changing the rental cycle moves every due date for this driver and recalculates their balance from the contract start. Check that the rent above is per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'} and the duration is in {formData.rentalCycle === 'MONTHLY' ? 'months' : 'weeks'}.
               </p>
             )}
             {driverFormError && <p role="alert" className="text-sm font-medium text-rose-600">{driverFormError}</p>}
