@@ -476,7 +476,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return Array.from(tags).sort();
   }, [driverData]);
 
-  // --- Debt Target & Urgency Queue Computations ---
+  // --- Rent targets and late alerts ---
   // Re-read when the screening day rolls over at Kuala Lumpur midnight.
   const todayStr = useMemo(() => kualaLumpurToday(), [screeningDate]);
   const todayNormalized = useMemo(() => parseDate(todayStr), [todayStr]);
@@ -508,8 +508,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const monthTotals = useMemo(() => rentDueAndPaid(drivers, startOfMonth, endOfMonth, todayNormalized), [drivers, startOfMonth, endOfMonth, todayNormalized]);
   // Late alerts: active drivers with no payment for 8 or more days, longest first
   const lateAlerts = useMemo(() => driverData
-    .filter(d => queues.noPayment8plus.has(d.id))
-    .map(d => ({ driver: d, days: daysSinceLastPayment(d, todayNormalized) ?? 0 }))
+    .flatMap(d => {
+      const days = queues.noPayment8plus.has(d.id) ? daysSinceLastPayment(d, todayNormalized) : null;
+      return days === null ? [] : [{ driver: d, days }];
+    })
     .sort((a, b) => b.days - a.days), [driverData, queues, todayNormalized]);
 
   // Analytics and Bank Recon receive all drivers in the list's default order (Bank Recon's matching keeps the first
@@ -519,7 +521,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Drivers in the chosen scope, before the other filters
   const scopeDrivers = useMemo(() => driverData.filter(d => driverScope === 'DELISTED' ? d.isDelisted : !d.isDelisted), [driverData, driverScope]);
 
-  // Filter by risk, follow-up group, search and staff group, then sort
+  // Filter by risk, search and staff group, then sort
   const filteredDrivers = useMemo(() => {
     let result = scopeDrivers;
 
@@ -591,7 +593,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
   useEffect(() => {
     if (!highlight) return;
-    document.getElementById(`driver-row-${highlight.driverId}`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    const row = document.getElementById(`driver-row-${highlight.driverId}`);
+    row?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    // Keyboard and screen-reader users carry on from the driver's row
+    row?.querySelector<HTMLButtonElement>('button[aria-expanded]')?.focus({ preventScroll: true });
     const timer = setTimeout(() => setHighlight(null), 4500);
     return () => clearTimeout(timer);
   }, [highlight]);
@@ -933,7 +938,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </section>
 
             {/* Driver list */}
-            <section ref={driversSectionRef} aria-label="Drivers" className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-clip print:shadow-none print:border-none">
+            <section ref={driversSectionRef} aria-labelledby="drivers-heading" className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-clip print:shadow-none print:border-none">
+              <h2 id="drivers-heading" className="sr-only">Drivers</h2>
               {/* Controls stay in view while scrolling the list */}
               <div className="lg:sticky lg:top-0 lg:z-10 bg-white border-b border-gray-200 print:hidden">
                 <div className="px-3 sm:px-4 py-3 flex flex-col lg:flex-row gap-3 lg:items-center">

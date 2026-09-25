@@ -57,6 +57,12 @@ test('days without payment count from the latest payment, or from the contract s
   assert.equal(daysSinceLastPayment(weekly('noDates', ''), reference), null);
 });
 
+test('days without payment skip unreadable payment dates and go negative for a future-dated payment', () => {
+  assert.equal(daysSinceLastPayment(weekly('badDate', '2026-09-01', [['not a date', 100], ['2026-09-20', 100]]), reference), 4);
+  assert.equal(daysSinceLastPayment(weekly('onlyBadDate', '2026-09-10', [['', 100]]), reference), 14);
+  assert.equal(daysSinceLastPayment(weekly('futurePayment', '2026-09-01', [['2026-09-30', 100]]), reference), -6);
+});
+
 test('delisted drivers are not queued', () => {
   const queues = buildCollectionQueues([weekly('gone', '2026-09-01', [], { isDelisted: true, delistDate: '2026-09-20' })], reference);
   assert.equal(queues.dueToday.size + queues.late1to3.size + queues.late4plus.size + queues.noPayment8plus.size, 0);

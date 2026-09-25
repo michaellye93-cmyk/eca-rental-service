@@ -323,8 +323,9 @@ export interface CollectionQueues {
 }
 
 /**
- * The follow-up queue for active drivers, from the shared rent schedule. Each driver sits in one lateness
- * group, set by their oldest rent still unpaid on the reference day; the no-payment flag is separate.
+ * Lateness groups for active drivers, from the shared rent schedule: each driver sits in one group, set by their
+ * oldest rent still unpaid on the reference day. The no-payment flag (8 or more days without a payment, behind the
+ * dashboard's late alerts) is separate.
  */
 export const buildCollectionQueues = (drivers: Driver[], referenceDate: Date = kualaLumpurNow()): CollectionQueues => {
   const queues: CollectionQueues = { dueToday: new Set(), late1to3: new Set(), late4plus: new Set(), noPayment8plus: new Set() };
