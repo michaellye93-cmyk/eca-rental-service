@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { daysSinceLastPayment, rentDueAndPaid } from '../utils.ts';
+import { daysSinceLastPayment, lastPayment, lateAlertDays, rentDueAndPaid } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const reference = new Date(2026, 8, 24); // Thursday 24 Sep 2026, local midnight
@@ -31,6 +31,50 @@ test('days without payment skip unreadable payment dates and go negative for a f
   assert.equal(daysSinceLastPayment(weekly('badDate', '2026-09-01', [['not a date', 100], ['2026-09-20', 100]]), reference), 4);
   assert.equal(daysSinceLastPayment(weekly('onlyBadDate', '2026-09-10', [['', 100]]), reference), 14);
   assert.equal(daysSinceLastPayment(weekly('futurePayment', '2026-09-01', [['2026-09-30', 100]]), reference), -6);
+});
+
+// A newly recorded payment is listed first whatever its date, and dates can be unreadable or later than today
+const backdated = weekly('backdated', '2026-09-01', [['2026-09-02', 100], ['2026-09-20', 100]]);
+const unreadableFirst = weekly('unreadableFirst', '2026-09-01', [['not a date', 100], ['2026-09-20', 100]]);
+const futureDated = weekly('futureDated', '2026-09-01', [['2026-10-10', 100], ['2026-09-02', 100]]);
+const monthly = (id: string, paidOn: string) => weekly(id, '2026-01-01', [[paidOn, 1000]], { rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 12 });
+
+test('the driver list shows the latest payment even when a backdated one is listed first', () => {
+  assert.deepEqual(lastPayment(backdated, reference), { date: new Date(2026, 8, 20), days: 4, isStale: false });
+});
+
+test('the driver list skips unreadable payment dates', () => {
+  assert.deepEqual(lastPayment(unreadableFirst, reference), { date: new Date(2026, 8, 20), days: 4, isStale: false });
+  assert.equal(lastPayment(weekly('onlyUnreadable', '2026-09-01', [['', 100]]), reference), null);
+});
+
+test('the driver list shows a future-dated payment with negative days and no warning', () => {
+  assert.deepEqual(lastPayment(futureDated, reference), { date: new Date(2026, 9, 10), days: -16, isStale: false });
+});
+
+test('the driver list has no last payment for a driver who has never paid', () => {
+  assert.equal(lastPayment(weekly('neverPaid', '2026-09-10'), reference), null);
+});
+
+test('the driver list warns from 7 whole days without payment on weekly rent and 30 on monthly, at any time of day', () => {
+  const evening = new Date(2026, 8, 24, 21, 30);
+  assert.deepEqual(lastPayment(weekly('sixDays', '2026-09-01', [['2026-09-18', 100]]), evening), { date: new Date(2026, 8, 18), days: 6, isStale: false });
+  assert.deepEqual(lastPayment(weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]), evening), { date: new Date(2026, 8, 17), days: 7, isStale: true });
+  assert.equal(lastPayment(weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]), reference)?.isStale, true);
+  assert.deepEqual(lastPayment(monthly('monthly29', '2026-08-26'), evening), { date: new Date(2026, 7, 26), days: 29, isStale: false });
+  assert.deepEqual(lastPayment(monthly('monthly30', '2026-08-25'), evening), { date: new Date(2026, 7, 25), days: 30, isStale: true });
+});
+
+test('the driver list counts the same days since the last payment as daysSinceLastPayment', () => {
+  for (const driver of [backdated, unreadableFirst, futureDated, monthly('monthly30', '2026-08-25')]) {
+    assert.equal(lastPayment(driver, reference)?.days, daysSinceLastPayment(driver, reference), driver.id);
+  }
+});
+
+test('on weekly rent, the driver list and the late alerts count the same days since the last payment', () => {
+  for (const driver of [backdated, unreadableFirst, futureDated]) {
+    assert.equal(lastPayment(driver, reference)?.days, lateAlertDays(driver, reference), driver.id);
+  }
 });
 
 test('rentDueAndPaid sums active drivers\' rent falling due in a period and what has been applied to it', () => {

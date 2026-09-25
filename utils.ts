@@ -298,17 +298,35 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
 const daysBetween = (from: Date, to: Date): number =>
   Math.round((new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() - new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) / DAY_MS);
 
+export interface LastPayment {
+  /** The latest readable payment date, whatever order the payments are listed in (it can be later than today). */
+  date: Date;
+  /** Whole days from that date to the reference day (negative when it is later). */
+  days: number;
+  /** The driver list's warning: 7 or more days without payment on weekly rent, 30 or more on monthly. */
+  isStale: boolean;
+}
+
+/** The driver's latest payment with a readable date, or null when there is none. */
+export const lastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow()): LastPayment | null => {
+  const date = (driver.paymentHistory || []).reduce<Date | null>((latest, payment) => {
+    const paid = parseDate(payment.date);
+    return !isNaN(paid.getTime()) && (!latest || paid > latest) ? paid : latest;
+  }, null);
+  if (!date) return null;
+  const days = daysBetween(date, referenceDate);
+  return { date, days, isStale: days >= (driver.rentalCycle === 'MONTHLY' ? 30 : 7) };
+};
+
 /**
- * Whole days since the driver's latest payment, or since the contract start when none has been made
- * (negative for a contract that has not started). Null when neither date is valid.
+ * Whole days since the driver's latest payment (the driver list's count), or since the contract start when none
+ * has been made (negative for a contract that has not started). Null when neither date is valid.
  */
 export const daysSinceLastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null => {
-  const lastPaid = (driver.paymentHistory || []).reduce<Date | null>((latest, payment) => {
-    const date = parseDate(payment.date);
-    return !isNaN(date.getTime()) && (!latest || date > latest) ? date : latest;
-  }, null);
-  const since = lastPaid ?? parseDate(driver.contractStartDate);
-  return isNaN(since.getTime()) ? null : daysBetween(since, referenceDate);
+  const last = lastPayment(driver, referenceDate);
+  if (last) return last.days;
+  const start = parseDate(driver.contractStartDate);
+  return isNaN(start.getTime()) ? null : daysBetween(start, referenceDate);
 };
 
 /**

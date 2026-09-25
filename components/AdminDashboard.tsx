@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -1092,14 +1092,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const v = driver.velocityData;
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
-                      const lastPayment = driver.paymentHistory[0];
-                      const lastPaymentDate = lastPayment && lastPayment.date ? parseDate(lastPayment.date) : null;
-                      let showLastPayWarning = false;
-                      if (lastPaymentDate && !isNaN(lastPaymentDate.getTime())) {
-                        const diffTime = Math.abs(kualaLumpurNow().getTime() - lastPaymentDate.getTime());
-                        const daysSinceLastPay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        showLastPayWarning = daysSinceLastPay > (driver.rentalCycle === 'MONTHLY' ? 30 : 7);
-                      }
+                      // The latest payment; weekly late alerts count the same days (monthly alerts count from the unpaid due date)
+                      const lastPaid = lastPayment(driver, todayNormalized);
                       const nextDueStr = formatDate(getNextDueDate(driver), 'N/A');
                       const currentOutstanding = driver.activeBalance.baseValue;
                       const baselineOutstanding = driver.recoveryBaseline;
@@ -1185,8 +1179,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <span className="font-bold text-slate-600">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</span>
                                 </span>
                                 <span className={behaviorColor}>{behaviorText}</span>
-                                {lastPaymentDate && !isNaN(lastPaymentDate.getTime())
-                                  ? <span className={`font-semibold flex items-center gap-1 ${showLastPayWarning ? 'text-rose-700' : 'text-slate-500'}`}>{showLastPayWarning && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}Last pay: {formatDate(lastPaymentDate)}</span>
+                                {lastPaid
+                                  ? <span className={`font-semibold flex items-center gap-1 ${lastPaid.isStale ? 'text-rose-700' : 'text-slate-500'}`}>{lastPaid.isStale && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}Last pay: {formatDate(lastPaid.date)}</span>
                                   : <span className="text-slate-500">No payment yet</span>}
                               </div>
 
