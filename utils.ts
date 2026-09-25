@@ -298,13 +298,25 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
 const daysBetween = (from: Date, to: Date): number =>
   Math.round((new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() - new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) / DAY_MS);
 
+/** Late alerts, and the driver list's warning on monthly rent, start this many days late. */
+export const LATE_ALERT_DAYS = 8;
+
+/**
+ * Monthly rent: whole days since the oldest rent still unpaid or part-paid fell due, from the shared rent schedule.
+ * Null when no rent is owed yet.
+ */
+export const monthlyOverdueDays = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null => {
+  const referenceEnd = endOfDay(referenceDate);
+  const oldestUnpaid = generateDriverInvoices(driver, referenceDate)
+    .find(invoice => invoice.remainingBalance > 0.01 && parseDate(invoice.dueDate) <= referenceEnd);
+  return oldestUnpaid ? daysBetween(parseDate(oldestUnpaid.dueDate), referenceDate) : null;
+};
+
 export interface LastPayment {
   /** The latest readable payment date, whatever order the payments are listed in (it can be later than today). */
   date: Date;
   /** Whole days from that date to the reference day (negative when it is later). */
   days: number;
-  /** The driver list's warning: 7 or more days without payment on weekly rent, 30 or more on monthly. */
-  isStale: boolean;
 }
 
 /** The driver's latest payment with a readable date, or null when there is none. */
@@ -314,8 +326,21 @@ export const lastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow
     return !isNaN(paid.getTime()) && (!latest || paid > latest) ? paid : latest;
   }, null);
   if (!date) return null;
-  const days = daysBetween(date, referenceDate);
-  return { date, days, isStale: days >= (driver.rentalCycle === 'MONTHLY' ? 30 : 7) };
+  return { date, days: daysBetween(date, referenceDate) };
+};
+
+/**
+ * The driver list's "Last pay" warning, or null when there is none. Weekly rent: 7 or more days since the latest
+ * payment (none before the first payment). Monthly rent: the late-alert rule, the oldest rent still unpaid or
+ * part-paid is LATE_ALERT_DAYS or more past its due date, with or without a payment.
+ */
+export const lastPayWarning = (driver: Driver, referenceDate: Date = kualaLumpurNow()): { days: number; kind: 'overdue' | 'withoutPayment' } | null => {
+  if (driver.rentalCycle === 'MONTHLY') {
+    const overdue = monthlyOverdueDays(driver, referenceDate);
+    return overdue !== null && overdue >= LATE_ALERT_DAYS ? { days: overdue, kind: 'overdue' } : null;
+  }
+  const last = lastPayment(driver, referenceDate);
+  return last && last.days >= 7 ? { days: last.days, kind: 'withoutPayment' } : null;
 };
 
 /**
@@ -334,20 +359,15 @@ export const daysSinceLastPayment = (driver: Driver, referenceDate: Date = kuala
  * still unpaid or part-paid fell due (null when none is due yet). Weekly rent: days since the latest payment, or since
  * the contract start when none has been made.
  */
-export const lateAlertDays = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null => {
-  if (driver.rentalCycle !== 'MONTHLY') return daysSinceLastPayment(driver, referenceDate);
-  const referenceEnd = endOfDay(referenceDate);
-  const oldestUnpaid = generateDriverInvoices(driver, referenceDate)
-    .find(invoice => invoice.remainingBalance > 0.01 && parseDate(invoice.dueDate) <= referenceEnd);
-  return oldestUnpaid ? daysBetween(parseDate(oldestUnpaid.dueDate), referenceDate) : null;
-};
+export const lateAlertDays = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null =>
+  driver.rentalCycle === 'MONTHLY' ? monthlyOverdueDays(driver, referenceDate) : daysSinceLastPayment(driver, referenceDate);
 
-/** The dashboard's late alerts: active drivers late by 8 or more days (see lateAlertDays), longest first. */
+/** The dashboard's late alerts: active drivers late by LATE_ALERT_DAYS or more (see lateAlertDays), longest first. */
 export const buildLateAlerts = <T extends Driver>(drivers: T[], referenceDate: Date = kualaLumpurNow()): { driver: T; days: number }[] =>
   drivers
     .flatMap(driver => {
       const days = driver.isDelisted ? null : lateAlertDays(driver, referenceDate);
-      return days !== null && days >= 8 ? [{ driver, days }] : [];
+      return days !== null && days >= LATE_ALERT_DAYS ? [{ driver, days }] : [];
     })
     .sort((a, b) => b.days - a.days);
 

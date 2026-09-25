@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, parseDate, rentDueAndPaid } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -1087,9 +1087,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const v = driver.velocityData;
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
-                      // The latest payment. Weekly late alerts count the same days once a payment exists (before that, from the contract
-                      // start); monthly late alerts count from the oldest unpaid due date
+                      // The latest payment and the row's warning: weekly rent 7+ days without a payment; monthly rent the late-alert
+                      // rule (oldest unpaid rent 8+ days past its due date), so a monthly row is red exactly when it is a late alert
                       const lastPaid = lastPayment(driver, todayNormalized);
+                      const payWarning = lastPayWarning(driver, todayNormalized);
+                      const payWarningText = payWarning ? (payWarning.kind === 'overdue' ? `Rent ${payWarning.days} days overdue` : `${payWarning.days} days without payment`) : undefined;
                       const nextDueStr = formatDate(getNextDueDate(driver), 'N/A');
                       const currentOutstanding = driver.activeBalance.baseValue;
                       const baselineOutstanding = driver.recoveryBaseline;
@@ -1175,9 +1177,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <span className="font-bold text-slate-600">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</span>
                                 </span>
                                 <span className={behaviorColor}>{behaviorText}</span>
-                                {lastPaid
-                                  ? <span className={`font-semibold flex items-center gap-1 ${lastPaid.isStale ? 'text-rose-700' : 'text-slate-500'}`}>{lastPaid.isStale && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}Last pay: {formatDate(lastPaid.date)}</span>
-                                  : <span className="text-slate-500">No payment yet</span>}
+                                <span title={payWarningText} className={`flex items-center gap-1 ${payWarning ? 'font-semibold text-rose-700' : lastPaid ? 'font-semibold text-slate-500' : 'text-slate-500'}`}>
+                                  {payWarning && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}
+                                  {lastPaid ? `Last pay: ${formatDate(lastPaid.date)}` : 'No payment yet'}
+                                  {payWarningText && <span className="sr-only"> ({payWarningText})</span>}
+                                </span>
                               </div>
 
                               {/* Outstanding */}
