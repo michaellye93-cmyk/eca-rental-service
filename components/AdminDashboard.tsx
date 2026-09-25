@@ -502,7 +502,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return new Date(todayNormalized.getFullYear(), todayNormalized.getMonth() + 1, 0);
   }, [todayNormalized]);
 
-  // This week's / month's rent and the late alerts, from the shared rent schedule (active drivers)
+  // This week's / month's rent from the shared rent schedule, and the late alerts (see buildLateAlerts); active drivers
   const weekTotals = useMemo(() => rentDueAndPaid(drivers, startOfWeek, endOfWeek, todayNormalized), [drivers, startOfWeek, endOfWeek, todayNormalized]);
   const monthTotals = useMemo(() => rentDueAndPaid(drivers, startOfMonth, endOfMonth, todayNormalized), [drivers, startOfMonth, endOfMonth, todayNormalized]);
   // Late alerts: weekly drivers 8+ days without a payment, monthly drivers 8+ days past an unpaid due date
@@ -1092,7 +1092,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const v = driver.velocityData;
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
-                      // The latest payment; weekly late alerts count the same days (monthly alerts count from the unpaid due date)
+                      // The latest payment. Weekly late alerts count the same days once a payment exists (before that, from the contract
+                      // start); monthly late alerts count from the oldest unpaid due date
                       const lastPaid = lastPayment(driver, todayNormalized);
                       const nextDueStr = formatDate(getNextDueDate(driver), 'N/A');
                       const currentOutstanding = driver.activeBalance.baseValue;

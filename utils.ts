@@ -319,7 +319,7 @@ export const lastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow
 };
 
 /**
- * Whole days since the driver's latest payment (the driver list's count), or since the contract start when none
+ * Whole days since the driver's latest payment (as lastPayment counts them), or since the contract start when none
  * has been made (negative for a contract that has not started). Null when neither date is valid.
  */
 export const daysSinceLastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null => {

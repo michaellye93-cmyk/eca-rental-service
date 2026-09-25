@@ -57,6 +57,21 @@ test('late-alert days: monthly counts from the oldest unpaid due date, weekly fr
   assert.equal(lateAlertDays(weekly('futurePayment', '2026-09-01', [['2026-09-30', 100]]), reference), -6);
 });
 
+test('monthly lateness counts from the oldest unpaid rent when several are unpaid', () => {
+  // July paid; August and September unpaid: 54 days from 1 Aug, not 23 from 1 Sep
+  assert.equal(lateAlertDays(monthly('twoUnpaid', '2026-07-01', [['2026-07-01', 100]]), reference), 54);
+  // Payments settle the oldest rent first, so a part-paid August is still the oldest rent owed
+  assert.equal(lateAlertDays(monthly('partPaidThenUnpaid', '2026-07-01', [['2026-07-01', 100], ['2026-08-05', 60]]), reference), 54);
+});
+
+test('monthly rent past the recorded contract length counts until an end date is set', () => {
+  // Two recorded months (June, July), both paid. With no end date rent keeps accruing, so August is owed
+  const pastLength = monthly('pastLength', '2026-06-01', [['2026-06-01', 100], ['2026-07-01', 100]], { contractDuration: 2 });
+  assert.equal(lateAlertDays(pastLength, reference), 54);
+  // With the contract ended on 31 Jul, no rent falls due after it
+  assert.equal(lateAlertDays({ ...pastLength, id: 'ended', contractEndDate: '2026-07-31' }, reference), null);
+});
+
 test('delisted drivers are never late alerts', () => {
   assert.deepEqual(alerts([
     weekly('goneWeekly', '2026-09-01', [], { isDelisted: true, delistDate: '2026-09-20' }),
