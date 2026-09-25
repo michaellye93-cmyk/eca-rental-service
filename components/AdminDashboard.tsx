@@ -146,8 +146,8 @@ function TargetCard({ title, period, icon, look, totals }: { title: string; peri
       </div>
       <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
         <span className={`text-xl xl:text-2xl font-black tracking-tight font-mono ${amount}`}>{formatCurrency(totals.paid)}</span>
-        <span className="sr-only">collected of</span>
-        <span className="text-sm font-extrabold font-mono text-gray-500">/ {formatCurrency(totals.due)}</span>
+        <span className="sr-only">collected</span>
+        <span className="text-sm font-bold text-gray-500">of <span className="font-mono font-extrabold">{formatCurrency(totals.due)}</span></span>
         <span className="sr-only">target,</span>
         <span className="ml-auto text-xs font-bold text-gray-600">{Math.round(share)}%</span>
       </p>
