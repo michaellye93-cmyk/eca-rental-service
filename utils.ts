@@ -298,6 +298,19 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
 const daysBetween = (from: Date, to: Date): number =>
   Math.round((new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime() - new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime()) / DAY_MS);
 
+/**
+ * Whole days since the driver's latest payment, or since the contract start when none has been made
+ * (negative for a contract that has not started). Null when neither date is valid.
+ */
+export const daysSinceLastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null => {
+  const lastPaid = (driver.paymentHistory || []).reduce<Date | null>((latest, payment) => {
+    const date = parseDate(payment.date);
+    return !isNaN(date.getTime()) && (!latest || date > latest) ? date : latest;
+  }, null);
+  const since = lastPaid ?? parseDate(driver.contractStartDate);
+  return isNaN(since.getTime()) ? null : daysBetween(since, referenceDate);
+};
+
 export interface CollectionQueues {
   /** Oldest unpaid rent is due today. */
   dueToday: Set<string>;
@@ -326,12 +339,8 @@ export const buildCollectionQueues = (drivers: Driver[], referenceDate: Date = k
       else if (daysLate <= 3) queues.late1to3.add(driver.id);
       else queues.late4plus.add(driver.id);
     }
-    const lastPaid = (driver.paymentHistory || []).reduce<Date | null>((latest, payment) => {
-      const date = parseDate(payment.date);
-      return !isNaN(date.getTime()) && (!latest || date > latest) ? date : latest;
-    }, null);
-    const quietSince = lastPaid ?? parseDate(driver.contractStartDate);
-    if (!isNaN(quietSince.getTime()) && daysBetween(quietSince, referenceDate) >= 8) queues.noPayment8plus.add(driver.id);
+    const quietDays = daysSinceLastPayment(driver, referenceDate);
+    if (quietDays !== null && quietDays >= 8) queues.noPayment8plus.add(driver.id);
   }
   return queues;
 };

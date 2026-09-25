@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildCollectionQueues, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
+import { buildCollectionQueues, calculateDriverMetrics, contractCyclesBetween, daysSinceLastPayment, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -28,6 +28,8 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  Activity,
+  Clock,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import Dialog, { ConfirmDialog } from './Dialog';
@@ -119,68 +121,48 @@ const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'FINANCE', label: 'Finance', Icon: DollarSign },
 ];
 
-type ChipTone = 'emerald' | 'amber' | 'rose' | 'orange' | 'red' | 'slate';
-const CHIP_DOT: Record<ChipTone, string> = {
-  emerald: 'bg-emerald-500',
-  amber: 'bg-amber-500',
-  rose: 'bg-rose-500',
-  orange: 'bg-orange-500',
-  red: 'bg-red-600',
-  slate: 'bg-slate-500',
-};
-const CHIP_PRESSED: Record<ChipTone, string> = {
-  emerald: 'bg-emerald-50 border-emerald-600 text-emerald-900',
-  amber: 'bg-amber-50 border-amber-600 text-amber-900',
-  rose: 'bg-rose-50 border-rose-600 text-rose-900',
-  orange: 'bg-orange-50 border-orange-600 text-orange-900',
-  red: 'bg-red-50 border-red-600 text-red-900',
-  slate: 'bg-slate-100 border-slate-600 text-slate-900',
-};
-
-type FollowUp = 'TODAY' | 'LATE_1_3' | 'LATE_4_PLUS' | 'NO_PAYMENT_8';
-const FOLLOW_UPS: { id: FollowUp; label: string; tone: ChipTone }[] = [
-  { id: 'TODAY', label: 'Due today', tone: 'orange' },
-  { id: 'LATE_1_3', label: '1–3 days late', tone: 'amber' },
-  { id: 'LATE_4_PLUS', label: '4+ days late', tone: 'red' },
-  { id: 'NO_PAYMENT_8', label: 'No payment 8+ days', tone: 'slate' },
+/** The fleet overview's risk tiles; each one filters the driver list. */
+const RISK_TILES: { status: 'GOOD' | 'MID' | 'BAD'; label: string; figure: string; pressedLook: string }[] = [
+  { status: 'GOOD', label: 'Good status', figure: 'text-emerald-600', pressedLook: 'ring-emerald-500 bg-emerald-50/40' },
+  { status: 'MID', label: 'Mid status', figure: 'text-amber-600', pressedLook: 'ring-amber-500 bg-amber-50/40' },
+  { status: 'BAD', label: 'Bad status', figure: 'text-rose-600', pressedLook: 'ring-rose-500 bg-rose-50/40' },
 ];
 
-/** A filter button showing how many drivers it covers; pressed while its filter is on. */
-function FilterChip({ label, count, tone, pressed, onClick }: { label: string; count: number; tone: ChipTone; pressed: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-sm font-semibold transition-colors ${pressed ? CHIP_PRESSED[tone] : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-    >
-      <span aria-hidden="true" className={`w-2 h-2 rounded-full ${CHIP_DOT[tone]}`} />
-      {label}{' '}
-      <span className="rounded-full bg-gray-100 px-2 text-xs font-bold text-gray-700">{count}<span className="sr-only"> drivers</span></span>
-    </button>
-  );
-}
+const TARGET_LOOK = {
+  week: { glow: 'bg-blue-500/5', amount: 'text-blue-950', bar: 'from-blue-500 to-indigo-600' },
+  month: { glow: 'bg-indigo-500/5', amount: 'text-indigo-950', bar: 'from-indigo-500 to-purple-600' },
+};
 
-/** One figure in the collections summary strip, with an optional progress bar (0 to 1). */
-function SummaryStat({ label, value, detail, progress, hint }: { label: string; value: string; detail?: string; progress?: number; hint?: string }) {
+/** Rent falling due in a period (the target) and how much of it has been paid (collected). */
+function TargetCard({ title, period, icon, look, totals }: { title: string; period: string; icon: React.ReactNode; look: keyof typeof TARGET_LOOK; totals: { due: number; paid: number } }) {
+  const { glow, amount, bar } = TARGET_LOOK[look];
+  const share = totals.due > 0 ? Math.min(100, (totals.paid / totals.due) * 100) : 0;
   return (
-    <div className="min-w-0" title={hint}>
-      <p className="flex flex-wrap items-baseline gap-x-2">
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
-        <span className="text-base font-bold text-gray-900">{value}</span>
-        {detail && <span className="text-sm text-gray-500">{detail}</span>}
-        {hint && <span className="sr-only">({hint})</span>}
-      </p>
-      {progress !== undefined && (
-        <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden" aria-hidden="true">
-          <div className="h-full bg-blue-600 rounded-full" style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }} />
+    <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg p-4 sm:p-6 flex flex-col justify-between min-h-[175px]">
+      <div aria-hidden="true" className={`absolute top-0 right-0 w-36 h-36 rounded-full blur-2xl pointer-events-none ${glow}`} />
+      <div>
+        <h2 className="flex items-center gap-2 font-bold tracking-tight text-gray-950">{icon}{title}</h2>
+        <p className="mt-1 text-xs font-medium uppercase tracking-wider text-gray-500">{period}</p>
+      </div>
+      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Collected</span>
+          <div className={`mt-1 text-3xl font-black tracking-tight font-mono ${amount}`}>{formatCurrency(totals.paid)}</div>
         </div>
-      )}
+        <div className="text-right font-mono">
+          <span className="block text-xs font-bold uppercase tracking-wider text-gray-500">Target</span>
+          <span className="text-base font-extrabold text-gray-500">/ {formatCurrency(totals.due)}</span>
+        </div>
+      </div>
+      <div aria-hidden="true" className="w-full h-3.5 mt-4 p-0.5 bg-gray-200/60 rounded-full border border-white/40 shadow-inner overflow-hidden">
+        <div className={`h-2.5 rounded-full bg-gradient-to-r transition-all duration-1000 ${bar}`} style={{ width: `${share}%` }} />
+      </div>
     </div>
   );
 }
 
-const shareOf = ({ due, paid }: { due: number; paid: number }) => (due > 0 ? paid / due : 0);
+/** Smooth scrolling, unless the viewer prefers reduced motion. */
+const scrollBehavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 type ListSort = { key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT'; direction: 'asc' | 'desc' };
 const DEFAULT_LIST_SORT: ListSort = { key: 'DEFAULT', direction: 'desc' };
@@ -251,7 +233,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [statusFilter, setStatusFilter] = usePersistedState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('eca_admin_status_filter', 'ALL');
   const [selectedTagFilter, setSelectedTagFilter] = usePersistedState<string>('eca_admin_selected_tag_filter', 'ALL');
 
-  const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | FollowUp>('ALL');
+  // A driver row briefly highlighted after choosing it from the late alerts
+  const [highlight, setHighlight] = useState<{ driverId: string } | null>(null);
+  const driversSectionRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [expandedDriverIds, setExpandedDriverIds] = useState<string[]>([]);
 
@@ -517,16 +502,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return new Date(todayNormalized.getFullYear(), todayNormalized.getMonth() + 1, 0);
   }, [todayNormalized]);
 
-  // Follow-up queue and this week's / month's rent, from the shared rent schedule (active drivers)
+  // Late alerts and this week's / month's rent, from the shared rent schedule (active drivers)
   const queues = useMemo(() => buildCollectionQueues(drivers, todayNormalized), [drivers, todayNormalized]);
   const weekTotals = useMemo(() => rentDueAndPaid(drivers, startOfWeek, endOfWeek, todayNormalized), [drivers, startOfWeek, endOfWeek, todayNormalized]);
   const monthTotals = useMemo(() => rentDueAndPaid(drivers, startOfMonth, endOfMonth, todayNormalized), [drivers, startOfMonth, endOfMonth, todayNormalized]);
-  const followUpDrivers: Record<FollowUp, Set<string>> = {
-    TODAY: queues.dueToday,
-    LATE_1_3: queues.late1to3,
-    LATE_4_PLUS: queues.late4plus,
-    NO_PAYMENT_8: queues.noPayment8plus,
-  };
+  // Late alerts: active drivers with no payment for 8 or more days, longest first
+  const lateAlerts = useMemo(() => driverData
+    .filter(d => queues.noPayment8plus.has(d.id))
+    .map(d => ({ driver: d, days: daysSinceLastPayment(d, todayNormalized) ?? 0 }))
+    .sort((a, b) => b.days - a.days), [driverData, queues, todayNormalized]);
 
   // Analytics and Bank Recon receive all drivers in the list's default order (Bank Recon's matching keeps the first
   // of equally good candidates, so the order is part of its behaviour).
@@ -541,12 +525,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (statusFilter !== 'ALL') {
       result = result.filter(d => d.metrics.status === statusFilter);
-    }
-
-    // The follow-up queue covers active drivers only
-    if (urgencyFilter !== 'ALL' && driverScope === 'ACTIVE') {
-      const keep = followUpDrivers[urgencyFilter];
-      result = result.filter(d => keep.has(d.id));
     }
 
     // 2. Search
@@ -566,28 +544,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // 4. Sorting (on a copy, so the shared driver list keeps its order)
     return [...result].sort((a, b) => compareForList(a, b, sortConfig));
-  }, [scopeDrivers, driverScope, searchTerm, selectedTagFilter, sortConfig, statusFilter, urgencyFilter, queues]);
+  }, [scopeDrivers, searchTerm, selectedTagFilter, sortConfig, statusFilter]);
 
-  // Summary counts
-  const activeFleetCount = driverData.filter(d => !d.isDelisted).length;
+  // Fleet overview counts (active fleet)
+  const activeDrivers = driverData.filter(d => !d.isDelisted);
+  const activeFleetCount = activeDrivers.length;
   const delistedCount = driverData.length - activeFleetCount;
   const riskCounts = {
-    GOOD: scopeDrivers.filter(d => d.metrics.status === DriverStatus.GOOD).length,
-    MID: scopeDrivers.filter(d => d.metrics.status === DriverStatus.MID).length,
-    BAD: scopeDrivers.filter(d => d.metrics.status === DriverStatus.BAD).length,
+    GOOD: activeDrivers.filter(d => d.metrics.status === DriverStatus.GOOD).length,
+    MID: activeDrivers.filter(d => d.metrics.status === DriverStatus.MID).length,
+    BAD: activeDrivers.filter(d => d.metrics.status === DriverStatus.BAD).length,
   };
   const screenedCount = screenedDriverIds.length;
-  const filtersActive = statusFilter !== 'ALL' || urgencyFilter !== 'ALL' || selectedTagFilter !== 'ALL' || searchTerm !== '';
+  const filtersActive = statusFilter !== 'ALL' || selectedTagFilter !== 'ALL' || searchTerm !== '';
   const resetFilters = () => {
     setStatusFilter('ALL');
-    setUrgencyFilter('ALL');
     setSelectedTagFilter('ALL');
     setSearchTerm('');
   };
-  const chooseScope = (scope: 'ACTIVE' | 'DELISTED') => {
-    setDriverScope(scope);
-    if (scope === 'DELISTED') setUrgencyFilter('ALL');
+
+  // Bring the driver list into view once this click's changes have rendered
+  const scrollToDrivers = () => {
+    requestAnimationFrame(() => driversSectionRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }));
   };
+  // A risk tile toggles its filter; turning one on shows the matching active drivers
+  const chooseRisk = (status: 'GOOD' | 'MID' | 'BAD') => {
+    const next = statusFilter === status ? 'ALL' : status;
+    setStatusFilter(next);
+    if (next !== 'ALL') {
+      setDriverScope('ACTIVE');
+      scrollToDrivers();
+    }
+  };
+  // Total active fleet: the active list, ready to search
+  const searchActiveFleet = () => {
+    setDriverScope('ACTIVE');
+    scrollToDrivers();
+    searchInputRef.current?.focus({ preventScroll: true });
+  };
+  // A late alert shows that driver's row, clearing any filter that could hide it
+  const showDriverRow = (driverId: string) => {
+    setDriverScope('ACTIVE');
+    setListView('COLLECTIONS');
+    resetFilters();
+    setHighlight({ driverId });
+  };
+  useEffect(() => {
+    if (!highlight) return;
+    document.getElementById(`driver-row-${highlight.driverId}`)?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    const timer = setTimeout(() => setHighlight(null), 4500);
+    return () => clearTimeout(timer);
+  }, [highlight]);
 
   // --- Handlers ---
 
@@ -744,7 +751,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
 
-  const followUpLabel = (id: FollowUp) => FOLLOW_UPS.find(item => item.id === id)?.label ?? id;
   const detailsRows = sortForDetails(filteredDrivers, driverListSortConfig);
   const sortArrow = (key: 'NAME' | 'CATEGORY') =>
     driverListSortConfig.key === key && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === key && driverListSortConfig.direction === 'desc' ? '▼' : '↕';
@@ -804,36 +810,130 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3 print:p-0 print:m-0 print:w-full print:max-w-none">
         {activeSection === 'DRIVERS' ? (
           <>
-            {/* Collections summary for the active fleet */}
-            {driverScope === 'ACTIVE' && (
-              <section aria-label="Collections summary" className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 grid grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-3 print:hidden">
-                <SummaryStat label="This week" value={formatCurrency(weekTotals.paid)} detail={`of ${formatCurrency(weekTotals.due)} due`} progress={shareOf(weekTotals)} hint={`Rent due ${formatDate(startOfWeek)} – ${formatDate(endOfWeek)} and paid so far`} />
-                <SummaryStat label="This month" value={formatCurrency(monthTotals.paid)} detail={`of ${formatCurrency(monthTotals.due)} due`} progress={shareOf(monthTotals)} hint={`Rent due in ${startOfMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} and paid so far`} />
-                <SummaryStat label="Active drivers" value={String(activeFleetCount)} detail={`${delistedCount} delisted`} />
-                <SummaryStat label="Screened today" value={`${screenedCount} / ${activeFleetCount}`} progress={activeFleetCount ? screenedCount / activeFleetCount : 0} hint="Resets at midnight, Malaysia time" />
-              </section>
-            )}
+            {/* Fleet overview, late alerts and this week's / month's rent (active fleet) */}
+            <section aria-label="Fleet overview" className="space-y-4 print:hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Fleet health: risk tiles, fleet size and today's screening */}
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 space-y-5">
+                  <h2 className="flex items-center gap-2.5 text-xl font-bold text-gray-900 tracking-tight">
+                    <Activity className="w-6 h-6 text-blue-600 shrink-0" aria-hidden="true" />
+                    Fleet Overview & Health Status
+                  </h2>
 
-            {/* Risk and follow-up filters */}
-            <section aria-label="Filters" className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-col xl:flex-row gap-3 xl:items-center print:hidden">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Risk</span>
-                <FilterChip label="Good" count={riskCounts.GOOD} tone="emerald" pressed={statusFilter === 'GOOD'} onClick={() => setStatusFilter(statusFilter === 'GOOD' ? 'ALL' : 'GOOD')} />
-                <FilterChip label="Mid" count={riskCounts.MID} tone="amber" pressed={statusFilter === 'MID'} onClick={() => setStatusFilter(statusFilter === 'MID' ? 'ALL' : 'MID')} />
-                <FilterChip label="Bad" count={riskCounts.BAD} tone="rose" pressed={statusFilter === 'BAD'} onClick={() => setStatusFilter(statusFilter === 'BAD' ? 'ALL' : 'BAD')} />
-              </div>
-              {driverScope === 'ACTIVE' && (
-                <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible xl:border-l xl:border-gray-200 xl:pl-3 [&>*]:shrink-0">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500" title="Late groups use each driver's oldest unpaid rent">Follow up</span>
-                  {FOLLOW_UPS.map(({ id, label, tone }) => (
-                    <FilterChip key={id} label={label} count={followUpDrivers[id].size} tone={tone} pressed={urgencyFilter === id} onClick={() => setUrgencyFilter(urgencyFilter === id ? 'ALL' : id)} />
-                  ))}
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                    {RISK_TILES.map(({ status, label, figure, pressedLook }) => {
+                      const pressed = statusFilter === status;
+                      return (
+                        <button
+                          key={status}
+                          type="button"
+                          aria-pressed={pressed}
+                          onClick={() => chooseRisk(status)}
+                          className={`rounded-xl p-3 sm:p-5 border text-center flex flex-col items-center justify-between transition-all duration-300 hover:shadow-md ${pressed ? `ring-2 border-transparent ${pressedLook}` : 'bg-gray-50/40 border-gray-200/60'}`}
+                        >
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-gray-500">{label}</span>
+                          <span className={`mt-2 text-3xl sm:text-5xl font-black ${figure}`}>{activeFleetCount ? Math.round((riskCounts[status] / activeFleetCount) * 100) : 0}%</span>
+                          <span className="text-sm font-bold text-gray-500 sm:mb-2">{riskCounts[status]} drivers</span>
+                          <span className="hidden sm:block mt-3 text-xs font-bold uppercase tracking-wider text-gray-500">{pressed ? 'Click to clear' : 'Click to filter'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Total active fleet: jumps to the driver search */}
+                    <button type="button" onClick={searchActiveFleet} className="w-full text-left bg-gray-50/60 rounded-xl p-5 border border-gray-200/60 flex items-center justify-between gap-3 shadow-sm hover:bg-gray-100/80 transition-colors">
+                      <span className="flex items-center gap-3">
+                        <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" />
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-gray-700">Total active fleet</span>
+                      </span>
+                      <span className="flex items-baseline gap-1.5">
+                        <span className="text-3xl font-black text-gray-900">{activeFleetCount}</span>
+                        <span className="text-xs font-semibold text-gray-500">vehicles total</span>
+                      </span>
+                    </button>
+
+                    {/* Daily screening progress (resets at midnight, Malaysia time) */}
+                    <div className="bg-white rounded-xl p-5 border border-black shadow-sm space-y-3.5">
+                      <div className="flex justify-between items-center gap-3">
+                        <span className="flex items-center gap-2">
+                          <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full bg-[#E11D48] shrink-0" />
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-[#991B1B]">Daily screening progress</span>
+                        </span>
+                        <span className="text-sm font-mono font-black text-gray-950">{screenedCount} / {activeFleetCount}</span>
+                      </div>
+                      <div aria-hidden="true" className="w-full h-3 p-0.5 bg-gray-100 rounded-full border border-gray-200/40 shadow-inner overflow-hidden">
+                        <div className="h-full bg-[#E11D48] rounded-full transition-all duration-700" style={{ width: `${activeFleetCount > 0 ? Math.min(100, (screenedCount / activeFleetCount) * 100) : 0}%` }} />
+                      </div>
+                      <div className="flex flex-wrap justify-between items-center gap-x-3 gap-y-1 text-xs font-bold uppercase">
+                        <span className="text-gray-500">KL GMT+8 (resets at 00:00:00)</span>
+                        <span className="text-[#E11D48]">{Math.max(0, activeFleetCount - screenedCount)} pending manual screening</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                {/* Late alerts: active drivers with no payment for 8 or more days */}
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 flex flex-col max-h-[440px] overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200">
+                    <h2 className="flex items-center gap-2 text-base font-bold text-gray-900">
+                      <Clock className="w-5 h-5 text-amber-500 shrink-0" aria-hidden="true" />
+                      Late Alerts (8d+)
+                    </h2>
+                    <span className="whitespace-nowrap bg-red-50 text-red-700 text-xs font-black px-2.5 py-1 rounded-full uppercase border border-red-200 tracking-wider">{lateAlerts.length} drivers</span>
+                  </div>
+                  {lateAlerts.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-gray-50/25 rounded-xl border border-dashed border-gray-200">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" aria-hidden="true" />
+                      <p className="text-xs font-bold text-gray-500">All accounts are safe and active.</p>
+                    </div>
+                  ) : (
+                    <ul className="flex-1 min-h-0 max-h-[310px] overflow-y-auto space-y-2.5 pr-2">
+                      {lateAlerts.map(({ driver, days }) => (
+                        <li key={driver.id}>
+                          <button
+                            type="button"
+                            onClick={() => showDriverRow(driver.id)}
+                            aria-label={`${driver.name}, ${driver.carPlate}: ${days} days without payment. Show in the list`}
+                            className="group w-full text-left flex items-center justify-between gap-2 p-3 rounded-xl border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-colors text-xs"
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
+                              <span className="min-w-0 leading-tight">
+                                <span className="block truncate font-bold text-gray-800 group-hover:text-orange-950">{driver.name}</span>
+                                <span className="block mt-0.5 font-mono text-gray-500">{driver.carPlate}</span>
+                              </span>
+                            </span>
+                            <span className="shrink-0 px-2 py-1 rounded-lg leading-none bg-orange-100/90 text-orange-950 font-mono font-extrabold">{days}d</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {/* This week's and this month's rent, and how much of it has been paid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TargetCard
+                  title="Weekly Target"
+                  period={`Mon – Sun (${formatDate(startOfWeek)} – ${formatDate(endOfWeek)})`}
+                  icon={<CalendarCheck className="w-5 h-5 text-blue-600 shrink-0" aria-hidden="true" />}
+                  look="week"
+                  totals={weekTotals}
+                />
+                <TargetCard
+                  title="Monthly Target"
+                  period={`Period: ${startOfMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`}
+                  icon={<Calendar className="w-5 h-5 text-indigo-600 shrink-0" aria-hidden="true" />}
+                  look="month"
+                  totals={monthTotals}
+                />
+              </div>
             </section>
 
             {/* Driver list */}
-            <section aria-label="Drivers" className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-clip print:shadow-none print:border-none">
+            <section ref={driversSectionRef} aria-label="Drivers" className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-clip print:shadow-none print:border-none">
               {/* Controls stay in view while scrolling the list */}
               <div className="lg:sticky lg:top-0 lg:z-10 bg-white border-b border-gray-200 print:hidden">
                 <div className="px-3 sm:px-4 py-3 flex flex-col lg:flex-row gap-3 lg:items-center">
@@ -843,7 +943,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         key={id}
                         type="button"
                         aria-pressed={driverScope === id}
-                        onClick={() => chooseScope(id)}
+                        onClick={() => setDriverScope(id)}
                         className={`flex-1 lg:flex-none px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${driverScope === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
                         {label} <span className="text-gray-500">{count}</span>
@@ -854,6 +954,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="relative flex-1 min-w-0">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
                     <input
+                      ref={searchInputRef}
                       type="search"
                       aria-label="Search drivers by name, car plate or NRIC"
                       placeholder="Search driver, car plate, NRIC..."
@@ -891,7 +992,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="px-3 sm:px-4 py-2 bg-blue-50 border-t border-blue-100 flex flex-wrap items-center gap-2 text-xs text-blue-900">
                     <span className="font-semibold">Showing {filteredDrivers.length} of {scopeDrivers.length}:</span>
                     {statusFilter !== 'ALL' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Risk: {statusFilter}</span>}
-                    {urgencyFilter !== 'ALL' && driverScope === 'ACTIVE' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">{followUpLabel(urgencyFilter)}</span>}
                     {selectedTagFilter !== 'ALL' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Staff: {selectedTagFilter}</span>}
                     {searchTerm !== '' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Search: “{searchTerm}”</span>}
                     <button type="button" onClick={resetFilters} className="ml-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg">Reset filters</button>
@@ -1037,7 +1137,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       return (
                         <li key={driver.id} id={`driver-row-${driver.id}`}>
-                          <div className="relative bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
+                          <div className={`relative bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors ${highlight?.driverId === driver.id ? 'ring-2 ring-orange-500' : ''}`}>
                             <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1.5 rounded-l-lg ${m.status === 'GOOD' ? 'bg-emerald-500' : m.status === 'MID' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
                             <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] lg:items-center lg:gap-0">
                               {/* Driver */}

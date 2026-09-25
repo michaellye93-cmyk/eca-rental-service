@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCollectionQueues, rentDueAndPaid } from '../utils.ts';
+import { buildCollectionQueues, daysSinceLastPayment, rentDueAndPaid } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const reference = new Date(2026, 8, 24); // Thursday 24 Sep 2026, local midnight
@@ -47,6 +47,14 @@ test('drivers with no payment for 8 or more days are flagged separately', () => 
     weekly('futureStart', '2026-10-01'),
   ], reference);
   assert.deepEqual([...queues.noPayment8plus].sort(), ['eightDays', 'neverPaidOld']);
+});
+
+test('days without payment count from the latest payment, or from the contract start when none has been made', () => {
+  // Payments listed out of date order: the latest one (16 Sep) counts
+  assert.equal(daysSinceLastPayment(weekly('paid', '2026-09-01', [['2026-09-16', 100], ['2026-09-02', 100]]), reference), 8);
+  assert.equal(daysSinceLastPayment(weekly('neverPaid', '2026-09-10'), reference), 14);
+  assert.equal(daysSinceLastPayment(weekly('futureStart', '2026-10-01'), reference), -7);
+  assert.equal(daysSinceLastPayment(weekly('noDates', ''), reference), null);
 });
 
 test('delisted drivers are not queued', () => {
