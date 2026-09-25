@@ -311,40 +311,27 @@ export const daysSinceLastPayment = (driver: Driver, referenceDate: Date = kuala
   return isNaN(since.getTime()) ? null : daysBetween(since, referenceDate);
 };
 
-export interface CollectionQueues {
-  /** Oldest unpaid rent is due today. */
-  dueToday: Set<string>;
-  /** Oldest unpaid rent was due 1 to 3 days ago. */
-  late1to3: Set<string>;
-  /** Oldest unpaid rent was due 4 or more days ago. */
-  late4plus: Set<string>;
-  /** No payment for 8 or more days (or none since a contract that started 8 or more days ago). */
-  noPayment8plus: Set<string>;
-}
-
 /**
- * Lateness groups for active drivers, from the shared rent schedule: each driver sits in one group, set by their
- * oldest rent still unpaid on the reference day. The no-payment flag (8 or more days without a payment, behind the
- * dashboard's late alerts) is separate.
+ * How long a driver has been late, as the dashboard's late alerts count it. Monthly rent: days since the oldest rent
+ * still unpaid or part-paid fell due (null when none is due yet). Weekly rent: days since the latest payment, or since
+ * the contract start when none has been made.
  */
-export const buildCollectionQueues = (drivers: Driver[], referenceDate: Date = kualaLumpurNow()): CollectionQueues => {
-  const queues: CollectionQueues = { dueToday: new Set(), late1to3: new Set(), late4plus: new Set(), noPayment8plus: new Set() };
+export const lateAlertDays = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number | null => {
+  if (driver.rentalCycle !== 'MONTHLY') return daysSinceLastPayment(driver, referenceDate);
   const referenceEnd = endOfDay(referenceDate);
-  for (const driver of drivers) {
-    if (driver.isDelisted) continue;
-    const oldestUnpaid = generateDriverInvoices(driver, referenceDate)
-      .find(invoice => invoice.remainingBalance > 0.01 && parseDate(invoice.dueDate) <= referenceEnd);
-    if (oldestUnpaid) {
-      const daysLate = daysBetween(parseDate(oldestUnpaid.dueDate), referenceDate);
-      if (daysLate <= 0) queues.dueToday.add(driver.id);
-      else if (daysLate <= 3) queues.late1to3.add(driver.id);
-      else queues.late4plus.add(driver.id);
-    }
-    const quietDays = daysSinceLastPayment(driver, referenceDate);
-    if (quietDays !== null && quietDays >= 8) queues.noPayment8plus.add(driver.id);
-  }
-  return queues;
+  const oldestUnpaid = generateDriverInvoices(driver, referenceDate)
+    .find(invoice => invoice.remainingBalance > 0.01 && parseDate(invoice.dueDate) <= referenceEnd);
+  return oldestUnpaid ? daysBetween(parseDate(oldestUnpaid.dueDate), referenceDate) : null;
 };
+
+/** The dashboard's late alerts: active drivers late by 8 or more days (see lateAlertDays), longest first. */
+export const buildLateAlerts = <T extends Driver>(drivers: T[], referenceDate: Date = kualaLumpurNow()): { driver: T; days: number }[] =>
+  drivers
+    .flatMap(driver => {
+      const days = driver.isDelisted ? null : lateAlertDays(driver, referenceDate);
+      return days !== null && days >= 8 ? [{ driver, days }] : [];
+    })
+    .sort((a, b) => b.days - a.days);
 
 /** Rent of active drivers falling due between `from` and `to` (inclusive days), and how much of it has been paid. */
 export const rentDueAndPaid = (drivers: Driver[], from: Date, to: Date, referenceDate: Date = kualaLumpurNow()): { due: number; paid: number } => {

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildCollectionQueues, calculateDriverMetrics, contractCyclesBetween, daysSinceLastPayment, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -502,17 +502,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return new Date(todayNormalized.getFullYear(), todayNormalized.getMonth() + 1, 0);
   }, [todayNormalized]);
 
-  // Late alerts and this week's / month's rent, from the shared rent schedule (active drivers)
-  const queues = useMemo(() => buildCollectionQueues(drivers, todayNormalized), [drivers, todayNormalized]);
+  // This week's / month's rent and the late alerts, from the shared rent schedule (active drivers)
   const weekTotals = useMemo(() => rentDueAndPaid(drivers, startOfWeek, endOfWeek, todayNormalized), [drivers, startOfWeek, endOfWeek, todayNormalized]);
   const monthTotals = useMemo(() => rentDueAndPaid(drivers, startOfMonth, endOfMonth, todayNormalized), [drivers, startOfMonth, endOfMonth, todayNormalized]);
-  // Late alerts: active drivers with no payment for 8 or more days, longest first
-  const lateAlerts = useMemo(() => driverData
-    .flatMap(d => {
-      const days = queues.noPayment8plus.has(d.id) ? daysSinceLastPayment(d, todayNormalized) : null;
-      return days === null ? [] : [{ driver: d, days }];
-    })
-    .sort((a, b) => b.days - a.days), [driverData, queues, todayNormalized]);
+  // Late alerts: weekly drivers 8+ days without a payment, monthly drivers 8+ days past an unpaid due date
+  const lateAlerts = useMemo(() => buildLateAlerts(driverData, todayNormalized), [driverData, todayNormalized]);
 
   // Analytics and Bank Recon receive all drivers in the list's default order (Bank Recon's matching keeps the first
   // of equally good candidates, so the order is part of its behaviour).
@@ -878,7 +872,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* Late alerts: active drivers with no payment for 8 or more days */}
+                {/* Late alerts: weekly drivers 8+ days without a payment, monthly drivers 8+ days overdue */}
                 <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 flex flex-col max-h-[440px] overflow-hidden">
                   <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200">
                     <h2 className="flex items-center gap-2 text-base font-bold text-gray-900">
@@ -894,25 +888,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   ) : (
                     <ul className="flex-1 min-h-0 max-h-[310px] overflow-y-auto space-y-2.5 pr-2">
-                      {lateAlerts.map(({ driver, days }) => (
-                        <li key={driver.id}>
-                          <button
-                            type="button"
-                            onClick={() => showDriverRow(driver.id)}
-                            aria-label={`${driver.name}, ${driver.carPlate}: ${days} days without payment. Show in the list`}
-                            className="group w-full text-left flex items-center justify-between gap-2 p-3 rounded-xl border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-colors text-xs"
-                          >
-                            <span className="flex items-center gap-2.5 min-w-0">
-                              <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
-                              <span className="min-w-0 leading-tight">
-                                <span className="block truncate font-bold text-gray-800 group-hover:text-orange-950">{driver.name}</span>
-                                <span className="block mt-0.5 font-mono text-gray-500">{driver.carPlate}</span>
+                      {lateAlerts.map(({ driver, days }) => {
+                        const lateness = `${days} days ${driver.rentalCycle === 'MONTHLY' ? 'overdue' : 'without payment'}`;
+                        return (
+                          <li key={driver.id}>
+                            <button
+                              type="button"
+                              onClick={() => showDriverRow(driver.id)}
+                              aria-label={`${driver.name}, ${driver.carPlate}: ${lateness}. Show in the list`}
+                              className="group w-full text-left flex items-center justify-between gap-2 p-3 rounded-xl border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-colors text-xs"
+                            >
+                              <span className="flex items-center gap-2.5 min-w-0">
+                                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
+                                <span className="min-w-0 leading-tight">
+                                  <span className="block truncate font-bold text-gray-800 group-hover:text-orange-950">{driver.name}</span>
+                                  <span className="block mt-0.5 font-mono text-gray-500">{driver.carPlate}</span>
+                                </span>
                               </span>
-                            </span>
-                            <span className="shrink-0 px-2 py-1 rounded-lg leading-none bg-orange-100/90 text-orange-950 font-mono font-extrabold">{days}d</span>
-                          </button>
-                        </li>
-                      ))}
+                              <span title={lateness} className="shrink-0 px-2 py-1 rounded-lg leading-none bg-orange-100/90 text-orange-950 font-mono font-extrabold">{days}d</span>
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
