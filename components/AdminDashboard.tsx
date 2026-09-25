@@ -1071,7 +1071,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 /* Collections list */
                 <div className="p-2 sm:p-3">
                   {/* Column headings and sorting (on phones, just the sort buttons) */}
-                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
+                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] xl:grid-cols-[minmax(0,1fr)_14rem_18.5rem_12.5rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
                     <span className="hidden lg:block lg:pl-10">Driver</span>
                     <span className="lg:hidden">Sort</span>
                     <button type="button" aria-pressed={sortConfig.key === 'RISK_STATUS'} onClick={() => handleSort('RISK_STATUS')} className="flex items-center justify-center gap-1 rounded px-2 py-1 border border-gray-200 lg:border-0 lg:px-3 uppercase font-bold tracking-wider hover:text-gray-800 transition-colors">
@@ -1139,7 +1139,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <li key={driver.id} id={`driver-row-${driver.id}`}>
                           <div className={`relative bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors ${highlight?.driverId === driver.id ? 'ring-2 ring-orange-500' : ''}`}>
                             <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1.5 rounded-l-lg ${m.status === 'GOOD' ? 'bg-emerald-500' : m.status === 'MID' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
-                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] lg:items-center lg:gap-0">
+                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] xl:grid-cols-[minmax(0,1fr)_14rem_18.5rem_12.5rem] lg:items-center lg:gap-0">
                               {/* Driver */}
                               <div className="flex items-start gap-2 min-w-0 lg:pr-4">
                                 <button
