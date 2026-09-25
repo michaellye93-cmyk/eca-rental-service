@@ -22,13 +22,29 @@ const weekly = (id: string, start: string, payments: Array<[string, number]> = [
 const monthly = (id: string, start: string, payments: Array<[string, number]> = [], extra: Partial<Driver> = {}): Driver =>
   weekly(id, start, payments, { rentalCycle: 'MONTHLY', ...extra });
 
-test('weekly rent: the driver list warns from 7 whole days without payment, at any time of day', () => {
+test('weekly rent: the driver list warns from 8 whole days without payment, at any time of day', () => {
   const evening = new Date(2026, 8, 24, 21, 30);
-  assert.equal(lastPayWarning(weekly('sixDays', '2026-09-01', [['2026-09-18', 100]]), evening), null);
-  assert.deepEqual(lastPayWarning(weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]), evening), { days: 7, kind: 'withoutPayment' });
-  assert.deepEqual(lastPayWarning(weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]), reference), { days: 7, kind: 'withoutPayment' });
+  assert.equal(lastPayWarning(weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]), evening), null);
+  assert.equal(lastPayWarning(weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]), reference), null);
+  assert.deepEqual(lastPayWarning(weekly('eightDays', '2026-09-01', [['2026-09-16', 100]]), evening), { days: 8, kind: 'withoutPayment' });
+  assert.deepEqual(lastPayWarning(weekly('eightDays', '2026-09-01', [['2026-09-16', 100]]), reference), { days: 8, kind: 'withoutPayment' });
   // Before the first payment a weekly row shows no warning
   assert.equal(lastPayWarning(weekly('neverPaid', '2026-09-01'), reference), null);
+});
+
+test('an active weekly driver who has paid shows the warning exactly when they are a late alert, with the same days', () => {
+  const drivers = [
+    weekly('sixDays', '2026-09-01', [['2026-09-18', 100]]),
+    weekly('sevenDays', '2026-09-01', [['2026-09-17', 100]]),
+    weekly('eightDays', '2026-09-01', [['2026-09-16', 100]]),
+    weekly('monthQuiet', '2026-08-01', [['2026-08-20', 300], ['2026-08-01', 100]]),
+    weekly('paidToday', '2026-09-01', [['2026-09-24', 100]]),
+  ];
+  for (const driver of drivers) {
+    const alert = buildLateAlerts([driver], reference)[0];
+    const warning = lastPayWarning(driver, reference);
+    assert.equal(warning?.days, alert?.days, driver.id);
+  }
 });
 
 test('monthly rent paid ahead shows no warning, however long ago the last payment was', () => {

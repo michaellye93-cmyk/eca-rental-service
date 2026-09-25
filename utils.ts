@@ -330,8 +330,8 @@ export const lastPayment = (driver: Driver, referenceDate: Date = kualaLumpurNow
 };
 
 /**
- * The driver list's "Last pay" warning, or null when there is none. Weekly rent: 7 or more days since the latest
- * payment (none before the first payment). Monthly rent: the late-alert rule, the oldest rent still unpaid or
+ * The driver list's "Last pay" warning, or null when there is none. Weekly rent: LATE_ALERT_DAYS or more days since the
+ * latest payment, the day the driver joins the late alerts (none before the first payment). Monthly rent: the late-alert rule, the oldest rent still unpaid or
  * part-paid is LATE_ALERT_DAYS or more past its due date, with or without a payment.
  */
 export const lastPayWarning = (driver: Driver, referenceDate: Date = kualaLumpurNow()): { days: number; kind: 'overdue' | 'withoutPayment' } | null => {
@@ -340,7 +340,7 @@ export const lastPayWarning = (driver: Driver, referenceDate: Date = kualaLumpur
     return overdue !== null && overdue >= LATE_ALERT_DAYS ? { days: overdue, kind: 'overdue' } : null;
   }
   const last = lastPayment(driver, referenceDate);
-  return last && last.days >= 7 ? { days: last.days, kind: 'withoutPayment' } : null;
+  return last && last.days >= LATE_ALERT_DAYS ? { days: last.days, kind: 'withoutPayment' } : null;
 };
 
 /**

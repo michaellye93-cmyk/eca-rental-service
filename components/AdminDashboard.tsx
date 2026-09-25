@@ -1087,7 +1087,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const v = driver.velocityData;
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
-                      // The latest payment and the row's warning: weekly rent 7+ days without a payment; monthly rent the late-alert
+                      // The latest payment and the row's warning: weekly rent 8+ days without a payment; monthly rent the late-alert
                       // rule (oldest unpaid rent 8+ days past its due date), so in the active list a monthly row is red exactly when it
                       // is a late alert (a delisted row still shows rent left unpaid)
                       const lastPaid = lastPayment(driver, todayNormalized);
