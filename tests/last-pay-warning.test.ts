@@ -42,6 +42,18 @@ test('monthly rent warns from 8 days past the oldest unpaid due date, even right
   assert.deepEqual(lastPayWarning(monthly('recentPartPayment', '2026-07-16', [['2026-07-16', 100], ['2026-09-20', 50]]), reference), { days: 39, kind: 'overdue' });
   assert.deepEqual(lastPayWarning(monthly('eightDaysOverdue', '2026-08-16', [['2026-08-16', 100]]), reference), { days: 8, kind: 'overdue' });
   assert.equal(lastPayWarning(monthly('sevenDaysOverdue', '2026-08-17', [['2026-08-17', 100]]), reference), null);
+  // Whole calendar days at any time of day
+  const evening = new Date(2026, 8, 24, 21, 30);
+  assert.deepEqual(lastPayWarning(monthly('eightDaysOverdue', '2026-08-16', [['2026-08-16', 100]]), evening), { days: 8, kind: 'overdue' });
+  assert.equal(lastPayWarning(monthly('sevenDaysOverdue', '2026-08-17', [['2026-08-17', 100]]), evening), null);
+});
+
+test('a delisted monthly driver still shows rent left unpaid, but is not a late alert', () => {
+  const leftOwing = monthly('leftOwing', '2026-08-01', [], { isDelisted: true, delistDate: '2026-09-20' });
+  assert.deepEqual(lastPayWarning(leftOwing, reference), { days: 54, kind: 'overdue' });
+  assert.deepEqual(buildLateAlerts([leftOwing], reference), []);
+  const settled = monthly('settled', '2026-08-01', [['2026-08-01', 100], ['2026-09-01', 100]], { isDelisted: true, delistDate: '2026-09-20' });
+  assert.equal(lastPayWarning(settled, reference), null);
 });
 
 test('monthly rent warns before any payment once the first rent is 8 days overdue', () => {

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, parseDate, rentDueAndPaid } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, parseDate, rentDueAndPaid } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -890,7 +890,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex items-center justify-between gap-3 mb-2 pb-2 border-b border-gray-200">
                     <h2 className="flex items-center gap-2 text-sm font-bold text-gray-900">
                       <Clock className="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
-                      Late Alerts (8d+)
+                      Late Alerts ({LATE_ALERT_DAYS}d+)
                     </h2>
                     <span className="whitespace-nowrap bg-red-50 text-red-700 text-xs font-black px-2 py-0.5 rounded-full uppercase border border-red-200 tracking-wider">{lateAlerts.length} drivers</span>
                   </div>
@@ -1088,7 +1088,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
                       // The latest payment and the row's warning: weekly rent 7+ days without a payment; monthly rent the late-alert
-                      // rule (oldest unpaid rent 8+ days past its due date), so a monthly row is red exactly when it is a late alert
+                      // rule (oldest unpaid rent 8+ days past its due date), so in the active list a monthly row is red exactly when it
+                      // is a late alert (a delisted row still shows rent left unpaid)
                       const lastPaid = lastPayment(driver, todayNormalized);
                       const payWarning = lastPayWarning(driver, todayNormalized);
                       const payWarningText = payWarning ? (payWarning.kind === 'overdue' ? `Rent ${payWarning.days} days overdue` : `${payWarning.days} days without payment`) : undefined;
@@ -1180,6 +1181,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span title={payWarningText} className={`flex items-center gap-1 ${payWarning ? 'font-semibold text-rose-700' : lastPaid ? 'font-semibold text-slate-500' : 'text-slate-500'}`}>
                                   {payWarning && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}
                                   {lastPaid ? `Last pay: ${formatDate(lastPaid.date)}` : 'No payment yet'}
+                                  {/* A recent payment can still be red on monthly rent, so the reason is shown, not only on hover */}
+                                  {payWarning?.kind === 'overdue' && <span aria-hidden="true" className="whitespace-nowrap">· {payWarning.days}d overdue</span>}
                                   {payWarningText && <span className="sr-only"> ({payWarningText})</span>}
                                 </span>
                               </div>

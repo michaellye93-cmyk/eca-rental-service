@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { daysSinceLastPayment, lastPayment, lateAlertDays, rentDueAndPaid } from '../utils.ts';
+import { daysSinceLastPayment, lastPayment, lastPayWarning, lateAlertDays, rentDueAndPaid } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const reference = new Date(2026, 8, 24); // Thursday 24 Sep 2026, local midnight
@@ -50,6 +50,7 @@ test('the driver list skips unreadable payment dates', () => {
 
 test('the driver list shows a future-dated payment with negative days and no warning', () => {
   assert.deepEqual(lastPayment(futureDated, reference), { date: new Date(2026, 9, 10), days: -16 });
+  assert.equal(lastPayWarning(futureDated, reference), null);
 });
 
 test('the driver list has no last payment for a driver who has never paid', () => {
