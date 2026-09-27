@@ -490,6 +490,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const monthTotals = useMemo(() => rentDueAndPaid(drivers, startOfMonth, endOfMonth, todayNormalized), [drivers, startOfMonth, endOfMonth, todayNormalized]);
   // Late alerts: weekly drivers 8+ days without a payment, monthly drivers 8+ days past an unpaid due date
   const lateAlerts = useMemo(() => buildLateAlerts(driverData, todayNormalized), [driverData, todayNormalized]);
+  const lateAlertsOwed = lateAlerts.reduce((sum, { driver }) => sum + driver.activeBalance.baseValue, 0);
 
   // Analytics and Bank Recon receive all drivers in the list's default order (Bank Recon's matching keeps the first
   // of equally good candidates, so the order is part of its behaviour).
@@ -879,6 +880,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </h2>
                     <span className="whitespace-nowrap bg-red-50 text-red-700 text-xs font-black px-2 py-0.5 rounded-full uppercase border border-red-200 tracking-wider">{lateAlerts.length} drivers</span>
                   </div>
+                  {lateAlerts.length > 0 && (
+                    <p className="-mt-1 mb-2 text-xs text-gray-600">Owed by these drivers: <span className="font-mono font-bold text-rose-700">{formatCurrency(lateAlertsOwed)}</span></p>
+                  )}
                   {lateAlerts.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-4 bg-gray-50/25 rounded-xl border border-dashed border-gray-200">
                       <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" aria-hidden="true" />
@@ -888,12 +892,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <ul className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
                       {lateAlerts.map(({ driver, days }) => {
                         const lateness = `${days} days ${driver.rentalCycle === 'MONTHLY' ? 'overdue' : 'without payment'}`;
+                        const owed = driver.activeBalance.baseValue;
                         return (
                           <li key={driver.id}>
                             <button
                               type="button"
                               onClick={() => showDriverRow(driver.id)}
-                              aria-label={`${driver.name}, ${driver.carPlate}: ${lateness}. Show in the list`}
+                              aria-label={`${driver.name}, ${driver.carPlate}: ${lateness}, ${formatCurrency(owed)} owed. Show in the list`}
                               className="group w-full text-left flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-colors text-xs"
                             >
                               <span className="flex items-center gap-2 min-w-0">
@@ -903,7 +908,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <span className="block font-mono text-gray-500">{driver.carPlate}</span>
                                 </span>
                               </span>
-                              <span title={lateness} className="shrink-0 px-2 py-1 rounded-lg leading-none bg-orange-100/90 text-orange-950 font-mono font-extrabold">{days}d</span>
+                              <span className="shrink-0 flex flex-col items-end gap-0.5">
+                                <span title={lateness} className="px-2 py-1 rounded-lg leading-none bg-orange-100/90 text-orange-950 font-mono font-extrabold">{days}d</span>
+                                <span className="font-mono font-semibold text-gray-700 whitespace-nowrap">{formatCurrency(owed)}</span>
+                              </span>
                             </button>
                           </li>
                         );
