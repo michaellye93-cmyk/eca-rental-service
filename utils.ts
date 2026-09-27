@@ -72,12 +72,15 @@ const MAX_RENT_CYCLES = 5000;
  * Rent falls due each cycle from the contract start and keeps accruing past the recorded contract
  * length until an end date or delist. Cash and service claims dated on or before the reference day
  * settle the oldest obligations first. With `includeUpcoming`, obligations not yet due within the
- * recorded contract length are listed too and receive any advance payment.
+ * recorded contract length are listed too and receive any advance payment. A `horizon` also lists every
+ * obligation falling due up to that day (past the recorded length too, until an end date or delist); payments
+ * still count only up to the reference day.
  */
-const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming: boolean): RentObligation[] => {
+const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming: boolean, horizon?: Date): RentObligation[] => {
   const start = parseDate(driver.contractStartDate);
   if (isNaN(start.getTime())) return [];
   const referenceEnd = endOfDay(referenceDate);
+  const horizonEnd = horizon ? endOfDay(horizon) : null;
   const stop = accrualStop(driver);
   const recordedLength = Number.isFinite(driver.contractDuration) ? driver.contractDuration : 0;
   const payments = (driver.paymentHistory || [])
@@ -89,7 +92,8 @@ const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming:
   for (let index = 0; index < MAX_RENT_CYCLES; index++) {
     const dueDate = dueDateOf(start, driver.rentalCycle, index);
     if (stop && dueDate >= stop) break;
-    if (dueDate > referenceEnd && (!includeUpcoming || index >= recordedLength)) break;
+    const withinHorizon = horizonEnd !== null && dueDate <= horizonEnd;
+    if (dueDate > referenceEnd && !withinHorizon && (!includeUpcoming || index >= recordedLength)) break;
     let remaining = driver.rentalRate;
     const allocations: RentObligation['allocations'] = [];
     while (remaining > 0.01 && payments.length) {
@@ -209,9 +213,13 @@ export const calculateMomentum = (driver: Driver) => {
     return { avgLateness, lastLateness, velocity, isSlipping, trend, isPerfect };
 };
 
-export const generateDriverInvoices = (driver: Driver, referenceDate: Date = kualaLumpurNow()): Invoice[] => {
+/**
+ * The driver's rent cycles with what has been paid on each, as of the reference day. With a `horizon`, cycles falling
+ * due after today up to that day are listed too (FUTURE unless paid in advance), for targets and forecasts.
+ */
+export const generateDriverInvoices = (driver: Driver, referenceDate: Date = kualaLumpurNow(), horizon?: Date): Invoice[] => {
   const referenceEnd = endOfDay(referenceDate);
-  return buildRentSchedule(driver, referenceDate, true).map(obligation => {
+  return buildRentSchedule(driver, referenceDate, true, horizon).map(obligation => {
     const amountPaid = obligation.allocations.reduce((sum, allocation) => sum + allocation.amount, 0);
     let status: Invoice['status'] = 'UNPAID';
     if (obligation.remaining <= 0.01) status = 'PAID';
@@ -278,8 +286,10 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
     return { start, end, label, expected: 0, performanceCollected: 0, cashFlowCollected: 0 };
   });
   const weekOf = (date: Date) => weeks.find(week => date >= week.start && date <= week.end);
+  // The reference week counts all of its rent, including cycles falling due later that week.
+  const horizon = weeks[weeks.length - 1]?.end;
   for (const driver of drivers) {
-    for (const invoice of generateDriverInvoices(driver, referenceDate)) {
+    for (const invoice of generateDriverInvoices(driver, referenceDate, horizon)) {
       const week = weekOf(parseDate(invoice.dueDate));
       if (week) {
         week.expected += invoice.amount;
@@ -371,13 +381,16 @@ export const buildLateAlerts = <T extends Driver>(drivers: T[], referenceDate: D
     })
     .sort((a, b) => b.days - a.days);
 
-/** Rent of active drivers falling due between `from` and `to` (inclusive days), and how much of it has been paid. */
+/**
+ * Rent of active drivers falling due between `from` and `to` (inclusive days), and how much of it has been paid by the
+ * reference day. Every cycle due in the period counts from day one, including cycles after the recorded contract length.
+ */
 export const rentDueAndPaid = (drivers: Driver[], from: Date, to: Date, referenceDate: Date = kualaLumpurNow()): { due: number; paid: number } => {
   let due = 0;
   let paid = 0;
   for (const driver of drivers) {
     if (driver.isDelisted) continue;
-    for (const invoice of generateDriverInvoices(driver, referenceDate)) {
+    for (const invoice of generateDriverInvoices(driver, referenceDate, to)) {
       const date = parseDate(invoice.dueDate);
       if (date >= from && date <= to) {
         due += invoice.amount;

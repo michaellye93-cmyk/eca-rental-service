@@ -68,7 +68,9 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
       const d = new Date(today.getFullYear(), today.getMonth() - (5 - i), 1);
       return d;
     });
-    const currentInvoicesByDriver = new Map<string, Invoice[]>(drivers.map((driver: Driver) => [driver.id, generateDriverInvoices(driver, today)]));
+    // The current month counts all of its rent from day one, including cycles falling due later this month.
+    const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    const currentInvoicesByDriver = new Map<string, Invoice[]>(drivers.map((driver: Driver) => [driver.id, generateDriverInvoices(driver, today, endOfCurrentMonth)]));
 
     return months.map(monthDate => {
       const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
