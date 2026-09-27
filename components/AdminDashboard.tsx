@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, parseDate, rentDueAndPaid, startOfMonthBaseline } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, normalizeMalaysianPhone, parseDate, rentDueAndPaid, startOfMonthBaseline, whatsappLink } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   Activity,
   Clock,
+  MessageCircle,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import PortalInstructions from './PortalInstructions';
@@ -309,6 +310,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const initialFormState = {
     name: '',
     email: '',
+    phone: '',
     address: '',
     nric: '',
     // contactNumber removed
@@ -716,6 +718,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setFormData({
       name: driver.name,
       email: driver.email || '',
+      phone: driver.phone ? formatPhone(driver.phone) : '',
       address: driver.address || '',
       nric: driver.nric,
       // contactNumber removed
@@ -745,10 +748,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     if (!formData.name || !formData.nric || !formData.carPlate) { setDriverFormError('Fill in the full name, NRIC and plate number.'); return; }
     
+    // Phone numbers are stored as 60 followed by the number, for WhatsApp; clearing one removes it
+    const typedPhone = formData.phone.trim();
+    const phone = typedPhone ? normalizeMalaysianPhone(typedPhone) : null;
+    if (typedPhone && !phone) { setDriverFormError('Enter a Malaysian phone number, for example 012-345 6789, or leave it empty.'); return; }
+    const originalPhone = editingId ? drivers.find(d => d.id === editingId)?.phone : undefined;
+
     // AUTOMATED LOGIC: Sync Duration if End Date is set
     const finalDuration = contractCyclesBetween(formData.contractStartDate, formData.contractEndDate, formData.rentalCycle) ?? formData.contractDuration;
 
-    const submissionData = { ...formData, contractDuration: finalDuration };
+    const submissionData = { ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined) };
 
     try {
       if (editingId) {
@@ -943,12 +952,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const lateness = `${days} days ${driver.rentalCycle === 'MONTHLY' ? 'overdue' : 'without payment'}`;
                         const owed = driver.activeBalance.baseValue;
                         return (
-                          <li key={driver.id}>
+                          <li key={driver.id} className="flex items-stretch gap-1">
                             <button
                               type="button"
                               onClick={() => showDriverRow(driver.id)}
                               aria-label={`${driver.name}, ${driver.carPlate}: ${lateness}, ${formatCurrency(owed)} owed. Show in the list`}
-                              className="group w-full text-left flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-colors text-xs"
+                              className="group flex-1 min-w-0 text-left flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border border-gray-100 bg-gray-50/55 hover:bg-orange-50/60 hover:border-orange-200 transition-colors text-xs"
                             >
                               <span className="flex items-center gap-2 min-w-0">
                                 <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
@@ -962,6 +971,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span className="font-mono font-semibold text-gray-700 whitespace-nowrap">{formatCurrency(owed)}</span>
                               </span>
                             </button>
+                            {driver.phone && (
+                              <a
+                                href={whatsappLink(driver.phone, `Hi ${driver.name}, this is ECA. Your rent for ${driver.carPlate} is ${lateness} and ${formatCurrency(owed)} is owed. Please pay as soon as possible.`)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`WhatsApp ${driver.name}`}
+                                title={`WhatsApp ${driver.name} (${formatPhone(driver.phone)})`}
+                                className="shrink-0 w-9 flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                              >
+                                <MessageCircle className="w-4 h-4" aria-hidden="true" />
+                              </a>
+                            )}
                           </li>
                         );
                       })}
@@ -1059,6 +1080,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </button>
                         </th>
                         <th className="px-6 py-3">Email Address</th>
+                        <th className="px-6 py-3">Phone</th>
                         <th className="px-6 py-3">Address</th>
                         <th className="px-6 py-3">NRIC</th>
                         <th className="px-6 py-3">Plate Number</th>
@@ -1087,6 +1109,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </span>
                             </td>
                             <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
+                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap font-mono">{driver.phone ? formatPhone(driver.phone) : '-'}</td>
                             <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={driver.address || ''}>{driver.address || '-'}</td>
                             <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
                             <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
@@ -1109,7 +1132,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       })}
                       {detailsRows.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-6 py-8 text-center text-gray-500">No drivers match these filters.</td>
+                          <td colSpan={8} className="px-6 py-8 text-center text-gray-500">No drivers match these filters.</td>
                         </tr>
                       )}
                     </tbody>
@@ -1320,6 +1343,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <label htmlFor="driver-email" className="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
               <input id="driver-email" type="email" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Email (Optional)" />
+            </div>
+            <div>
+              <label htmlFor="driver-phone" className="block text-sm font-bold text-gray-700 mb-1">Phone (WhatsApp)</label>
+              <input id="driver-phone" type="tel" inputMode="tel" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="e.g. 012-345 6789 (optional)" />
             </div>
             <div>
               <label htmlFor="driver-address" className="block text-sm font-bold text-gray-700 mb-1">Address</label>

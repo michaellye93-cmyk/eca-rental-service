@@ -509,6 +509,7 @@ export interface DriverRow {
   id: string;
   nric: string;
   email?: string | null;
+  phone?: string | null;
   name: string;
   address?: string | null;
   car_plate: string;
@@ -537,6 +538,8 @@ export const toDriverRow = (driver: Driver) => ({
   contract_duration_weeks: driver.contractDuration,
   rental_rate: driver.rentalRate,
   tags: driver.tags,
+  // Written only when set or being cleared, so saving a driver never depends on the phone column otherwise
+  ...(driver.phone !== undefined ? { phone: driver.phone || null } : {}),
 });
 
 /** A drivers row as the app's driver profile; payments and totals are attached by the caller. */
@@ -556,4 +559,27 @@ export const fromDriverRow = (row: DriverRow): Omit<Driver, 'totalAmountPaid' | 
   isDelisted: row.is_delisted ?? undefined,
   delistDate: row.delist_date ?? undefined,
   tags: row.tags || [],
+  ...(row.phone ? { phone: row.phone } : {}),
 });
+
+/**
+ * A Malaysian phone number as stored for WhatsApp: 60 followed by 8 to 11 digits. Accepts 012-345 6789, +60 12-345 6789,
+ * 60123456789 and similar; returns null for anything else.
+ */
+export const normalizeMalaysianPhone = (typed: string): string | null => {
+  const digits = typed.replace(/\D/g, '');
+  const rest = digits.startsWith('60') ? digits.slice(2) : digits.startsWith('0') ? digits.slice(1) : digits;
+  return rest.length >= 8 && rest.length <= 11 && /^[1-9]/.test(rest) ? `60${rest}` : null;
+};
+
+/** A stored number for display: mobile numbers as +60 12-345 6789 or +60 11-2345 6789, others as +60 and the digits. */
+export const formatPhone = (stored: string): string => {
+  const rest = stored.startsWith('60') ? stored.slice(2) : stored;
+  if (/^1\d{8}$/.test(rest)) return `+60 ${rest.slice(0, 2)}-${rest.slice(2, 5)} ${rest.slice(5)}`;
+  if (/^1\d{9}$/.test(rest)) return `+60 ${rest.slice(0, 2)}-${rest.slice(2, 6)} ${rest.slice(6)}`;
+  return `+60 ${rest}`;
+};
+
+/** A WhatsApp chat link for a stored number, with an optional message the sender can edit before sending. */
+export const whatsappLink = (stored: string, message?: string): string =>
+  `https://wa.me/${stored}${message ? `?text=${encodeURIComponent(message)}` : ''}`;

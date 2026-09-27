@@ -19,6 +19,8 @@ export interface Driver {
   id: string;
   nric: string; // Acts as password
   email?: string;
+  /** Mobile or phone number stored as 60 followed by the number (no spaces), for WhatsApp. */
+  phone?: string;
   name: string;
   address?: string;
   carPlate: string;

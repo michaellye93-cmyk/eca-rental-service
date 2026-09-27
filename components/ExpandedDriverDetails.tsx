@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Driver } from '../types';
-import { formatDate, latestInvoices } from '../utils';
+import { formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { 
   Phone, 
@@ -130,8 +130,14 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               <span className="text-gray-500 font-semibold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                 <Phone className="w-3.5 h-3.5" /> Contact
               </span>
-              {/* Driver records carry no phone number; never fall back to a placeholder that dials a stranger */}
-              <span className="text-gray-500 italic">No phone on record</span>
+              {driver.phone ? (
+                <span className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-gray-700">{formatPhone(driver.phone)}</span>
+                  <a href={whatsappLink(driver.phone)} target="_blank" rel="noopener noreferrer" className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800 hover:bg-emerald-100">WhatsApp</a>
+                </span>
+              ) : (
+                <span className="text-gray-600 italic">No phone yet: add it with Edit</span>
+              )}
             </div>
 
             {/* NRIC */}

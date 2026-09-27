@@ -72,3 +72,15 @@ test('fromDriverRow defaults a missing cycle to weekly and missing tags to none'
   assert.equal(back.rentalCycle, 'WEEKLY');
   assert.deepEqual(back.tags, []);
 });
+
+test('a phone number is written when set and cleared to null when removed; untouched rows leave the column alone', () => {
+  assert.equal(toDriverRow({ ...driver, phone: '60123456789' }).phone, '60123456789');
+  assert.equal(toDriverRow({ ...driver, phone: '' }).phone, null);
+  assert.equal('phone' in toDriverRow(driver), false);
+});
+
+test('fromDriverRow reads a phone number back, and leaves it out when there is none', () => {
+  const row = { id: 'd3', nric: '900101-01-5678', name: 'Other', car_plate: 'XAB2001', contract_start_date: '2026-02-02', contract_duration_weeks: 10, rental_rate: 300 };
+  assert.equal(fromDriverRow({ ...row, phone: '60123456789' }).phone, '60123456789');
+  assert.equal('phone' in fromDriverRow({ ...row, phone: null }), false);
+});
