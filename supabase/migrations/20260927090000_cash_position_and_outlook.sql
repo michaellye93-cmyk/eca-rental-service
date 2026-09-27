@@ -1,11 +1,12 @@
 -- Cash position and cash outlook (Cash & Efficiency Review F5-F7, approved by the owner on 2026-09-27).
 -- Additive only: one new private table and five functions. Nothing the current live site uses is changed.
--- Run it in the Supabase SQL Editor for RentalDatabase. It is all-or-nothing: an error leaves no change behind.
+-- Run it in the Supabase SQL Editor for RentalDatabase. It is all-or-nothing (an error leaves no change behind) and
+-- safe to run again.
 begin;
 
 -- Bank balances the owner types in (the "Cash in bank" column). Entries are never deleted: a mistake is removed with a
 -- reason, and every save or removal is written to Finance's audit log.
-create table finance_private.cash_balances (
+create table if not exists finance_private.cash_balances (
   id uuid primary key default gen_random_uuid(),
   account_label text not null check (btrim(account_label) <> '' and char_length(account_label) <= 80),
   balance numeric(16,2) not null check (balance > -1000000000000 and balance < 1000000000000),
@@ -18,18 +19,18 @@ create table finance_private.cash_balances (
   cancellation_reason text,
   check ((cancelled_at is null) = (cancelled_by is null))
 );
-create index finance_cash_balances_active on finance_private.cash_balances(account_label, as_of desc, entered_at desc) where cancelled_at is null;
+create index if not exists finance_cash_balances_active on finance_private.cash_balances(account_label, as_of desc, entered_at desc) where cancelled_at is null;
 alter table finance_private.cash_balances enable row level security;
 revoke all on finance_private.cash_balances from public, anon, authenticated;
 
 -- Active balance entries, newest first.
-create function finance_private.cash_balance_rows() returns jsonb language sql stable security definer set search_path='' as $$
+create or replace function finance_private.cash_balance_rows() returns jsonb language sql stable security definer set search_path='' as $$
   select coalesce(jsonb_agg(jsonb_build_object('id', b.id, 'account_label', b.account_label, 'balance', b.balance,
     'as_of', b.as_of, 'note', b.note, 'entered_at', b.entered_at) order by b.as_of desc, b.entered_at desc), '[]'::jsonb)
   from finance_private.cash_balances b where b.cancelled_at is null
 $$;
 
-create function finance_private.save_cash_balance(p_account text, p_balance numeric, p_as_of date, p_note text)
+create or replace function finance_private.save_cash_balance(p_account text, p_balance numeric, p_as_of date, p_note text)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare label text := btrim(coalesce(p_account, ''));
 begin
@@ -47,7 +48,7 @@ begin
   return finance_private.cash_balance_rows();
 end$$;
 
-create function finance_private.cancel_cash_balance(p_id uuid, p_reason text)
+create or replace function finance_private.cancel_cash_balance(p_id uuid, p_reason text)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare reason text := btrim(coalesce(p_reason, ''));
 begin
@@ -68,7 +69,7 @@ end$$;
 --   history: the 3 months before this one, for averages (workshop, other vehicle costs, one-off company costs,
 --            Smart Drive net of commission, confirmed other income)
 --   duplicate_recurring: vehicles carrying the same monthly cost twice this month (not confirmed as separate)
-create function finance_private.cash_outlook(p_today date) returns jsonb
+create or replace function finance_private.cash_outlook(p_today date) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare
   first_month date;
@@ -143,11 +144,11 @@ begin
 end$$;
 
 -- Public entry points are thin wrappers; each private function checks for a current Admin session first.
-create function public.finance_cash_outlook(p_today date) returns jsonb
+create or replace function public.finance_cash_outlook(p_today date) returns jsonb
   language sql security invoker set search_path='' as $$select finance_private.cash_outlook(p_today)$$;
-create function public.finance_save_cash_balance(p_account text, p_balance numeric, p_as_of date, p_note text default null) returns jsonb
+create or replace function public.finance_save_cash_balance(p_account text, p_balance numeric, p_as_of date, p_note text default null) returns jsonb
   language sql security invoker set search_path='' as $$select finance_private.save_cash_balance(p_account, p_balance, p_as_of, p_note)$$;
-create function public.finance_cancel_cash_balance(p_id uuid, p_reason text) returns jsonb
+create or replace function public.finance_cancel_cash_balance(p_id uuid, p_reason text) returns jsonb
   language sql security invoker set search_path='' as $$select finance_private.cancel_cash_balance(p_id, p_reason)$$;
 
 revoke all on function finance_private.cash_balance_rows() from public, anon, authenticated;
