@@ -114,13 +114,16 @@ test('payments dated after the reference day do not move the next due date', () 
   assert.equal(ymd(getNextDueDate(d, on('2026-08-15'))), '2026-08-01');
 });
 
-test('weekly figures come from the shared schedule, oldest week first', () => {
+test('weekly figures come from the shared schedule; cash received leaves out repair credits, which are counted on their own', () => {
   const d = driver({ contractStartDate: '2026-08-03', contractDuration: 1, paymentHistory: [pay('2026-08-04', 150), pay('2026-08-11', 60, 40)] });
   const weeks = buildWeeklyFinancials([d], on('2026-08-19'), 3);
   assert.deepEqual(weeks.map(w => w.label), ['3/8 - 9/8', '10/8 - 16/8', '17/8 - 23/8']);
   assert.deepEqual(weeks.map(w => w.expected), [100, 100, 100]);
+  // Rent settled still counts the repair credit: it pays rent even though no money reaches the bank.
   assert.deepEqual(weeks.map(w => w.performanceCollected), [100, 100, 50]);
-  assert.deepEqual(weeks.map(w => w.cashFlowCollected), [150, 100, 0]);
+  // Owner decision 27 Sep 2026 (F3): cash is money received only. The 40 repair credit moved out of week 2's cash.
+  assert.deepEqual(weeks.map(w => w.cashReceived), [150, 60, 0]);
+  assert.deepEqual(weeks.map(w => w.repairCredits), [0, 40, 0]);
 });
 
 test('the expanded schedule lists the latest obligations due, newest first', () => {

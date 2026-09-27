@@ -266,13 +266,16 @@ export interface WeeklyFinancials {
   label: string;
   expected: number;
   performanceCollected: number;
-  cashFlowCollected: number;
+  /** Money received that week (payments' cash amounts), by payment date. */
+  cashReceived: number;
+  /** Repair costs drivers paid themselves and deducted from rent: they settle rent but no money reaches the bank. */
+  repairCredits: number;
 }
 
 /**
  * Monday-to-Sunday rent performance for the `weekCount` weeks ending with the reference week, oldest first.
  * `expected` and `performanceCollected` come from the shared schedule (rent due that week and what has been
- * allocated to it); `cashFlowCollected` is cash plus service claims by payment date.
+ * allocated to it, repair credits included); `cashReceived` and `repairCredits` are kept apart, by payment date.
  */
 export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = kualaLumpurNow(), weekCount = 12): WeeklyFinancials[] => {
   const monday = new Date(referenceDate);
@@ -283,7 +286,7 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
     start.setDate(monday.getDate() - (weekCount - 1 - i) * 7);
     const end = endOfDay(new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6));
     const label = `${start.getDate()}/${start.getMonth() + 1} - ${end.getDate()}/${end.getMonth() + 1}`;
-    return { start, end, label, expected: 0, performanceCollected: 0, cashFlowCollected: 0 };
+    return { start, end, label, expected: 0, performanceCollected: 0, cashReceived: 0, repairCredits: 0 };
   });
   const weekOf = (date: Date) => weeks.find(week => date >= week.start && date <= week.end);
   // The reference week counts all of its rent, including cycles falling due later that week.
@@ -298,10 +301,36 @@ export const buildWeeklyFinancials = (drivers: Driver[], referenceDate: Date = k
     }
     for (const payment of driver.paymentHistory || []) {
       const week = weekOf(parseDate(payment.date));
-      if (week) week.cashFlowCollected += payment.amount + (payment.serviceClaim || 0);
+      if (!week) continue;
+      week.cashReceived += payment.amount;
+      week.repairCredits += payment.serviceClaim || 0;
     }
   }
   return weeks;
+};
+
+export interface MonthlyReceipts {
+  /** Calendar month as YYYY-MM. */
+  month: string;
+  cash: number;
+  repairCredits: number;
+}
+
+/** Money received and repair credits per calendar month (all drivers, delisted included), oldest month first. */
+export const monthlyReceipts = (drivers: Driver[]): MonthlyReceipts[] => {
+  const months = new Map<string, MonthlyReceipts>();
+  for (const driver of drivers) {
+    for (const payment of driver.paymentHistory || []) {
+      const date = parseDate(payment.date);
+      if (isNaN(date.getTime())) continue;
+      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const row = months.get(month) ?? { month, cash: 0, repairCredits: 0 };
+      row.cash += payment.amount;
+      row.repairCredits += payment.serviceClaim || 0;
+      months.set(month, row);
+    }
+  }
+  return [...months.values()].sort((a, b) => a.month.localeCompare(b.month));
 };
 
 /** Whole calendar days from `from` to `to` (negative when `to` is earlier). */

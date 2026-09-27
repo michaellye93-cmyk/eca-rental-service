@@ -133,12 +133,12 @@ const TARGET_LOOK = {
   month: { glow: 'bg-indigo-500/5', amount: 'text-indigo-950', bar: 'from-indigo-500 to-purple-600' },
 };
 
-/** Rent falling due in a period (the target) and how much of it has been paid (collected). */
+/** Rent falling due in a period (the target) and how much of it has been settled (cash and repair credits). */
 function TargetCard({ title, period, icon, look, totals }: { title: string; period: string; icon: React.ReactNode; look: keyof typeof TARGET_LOOK; totals: { due: number; paid: number } }) {
   const { glow, amount, bar } = TARGET_LOOK[look];
   const share = totals.due > 0 ? Math.min(100, (totals.paid / totals.due) * 100) : 0;
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg px-4 py-2.5">
+    <div title="Rent settled (cash and repair credits) of the rent due in this period" className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg px-4 py-2.5">
       <div aria-hidden="true" className={`absolute top-0 right-0 w-36 h-36 rounded-full blur-2xl pointer-events-none ${glow}`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 className="flex items-center gap-2 text-sm font-bold tracking-tight text-gray-950">{icon}{title}</h2>
@@ -146,7 +146,7 @@ function TargetCard({ title, period, icon, look, totals }: { title: string; peri
       </div>
       <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
         <span className={`text-xl xl:text-2xl font-black tracking-tight font-mono ${amount}`}>{formatCurrency(totals.paid)}</span>
-        <span className="sr-only">collected</span>
+        <span className="sr-only">settled</span>
         <span className="text-sm font-bold text-gray-500">of <span className="font-mono font-extrabold">{formatCurrency(totals.due)}</span></span>
         <span className="sr-only">target,</span>
         <span className="ml-auto text-xs font-bold text-gray-600">{Math.round(share)}%</span>

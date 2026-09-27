@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import type { Driver, DriverWithMetrics, Invoice } from '../types';
 import TerminationReport from './TerminationReport';
-import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, formatDate, kualaLumpurNow, parseDate } from '../utils';
+import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, formatDate, kualaLumpurNow, monthlyReceipts, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, X, ShieldAlert, BadgeCheck } from 'lucide-react';
 
@@ -37,30 +37,11 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
   const badArrearsCount = arrearsBreakdownList.filter(d => d.metrics.status === 'BAD').length;
   const midArrearsCount = arrearsBreakdownList.filter(d => d.metrics.status === 'MID').length;
 
-  // 3. Current Month Inflow from Monthly collections
-  const getMonthlyCollectionBreakdown = useMemo(() => {
-    const breakdown: Record<string, number> = {};
-    drivers.forEach(driver => {
-      if (driver.paymentHistory) {
-        driver.paymentHistory.forEach(payment => {
-          const date = parseDate(payment.date);
-          if (date && !isNaN(date.getTime())) {
-            const monthKey = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            breakdown[monthKey] = (breakdown[monthKey] || 0) + payment.amount + (payment.serviceClaim || 0);
-          }
-        });
-      }
-    });
-    return Object.entries(breakdown).map(([month, amount]) => ({ month, amount })).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-  }, [drivers]);
-
-  const currentMonthName = useMemo(() => {
-    return kualaLumpurNow().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  }, []);
-
-  const currentMonthCollection = useMemo(() => {
-    return getMonthlyCollectionBreakdown.find(b => b.month === currentMonthName)?.amount || 0;
-  }, [getMonthlyCollectionBreakdown, currentMonthName]);
+  // 3. Money received each month, with repair credits (claims) kept apart: they settle rent but are not cash
+  const receiptsByMonth = useMemo(() => monthlyReceipts(drivers), [drivers]);
+  const monthLabel = (key: string) => new Date(`${key}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonthReceipts = receiptsByMonth.find(row => row.month === currentMonthKey) ?? { month: currentMonthKey, cash: 0, repairCredits: 0 };
 
   // 4. Monthly progress / Chart Data for 6 Months
   const monthlyData = useMemo(() => {
@@ -167,8 +148,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
       <TerminationReport />
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Financial Analytics & Operations</h2>
-          <p className="text-gray-500 text-sm mt-1">Unified minimal dashboard containing health, arrears, collections, and weekly cash flows</p>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Collections</h2>
+          <p className="text-gray-500 text-sm mt-1">Rent due, rent settled and cash received. Repair credits (service claims) settle rent but bring in no money, so they are never counted as cash.</p>
         </div>
       </div>
 
@@ -202,18 +183,18 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           </button>
         </div>
 
-        {/* KPI 2: Current Month Inflow Card (Originally on main dashboard!) */}
+        {/* KPI 2: Cash received this month (money only; repair credits shown apart) */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-500">Current Month Inflow</span>
-              <span className="p-1 px-2 text-xs bg-emerald-100 text-emerald-800 rounded font-bold uppercase">Deposits</span>
+              <span className="text-sm font-medium text-gray-500">Cash received this month</span>
+              <span className="p-1 px-2 text-xs bg-emerald-100 text-emerald-800 rounded font-bold uppercase">Money in</span>
             </div>
-            <div className="text-3xl font-black text-emerald-600 font-sans tracking-tight">
-              {formatCurrency(currentMonthCollection)}
+            <div className="text-3xl font-black text-emerald-700 font-sans tracking-tight">
+              {formatCurrency(currentMonthReceipts.cash)}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Month: {currentMonthName} (Bank receipts + repair claims)
+              {monthLabel(currentMonthKey)}. Repair credits of {formatCurrency(currentMonthReceipts.repairCredits)} also settled rent; they are not cash.
             </p>
           </div>
           <button 
@@ -225,7 +206,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
               ${showCollectionsList ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'}`}
           >
             <PieChart className="w-3.5 h-3.5" />
-            {showCollectionsList ? 'Hide Monthly Receipts' : 'View Collections Register'}
+            {showCollectionsList ? 'Hide monthly receipts' : 'View monthly receipts'}
           </button>
         </div>
 
@@ -233,18 +214,18 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-500">Service Claims (Latest)</span>
+              <span className="text-sm font-medium text-gray-500">Repair credits (claims)</span>
               <Wrench className="w-4 h-4 text-amber-500" />
             </div>
             <div className="text-3xl font-black text-amber-500 font-sans tracking-tight">
               {formatCurrency(activeSvcData?.serviceClaim || 0)}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Recorded claims for the selected month: {selectedMonth.split(' ')[0]}
+              Repairs drivers paid and deducted from rent in {selectedMonth.split(' ')[0]}. They settle rent but are not cash.
             </p>
           </div>
-          <div className="mt-4 text-xs text-gray-500 bg-amber-50/50 p-2 rounded border border-amber-100 italic">
-            Maintenance costs are logged in payments drawer
+          <div className="mt-4 text-xs text-gray-500 bg-amber-50/50 p-2 rounded border border-amber-100">
+            Choose the month in the repair-credits register below.
           </div>
         </div>
 
@@ -255,14 +236,14 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-500">Month Collection Rate</span>
+                  <span className="text-sm font-medium text-gray-500">Rent settled this month</span>
                   <TrendingUp className="w-4 h-4 text-blue-500" />
                 </div>
-                <div className="text-3xl font-black text-blue-600 font-sans tracking-tight">
+                <div className="text-3xl font-black text-blue-700 font-sans tracking-tight">
                   {currentMonth.collectionRate}%
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  {formatCurrency(currentMonth.collected)} collected vs {formatCurrency(currentMonth.issued)} issued
+                  {formatCurrency(currentMonth.collected)} settled of {formatCurrency(currentMonth.issued)} due this month (cash and repair credits)
                 </p>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-1 mt-4 overflow-hidden">
@@ -325,32 +306,34 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                <BadgeCheck className="w-5 h-5 text-emerald-500" /> Historic Monthly Collections
+                <BadgeCheck className="w-5 h-5 text-emerald-500" /> Monthly receipts
               </h3>
-              <p className="text-xs text-gray-500 mt-0.5">Aggregate payments received on a monthly cycle (base rate + service claims).</p>
+              <p className="text-xs text-gray-500 mt-0.5">Money received each month, with repair credits (claims) shown separately because they are not cash.</p>
             </div>
-            <button type="button" onClick={() => setShowCollectionsList(false)} aria-label="Close collections register" className="text-gray-500 hover:text-gray-600 p-1 bg-gray-50 rounded-full">
+            <button type="button" onClick={() => setShowCollectionsList(false)} aria-label="Close monthly receipts" className="text-gray-500 hover:text-gray-600 p-1 bg-gray-50 rounded-full">
               <X className="w-4 h-4" />
             </button>
           </div>
-          
-          <div className="max-w-md mx-auto overflow-x-auto border border-gray-200 rounded-lg">
+
+          <div className="max-w-xl mx-auto overflow-x-auto border border-gray-200 rounded-lg">
             <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
                     <tr>
                         <th className="px-6 py-3">Month</th>
-                        <th className="px-6 py-3 text-right">Deposits Received</th>
+                        <th className="px-6 py-3 text-right">Cash received</th>
+                        <th className="px-6 py-3 text-right">Repair credits</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                    {getMonthlyCollectionBreakdown.slice().reverse().map((item, idx) => (
+                    {receiptsByMonth.slice().reverse().map((item, idx) => (
                         <tr key={item.month} className={`hover:bg-emerald-50/10 transition-colors ${idx === 0 ? "bg-emerald-50/30" : ""}`}>
-                            <td className="px-6 py-4 font-semibold text-gray-700">{item.month}</td>
-                            <td className="px-6 py-4 text-right font-bold text-emerald-700">{formatCurrency(item.amount)}</td>
+                            <td className="px-6 py-4 font-semibold text-gray-700">{monthLabel(item.month)}</td>
+                            <td className="px-6 py-4 text-right font-bold text-emerald-700 tabular-nums">{formatCurrency(item.cash)}</td>
+                            <td className="px-6 py-4 text-right text-amber-800 tabular-nums">{formatCurrency(item.repairCredits)}</td>
                         </tr>
                     ))}
-                    {getMonthlyCollectionBreakdown.length === 0 && (
-                        <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-500 italic">No collections received on record.</td></tr>
+                    {receiptsByMonth.length === 0 && (
+                        <tr><td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic">No payments recorded yet.</td></tr>
                     )}
                 </tbody>
             </table>
@@ -363,9 +346,9 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-4">
           <div>
             <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
-              <Activity className="w-5 h-5 text-blue-600" /> Weekly Inflow Analysis
+              <Activity className="w-5 h-5 text-blue-600" /> Weekly rent and cash
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">Tracking Expected Rental vs Performance vs Cash Flow over the last 12 weeks</p>
+            <p className="text-xs text-gray-500 mt-0.5">Rent due, rent settled (cash and repair credits applied to that week's rent) and cash received, over the last 12 weeks</p>
           </div>
         </div>
 
@@ -399,8 +382,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 />
                 <Line 
                     type="monotone" 
-                    dataKey="expected" 
-                    name="Expected Rental" 
+                    dataKey="expected"
+                    name="Rent due"
                     stroke="#9CA3AF" 
                     strokeWidth={2}
                     strokeDasharray="5 5"
@@ -409,8 +392,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 />
                 <Line 
                     type="monotone" 
-                    dataKey="performanceCollected" 
-                    name="Performance" 
+                    dataKey="performanceCollected"
+                    name="Rent settled"
                     stroke="#2563EB" 
                     strokeWidth={3} 
                     dot={{ r: 4, strokeWidth: 2 }}
@@ -418,8 +401,8 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 />
                 <Line 
                     type="monotone" 
-                    dataKey="cashFlowCollected" 
-                    name="Cash InFlow" 
+                    dataKey="cashReceived"
+                    name="Cash received"
                     stroke="#10B981" 
                     strokeWidth={3} 
                     dot={{ r: 4, strokeWidth: 2 }}
@@ -467,7 +450,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
           <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-gray-500" />
-            Relative Cash Inflow Over Time
+            Cash received by month
           </h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -477,14 +460,14 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
                 <YAxis tickFormatter={formatMoney} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                 <Tooltip 
                   cursor={{ fill: '#f3f4f6' }}
-                  formatter={(value: number) => [formatCurrency(value), 'Total Inflow']}
+                  formatter={(value: number) => [formatCurrency(value), 'Cash received']}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="inflow" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={50} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-gray-500 mt-4 text-center">Total money received into bank accounts month-by-month.</p>
+          <p className="text-xs text-gray-500 mt-4 text-center">Money received from drivers each month. Repair credits are not included.</p>
         </div>
 
       </div>
@@ -493,7 +476,7 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
       <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-gray-500" />
-          General Collection Yield Profile (Billed vs Received)
+          Rent due vs rent settled, by month
         </h3>
         <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -505,15 +488,15 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
               <Tooltip 
                 cursor={{ fill: '#f3f4f6' }}
                 formatter={(value: number, name: string) => [
-                  name === 'Collection Rate' ? `${value}%` : formatCurrency(value), 
-                  name === 'Collected' ? 'Amount Collected' : name === 'Unpaid' ? 'Amount Unpaid' : 'Collection Rate'
+                  name === 'Share settled' ? `${value}%` : formatCurrency(value), 
+                  name === 'Settled' ? 'Rent settled' : name === 'Unpaid' ? 'Rent unpaid' : 'Share settled'
                 ]}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />
               <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-              <Bar yAxisId="left" dataKey="collected" name="Collected" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} maxBarSize={60} />
+              <Bar yAxisId="left" dataKey="collected" name="Settled" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} maxBarSize={60} />
               <Bar yAxisId="left" dataKey="unpaid" name="Unpaid" stackId="a" fill="#f87171" radius={[4, 4, 0, 0]} maxBarSize={60} />
-              <Line yAxisId="right" type="monotone" dataKey="collectionRate" name="Collection Rate" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} />
+              <Line yAxisId="right" type="monotone" dataKey="collectionRate" name="Share settled" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -525,9 +508,9 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
           <div>
             <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
               <Wrench className="w-5 h-5 text-gray-500" />
-              Maintenance Repair Claims Register
+              Repair credits register
             </h3>
-            <p className="text-sm text-gray-500 mt-1 font-medium">Verify structural fleet repairs claim records to coordinate drivers.</p>
+            <p className="text-sm text-gray-500 mt-1 font-medium">Repairs drivers paid themselves and deducted from rent, by month. These settle rent but are not cash.</p>
           </div>
           
           <div className="flex bg-gray-50 rounded-lg p-1 border border-gray-200 overflow-x-auto">
