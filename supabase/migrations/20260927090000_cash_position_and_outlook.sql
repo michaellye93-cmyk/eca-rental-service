@@ -64,8 +64,8 @@ end$$;
 
 -- Everything the cash line and Cash page need from Finance, counted the way the Management P&L counts it:
 --   months:  monthly vehicle costs (financing and owner payouts) and operation fix costs for this month and the next 3
---   insurance: ECA-paid premiums falling due before the end of that period (recorded start dates, and renewals the day
---              after the latest cover ends, at the last premium)
+--   insurance: ECA-paid premiums falling due before the end of that period (a recorded policy on its cover start date,
+--              which is Finance's cash date for premiums; renewals the day after the latest cover ends, at the last premium)
 --   history: the 3 months before this one, for averages (workshop, other vehicle costs, one-off company costs,
 --            Smart Drive net of commission, confirmed other income)
 --   duplicate_recurring: vehicles carrying the same monthly cost twice this month (not confirmed as separate)
@@ -111,7 +111,8 @@ begin
     'history', (select jsonb_agg(jsonb_build_object(
         'month', h.month,
         'has_data', exists (select 1 from finance_private.months fm where fm.finance_month = h.month and fm.refreshed_at is not null)
-          or exists (select 1 from finance_private.expenses e where e.finance_month = h.month and e.cancelled_at is null)
+          -- expenses Finance generates from fixed-cost templates do not count as data entered for the month
+          or exists (select 1 from finance_private.expenses e where e.finance_month = h.month and e.cancelled_at is null and e.fixed_cost_template_id is null)
           or exists (select 1 from finance_private.imports si where si.finance_month = h.month and si.kind = 'SMART_DRIVE' and si.status = 'POSTED')
           or exists (select 1 from finance_private.other_income oi where oi.finance_month = h.month and oi.status = 'CONFIRMED' and oi.cancelled_at is null),
         'workshop', coalesce((select sum(e.amount) from finance_private.expenses e

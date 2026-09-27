@@ -75,6 +75,24 @@ test('driver sign-in is limited to 10 tries a minute per connection', async () =
   } finally { await db.close(); }
 });
 
+test('the sign-in limit follows the Cloudflare client address, or the last forwarded one, never a value the caller prepends', async () => {
+  const db = await setup();
+  try {
+    const bucketFor = async (headers: Record<string, string>) => {
+      await db.exec('reset role; delete from finance_private.driver_login_limits');
+      await db.query(`select set_config('request.headers', $1, false)`, [JSON.stringify(headers)]);
+      await db.exec('set role anon');
+      await login(db, NRIC_A);
+      await db.exec('reset role');
+      return (await db.query<{ bucket: string }>('select bucket from finance_private.driver_login_limits')).rows.map(r => r.bucket);
+    };
+    const md5 = async (value: string) => (await db.query<{ h: string }>('select md5($1) h', [value])).rows[0].h;
+    assert.deepEqual(await bucketFor({ 'cf-connecting-ip': '203.0.113.9', 'x-forwarded-for': '1.2.3.4, 198.51.100.7' }), ['driver:' + await md5('203.0.113.9')]);
+    assert.deepEqual(await bucketFor({ 'x-forwarded-for': '1.2.3.4, 198.51.100.7' }), ['driver:' + await md5('198.51.100.7')]);
+    assert.deepEqual(await bucketFor({}), ['driver:' + await md5('unknown')]);
+  } finally { await db.close(); }
+});
+
 test('Admins set the payment instructions drivers see; staff and the public cannot', async () => {
   const db = await setup();
   try {

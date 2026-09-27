@@ -86,7 +86,8 @@ revoke all on function public.finance_portal_instructions(), public.finance_save
 grant execute on function public.finance_portal_instructions(), public.finance_save_portal_instructions(text) to authenticated;
 
 -- F1: drivers sign in on the server. Only the matching driver's contract and payments come back, never the list of
--- drivers, and never NRIC, address, email, phone or tags. At most 10 tries a minute per connection, 120 overall.
+-- drivers, and never NRIC, address, email, phone or tags. At most 10 tries a minute per caller, 120 overall. The caller
+-- is Cloudflare's client address, or else the last forwarded address (added by the gateway, not by the caller).
 create table if not exists finance_private.driver_login_limits (
   bucket text not null,
   window_start timestamptz not null,
@@ -101,7 +102,10 @@ language plpgsql security definer set search_path = '' as $$
 declare
   digits text := regexp_replace(coalesce(p_nric, ''), '\D', '', 'g');
   headers jsonb := coalesce(nullif(current_setting('request.headers', true), '')::jsonb, '{}'::jsonb);
-  caller text := coalesce(nullif(btrim(split_part(headers->>'x-forwarded-for', ',', 1)), ''), 'unknown');
+  caller text := coalesce(
+    nullif(btrim(headers->>'cf-connecting-ip'), ''),
+    nullif(btrim(regexp_replace(coalesce(headers->>'x-forwarded-for', ''), '^.*,', '')), ''),
+    'unknown');
   bucket_key text := 'driver:' || md5(caller);
   tries integer;
   all_tries integer;

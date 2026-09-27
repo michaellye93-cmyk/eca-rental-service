@@ -47,7 +47,10 @@ async function setup() {
       ('XAB2001',900,'2026-10-20','2027-10-19','ECA_PAID'),
       ('XAC3001',700,'2025-10-02','2026-10-01','ECA_PAID'),
       ('XAD4001',650,'2025-06-01','2026-05-31','ECA_PAID');
-    insert into finance_private.months(finance_month,refreshed_at) values('2026-07-01',now()),('2026-08-01',now());
+    insert into finance_private.months(finance_month,refreshed_at) values('2026-06-01',null),('2026-07-01',now()),('2026-08-01',now());
+    -- June has only the Office Rental occurrence Finance generates from its template: no data was entered that month.
+    insert into finance_private.expenses(finance_month,billing_date,plate_key,category,payment_source,amount,fixed_cost_template_id)
+      values('2026-06-01','2026-06-01',null,'Office Rental','Corporate Opex',1000,'20000000-0000-4000-8000-000000000001');
     insert into finance_private.expenses(id,finance_month,billing_date,plate_key,category,payment_source,amount) values
       ('30000000-0000-4000-8000-000000000001','2026-08-01','2026-08-10','XAA1001','Service & Maintenance','Workshop Billing',2600),
       ('30000000-0000-4000-8000-000000000002','2026-08-01','2026-08-12','XAA1001','Service & Maintenance','Workshop Billing',400),

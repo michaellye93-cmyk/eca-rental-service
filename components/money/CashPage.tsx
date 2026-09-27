@@ -304,7 +304,7 @@ function Method({ summary, outlook }: { summary: CashLineSummary; outlook: CashO
         <li>Cash means money received. Repair credits (service claims) settle rent but bring in no money, so they never count as cash.</li>
         <li>Collection rate: cash received divided by rent due over the last {COLLECTION_WEEKS} weeks, for active drivers, capped at 100%. It is {percent(summary.rate)} now.</li>
         <li>Rent due comes from the same rent schedule as the driver list, including drivers past their recorded contract length (rent continues until an end date or delist). Rent paid in advance is already in the bank, so it is not counted again.</li>
-        <li>Bills: monthly vehicle costs and operation fix costs from Finance, insurance from policy dates, and 3-month averages for workshop, other vehicle costs and one-off company costs{months.length ? ` (${months.join(', ')})` : ' (no months with Finance data yet)'}.</li>
+        <li>Bills: monthly vehicle costs and operation fix costs from Finance, insurance on each policy's start date (Finance's date for premiums, so a policy you paid early still shows until it starts), and 3-month averages for workshop, other vehicle costs and one-off company costs{months.length ? ` (${months.join(', ')})` : ' (no months with Finance data yet)'}.</li>
         <li>Status: Short when bills are more than cash plus money in; Tight when fewer than {TIGHT_DAYS} days of bills would be left; Watch when the bank balance is missing or more than {STALE_BALANCE_DAYS} days old, or overdue rent grew this week; otherwise Covered.</li>
       </ul>
     </details>
