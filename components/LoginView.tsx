@@ -5,8 +5,8 @@ import { formatNric } from '../utils';
 import { ConfirmDialog } from './Dialog';
 
 interface LoginViewProps {
-  /** Returns false when no driver has this NRIC. */
-  onLoginDriver: (nric: string) => boolean;
+  /** Resolves false when no driver has this NRIC; rejects with a message when sign-in is unavailable. */
+  onLoginDriver: (nric: string) => Promise<boolean>;
   onLoginAdmin: (accessId: string) => Promise<void>;
 }
 
@@ -17,16 +17,23 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
   const [adminId, setAdminId] = useState('');
   const [error, setError] = useState('');
   const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
+  const [isDriverLoggingIn, setIsDriverLoggingIn] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const handleDriverLogin = (e: React.FormEvent) => {
+  const handleDriverLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nric.trim()) {
       setError('Please enter your NRIC');
       return;
     }
-    if (!onLoginDriver(nric.trim())) {
-      setError('Driver not found. Please check your NRIC.');
+    setError('');
+    setIsDriverLoggingIn(true);
+    try {
+      if (!(await onLoginDriver(nric.trim()))) setError('Driver not found. Please check your NRIC.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Driver sign-in is not available right now. Please try again later.');
+    } finally {
+      setIsDriverLoggingIn(false);
     }
   };
 
@@ -98,9 +105,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
               </div>
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+                disabled={isDriverLoggingIn}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg transition-colors shadow-lg shadow-blue-600/20"
               >
-                Check My Dashboard
+                {isDriverLoggingIn ? 'Checking…' : 'Check My Dashboard'}
               </button>
             </div>
           </form>

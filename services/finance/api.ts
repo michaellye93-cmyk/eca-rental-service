@@ -26,6 +26,9 @@ export const loadCashOutlook = (today: string) => rpc<CashOutlookData>('finance_
 export const saveCashBalance = (account: string, balance: number, asOf: string, note: string) =>
   rpc<CashBalanceEntry[]>('finance_save_cash_balance', { p_account: account, p_balance: balance, p_as_of: asOf, p_note: note || null });
 export const cancelCashBalance = (id: string, reason: string) => rpc<CashBalanceEntry[]>('finance_cancel_cash_balance', { p_id: id, p_reason: reason });
+// The driver portal's "How to pay" text (Admin only): see 20260927090100_driver_portal_phone_screening.sql
+export const loadPortalInstructions = () => rpc<string | null>('finance_portal_instructions');
+export const savePortalInstructions = (text: string) => rpc<string | null>('finance_save_portal_instructions', { p_text: text });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });
 export const transitionMonth = (month: string, action: 'READY' | 'CLOSE' | 'REOPEN', revision: number, acknowledgement = '') =>

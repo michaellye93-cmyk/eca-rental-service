@@ -11,12 +11,15 @@ import { signInWithAccessId } from './services/accessIdAuth';
 import Notice, { type NoticeMessage } from './components/Notice';
 
 const App: React.FC = () => {
+  // Driver and payment records load only after a staff or admin signs in, and are cleared when they sign out.
   const [drivers, setDrivers] = useState<Driver[]>([]);
-    const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [currentView, setCurrentView] = useState<'LOGIN' | 'DRIVER' | 'ADMIN'>('LOGIN');
-  const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
+  // A signed-in driver's own record, from driver_portal_login (never the driver list)
+  const [portal, setPortal] = useState<{ driver: Driver; paymentInstructions: string | null } | null>(null);
 
   // Auth State
   const [, setSession] = useState<Session | null>(null);
@@ -96,7 +99,9 @@ const App: React.FC = () => {
 
       // Race the fetch against the timeout
       const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[] };
+      if (currentViewRef.current !== 'ADMIN') return; // signed out while loading: keep nothing
       setDrivers(result.formattedDrivers);
+      setDataLoaded(true);
       lastFullLoad.current = Date.now();
     } catch (err: any) {
       console.error('Error fetching data:', err);
@@ -183,6 +188,8 @@ const App: React.FC = () => {
       if (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED') {
         authGeneration.current++;
         authenticatedUserIdRef.current = null;
+        setDrivers([]);
+        setDataLoaded(false);
         setSession(null);
         setUserRole(null);
         setCurrentView('LOGIN');
@@ -204,9 +211,10 @@ const App: React.FC = () => {
     };
   }, [fetchUserRole]);
 
+  // Staff and admins get the driver list once signed in; nothing is loaded on the login page.
   useEffect(() => {
-    fetchDriversAndPayments();
-  }, []);
+    if (currentView === 'ADMIN') void fetchDriversAndPayments();
+  }, [currentView]);
 
   // Payments saved here update one driver only, so entries other staff made arrive with a quiet reload when this tab
   // comes back into view (at most once a minute).
@@ -222,12 +230,18 @@ const App: React.FC = () => {
 
   // --- Login Handlers ---
 
-  /** Opens the driver's own dashboard; returns false when no driver has this NRIC (the login card says so). */
-  const handleDriverLogin = (nric: string): boolean => {
-    const cleanedLoginNric = nric.replace(/\D/g, '');
-    const driver = drivers.find(d => (d.nric || '').replace(/\D/g, '') === cleanedLoginNric);
-    if (!driver) return false;
-    setActiveDriverId(driver.id);
+  /**
+   * Signs a driver in on the server (driver_portal_login) and opens their own dashboard. Returns false when no driver
+   * has this NRIC; throws with a message when sign-in is unavailable or tried too often.
+   */
+  const handleDriverLogin = async (nric: string): Promise<boolean> => {
+    const { data, error: loginError } = await supabase.rpc('driver_portal_login', { p_nric: nric });
+    if (loginError) {
+      throw new Error(/too many attempts/i.test(loginError.message) ? 'Too many attempts. Please wait a minute and try again.' : 'Driver sign-in is not available right now. Please try again later.');
+    }
+    if (!data?.driver) return false;
+    const profile = fromDriverRow({ ...data.driver, nric, email: null, address: null, tags: [] });
+    setPortal({ driver: withPayments(profile, (data.payments ?? []).map(paymentFromRow)), paymentInstructions: data.payment_instructions ?? null });
     setCurrentView('DRIVER');
     return true;
   };
@@ -241,7 +255,9 @@ const App: React.FC = () => {
       await supabase.auth.signOut();
     }
     setCurrentView('LOGIN');
-    setActiveDriverId(null);
+    setPortal(null);
+    setDrivers([]);
+    setDataLoaded(false);
     setUserRole(null);
     setNotice(null);
   };
@@ -338,7 +354,7 @@ const App: React.FC = () => {
 
   // --- Rendering ---
 
-  if (loading || isAuthChecking) {
+  if (loading || isAuthChecking || (currentView === 'ADMIN' && !dataLoaded && !error)) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center flex-col relative overflow-hidden">
         {/* Splash Screen Background */}
@@ -399,10 +415,8 @@ const App: React.FC = () => {
     return <LoginView onLoginDriver={handleDriverLogin} onLoginAdmin={handleAdminLogin} />;
   }
 
-  if (currentView === 'DRIVER' && activeDriverId) {
-    const driver = drivers.find(d => d.id === activeDriverId);
-    if (!driver) return <LoginView onLoginDriver={handleDriverLogin} onLoginAdmin={handleAdminLogin} />;
-    return <DriverDashboard driver={driver} onLogout={handleLogout} />;
+  if (currentView === 'DRIVER' && portal) {
+    return <DriverDashboard driver={portal.driver} paymentInstructions={portal.paymentInstructions} onLogout={handleLogout} />;
   }
 
   if (currentView === 'ADMIN') {
