@@ -67,7 +67,7 @@ function StatusBlock({ summary }: { summary: CashLineSummary }) {
         <Figure label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
         <Figure label={`Bills, next ${WINDOW_DAYS} days`} value={out(summary.bills.total)} negative />
         <Figure label="Left after those bills" value={summary.left === null ? '—' : money(summary.left)} negative={summary.left !== null && summary.left < 0} emphasis />
-        <Figure label="Days of bills left" value={summary.daysLeft === null ? '—' : summary.daysLeft < 0 ? 'None' : String(Math.floor(summary.daysLeft))} />
+        <Figure label="Full days of bills left" value={summary.daysLeft === null ? '—' : summary.daysLeft < 0 ? 'None' : String(Math.floor(summary.daysLeft))} />
         <Figure label="Overdue rent" value={money(summary.overdue)} hint={change > 0.005 ? `Up ${money(change)} this week` : change < -0.005 ? `Down ${money(-change)} this week` : 'No change this week'} />
       </section>
     </>
@@ -303,7 +303,7 @@ function Method({ summary, outlook }: { summary: CashLineSummary; outlook: CashO
       <ul>
         <li>Cash means money received. Repair credits (service claims) settle rent but bring in no money, so they never count as cash.</li>
         <li>Cash in bank is the latest balance you entered for each account. Money received after that date is not counted until you enter a newer balance, so update it weekly.</li>
-        <li>Overdue rent is rent that fell due before today and is still unpaid; rent due today is not overdue yet.</li>
+        <li>Overdue rent is rent that fell due before today and is still unpaid; rent due today is not overdue yet. The driver list's Outstanding also includes rent due today, so it can be higher.</li>
         <li>Collection rate: cash received divided by rent due over the last {COLLECTION_WEEKS} weeks, for active drivers, capped at 100%. It is {percent(summary.rate)} now.</li>
         <li>Rent due comes from the same rent schedule as the driver list, including drivers past their recorded contract length (rent continues until an end date or delist). Rent paid in advance is already in the bank, so it is not counted again.</li>
         <li>Bills: monthly vehicle costs and operation fix costs from Finance, insurance on each policy's start date (Finance's date for premiums, so a policy you paid early still shows until it starts), and 3-month averages for workshop, other vehicle costs and one-off company costs{months.length ? ` (${months.join(', ')})` : ' (no months with Finance data yet)'}.</li>
