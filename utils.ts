@@ -410,6 +410,30 @@ export const buildLateAlerts = <T extends Driver>(drivers: T[], referenceDate: D
     })
     .sort((a, b) => b.days - a.days);
 
+/** What the driver list's default order needs about a driver: late-alert days (null when delisted or unknown) and balance. */
+export interface CashAtRiskKey {
+  name: string;
+  lateDays: number | null;
+  outstanding: number;
+}
+
+/**
+ * The driver list's default order, cash at risk first: late alerts (LATE_ALERT_DAYS or more) with the longest late at
+ * the top, then everyone else by amount owed, then by name.
+ */
+export const cashAtRiskOrder = (a: CashAtRiskKey, b: CashAtRiskKey): number => {
+  const aLate = a.lateDays !== null && a.lateDays >= LATE_ALERT_DAYS;
+  const bLate = b.lateDays !== null && b.lateDays >= LATE_ALERT_DAYS;
+  if (aLate !== bLate) return aLate ? -1 : 1;
+  if (aLate && bLate && a.lateDays !== b.lateDays) return (b.lateDays as number) - (a.lateDays as number);
+  if (b.outstanding !== a.outstanding) return b.outstanding - a.outstanding;
+  return a.name.localeCompare(b.name);
+};
+
+/** The moment the driver list's recovery bar measures from: the end of the month before the reference day. */
+export const startOfMonthBaseline = (referenceDate: Date): Date =>
+  new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 0, 23, 59, 59, 999);
+
 /**
  * Rent of active drivers falling due between `from` and `to` (inclusive days), and how much of it has been paid by the
  * reference day. Every cycle due in the period counts from day one, including cycles after the recorded contract length.

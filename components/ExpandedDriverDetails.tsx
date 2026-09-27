@@ -37,6 +37,13 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
 
   // The latest six obligations from the shared rent schedule, newest first
   const billingSchedule = React.useMemo(() => latestInvoices(driver), [driver]);
+  // Latest payment compared with the driver's average timing: 3+ days later reads as slipping, 2+ days earlier as recovering
+  const velocity = driver.performanceVelocity || 0;
+  const paymentTiming = velocity > 3
+    ? { text: 'Paying later than usual', look: 'font-bold text-red-700' }
+    : velocity < -2
+      ? { text: 'Paying earlier than usual', look: 'font-semibold text-green-700' }
+      : { text: 'Usual timing', look: 'font-semibold text-gray-600' };
 
   const saveReceipts = (newReceipts: Record<string, { name: string; size: string; previewUrl: string }>) => {
     setReceipts(newReceipts);
@@ -151,6 +158,12 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               }`}>
                 {driver.category === 'SEWABELI' ? 'Rent-To-Own (Sewabeli)' : 'Basic Hire (Sewa)'}
               </span>
+            </div>
+
+            {/* Payment timing against the driver's own usual timing (moved here from the list row) */}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Payment timing</span>
+              <span className={paymentTiming.look}>{paymentTiming.text}</span>
             </div>
 
             {/* Registered Car Plate */}

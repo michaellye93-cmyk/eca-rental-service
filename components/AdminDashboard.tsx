@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, parseDate, rentDueAndPaid } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, parseDate, rentDueAndPaid, startOfMonthBaseline } from '../utils';
 const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
 const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
@@ -46,9 +46,6 @@ interface AdminDashboardProps {
   onDeleteDriver: (driverId: string) => void;
   onLogout: () => void;
 }
-
-// Fixed baseline for the "Restored / Slipped" recovery bar on each driver row.
-const RECOVERY_BASELINE_DATE = new Date('2026-05-27T00:00:00Z');
 
 /**
  * A text setting remembered in this browser under `key`; falls back when storage is empty or unavailable.
@@ -164,10 +161,10 @@ type ListSort = { key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT'; direction: 'as
 const DEFAULT_LIST_SORT: ListSort = { key: 'DEFAULT', direction: 'desc' };
 const STATUS_PRIORITY = { [DriverStatus.BAD]: 3, [DriverStatus.MID]: 2, [DriverStatus.GOOD]: 1 };
 
-/** The driver list's order: by risk, by outstanding, or by default (worsening payers first, then risk and cycles owed). */
+/** The driver list's order: by risk, by outstanding, or by default (cash at risk first: late alerts, then amount owed). */
 function compareForList(
-  a: { metrics: DriverMetrics; activeBalance: { baseValue: number }; velocityData: { isSlipping: boolean; velocity: number } },
-  b: { metrics: DriverMetrics; activeBalance: { baseValue: number }; velocityData: { isSlipping: boolean; velocity: number } },
+  a: { name: string; lateDays: number | null; metrics: DriverMetrics; activeBalance: { baseValue: number } },
+  b: { name: string; lateDays: number | null; metrics: DriverMetrics; activeBalance: { baseValue: number } },
   sort: ListSort,
 ): number {
   if (sort.key === 'RISK_STATUS') {
@@ -180,12 +177,11 @@ function compareForList(
     if (diff !== 0) return sort.direction === 'desc' ? diff : -diff;
     return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
   }
-  // Default: worsening payers first, then by how much worse, then risk, then cycles owed
-  if (a.velocityData.isSlipping && !b.velocityData.isSlipping) return -1;
-  if (!a.velocityData.isSlipping && b.velocityData.isSlipping) return 1;
-  if (b.velocityData.velocity !== a.velocityData.velocity) return b.velocityData.velocity - a.velocityData.velocity;
-  if (STATUS_PRIORITY[a.metrics.status] !== STATUS_PRIORITY[b.metrics.status]) return STATUS_PRIORITY[b.metrics.status] - STATUS_PRIORITY[a.metrics.status];
-  return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
+  // Default: cash at risk first (late alerts, longest late at the top), then amount owed
+  return cashAtRiskOrder(
+    { name: a.name, lateDays: a.lateDays, outstanding: a.activeBalance.baseValue },
+    { name: b.name, lateDays: b.lateDays, outstanding: b.activeBalance.baseValue },
+  );
 }
 
 /** Contact-details order: by name or category when chosen, otherwise the list's own order. */
@@ -391,16 +387,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Basic financial metrics
     const metrics = calculateDriverMetrics(d);
     const activeBalance = { baseValue: metrics.principalOutstanding, accruedInterest: metrics.penaltyAmount };
-    const recoveryBaseline = calculateDriverMetrics(d, RECOVERY_BASELINE_DATE).principalOutstanding;
+    // The recovery bar compares today's balance with the balance at the end of last month
+    const recoveryBaseline = calculateDriverMetrics(d, startOfMonthBaseline(kualaLumpurNow())).principalOutstanding;
+    // Late-alert days drive the list's default order (delisted drivers are never late alerts)
+    const lateDays = d.isDelisted ? null : lateAlertDays(d);
 
     
-    // Performance Velocity from SQL View
-    const velocity = d.performanceVelocity || 0;
-    
-    // Velocity Logic (Immediate Capture)
-    const isSlipping = velocity > 3;
-    const isRecovering = velocity < -2;
-
     // --- DEBT TREND INDICATOR (VIRTUAL SNAPSHOT LOGIC) ---
     // Role: Senior Database Engineer
     // Action: Simulating a "Snapshot Table" by calculating historical state on-the-fly.
@@ -448,13 +440,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         metrics,
         activeBalance, // Exposed for UI
         recoveryBaseline,
-        velocityData: {
-            velocity,
-            isSlipping,
-            isRecovering,
-            avgLateness: d.avgDaysLate || 0,
-            lastLateness: d.lastDaysLate || 0
-        },
+        lateDays,
         debtTrend: {
             value: Math.abs(trendValue),
             direction: isDebtIncreasing ? 'UP' : isDebtDecreasing ? 'DOWN' : 'FLAT',
@@ -475,6 +461,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Re-read when the screening day rolls over at Kuala Lumpur midnight.
   const todayStr = useMemo(() => kualaLumpurToday(), [screeningDate]);
   const todayNormalized = useMemo(() => parseDate(todayStr), [todayStr]);
+  // The recovery bar on each row measures from the 1st of this month, e.g. "since 1 Sep"
+  const recoverySinceLabel = `1 ${todayNormalized.toLocaleDateString('en-GB', { month: 'short' })}`;
 
   const startOfWeek = useMemo(() => {
     const d = new Date(todayNormalized);
@@ -1081,7 +1069,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <ul role="list" className="space-y-2">
                     {filteredDrivers.map(driver => {
                       const m = driver.metrics;
-                      const v = driver.velocityData;
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
                       // The latest payment and the row's warning: weekly rent 8+ days without a payment; monthly rent the late-alert
@@ -1122,11 +1109,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         valueText = `+${formatCurrency(currentOutstanding)} / ${formatCurrency(driver.rentalRate)}`;
                         barColorClass = 'bg-rose-500';
                       }
-                      // Payment timing compared with the driver's own usual timing
-                      let behaviorText = 'Usual payment timing';
-                      let behaviorColor = 'text-slate-500';
-                      if (v.isSlipping) { behaviorText = 'Paying later than usual'; behaviorColor = 'text-red-700 font-bold'; }
-                      else if (v.isRecovering) { behaviorText = 'Paying earlier than usual'; behaviorColor = 'text-green-700 font-semibold'; }
 
                       return (
                         <li key={driver.id} id={`driver-row-${driver.id}`}>
@@ -1174,7 +1156,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${m.status === 'GOOD' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : m.status === 'MID' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>{m.status}</span>
                                   <span className="font-bold text-slate-600">{m.cyclesOwed > 0 ? `${m.cyclesOwed.toFixed(1)} ${cycleLabel} Owed` : 'Up to date'}</span>
                                 </span>
-                                <span className={behaviorColor}>{behaviorText}</span>
                                 <span title={payWarningText} className={`flex items-center gap-1 ${payWarning ? 'font-semibold text-rose-700' : lastPaid ? 'font-semibold text-slate-500' : 'text-slate-500'}`}>
                                   {payWarning && <AlertTriangle className="w-3 h-3" aria-hidden="true" />}
                                   {lastPaid ? `Last pay: ${formatDate(lastPaid.date)}` : 'No payment yet'}
@@ -1200,7 +1181,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {(currentOutstanding > 0 || baselineOutstanding > 0) && (
                                   <div className="w-full text-left">
                                     <div className="flex flex-wrap justify-between items-center gap-x-2 text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                                      <span>{labelText}</span>
+                                      <span>{labelText} since {recoverySinceLabel}</span>
                                       <span className="font-mono normal-case tracking-normal">{valueText}</span>
                                     </div>
                                     <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
