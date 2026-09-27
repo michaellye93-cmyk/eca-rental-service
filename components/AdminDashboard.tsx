@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import PortalInstructions from './PortalInstructions';
+import { loadScreenedDriverIds, markScreened } from '../services/screening';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 
@@ -333,63 +334,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' | null>(null);
 
-  // --- Red Dot Notification & Screening States (Kuala Lumpur Timezone sensitive) ---
+  // --- Daily screening, shared between staff (Kuala Lumpur calendar day) ---
   const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
-  const [screeningDate, setScreeningDate] = useState<string>('');
+  const [screeningDate, setScreeningDate] = useState<string>(() => kualaLumpurToday());
+  // False when the shared screening table is not available yet: marks then last only while this page is open
+  const [screeningShared, setScreeningShared] = useState(true);
+  const [screeningReload, setScreeningReload] = useState(0);
 
-  // Load screened status today
+  // Today's marks from every member of staff
   useEffect(() => {
-    const todayStr = kualaLumpurToday();
-    setScreeningDate(todayStr);
-    
-    try {
-      const stored = localStorage.getItem('eca_rental_screening_status');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && parsed.date === todayStr && Array.isArray(parsed.screenedIds)) {
-          setScreenedDriverIds(parsed.screenedIds);
-        } else {
-          localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: [] }));
-          setScreenedDriverIds([]);
-        }
-      } else {
-        localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: [] }));
-        setScreenedDriverIds([]);
-      }
-    } catch (e) {
-      console.error("Error reading screening status from localStorage:", e);
-    }
-  }, []);
+    let live = true;
+    loadScreenedDriverIds(screeningDate)
+      .then(ids => {
+        if (!live) return;
+        setScreeningShared(true);
+        setScreenedDriverIds(previous => [...new Set([...ids, ...previous.filter(id => !ids.includes(id))])]);
+      })
+      .catch(() => { if (live) setScreeningShared(false); });
+    return () => { live = false; };
+  }, [screeningDate, screeningReload]);
 
-  // Periodic timezone date change checking & refresh
+  // A new list at Kuala Lumpur midnight, and other staff's marks when this tab comes back into view
   useEffect(() => {
     const interval = setInterval(() => {
-      const todayStr = kualaLumpurToday();
-      if (screeningDate && todayStr !== screeningDate) {
-        setScreeningDate(todayStr);
+      const today = kualaLumpurToday();
+      if (today !== screeningDate) {
         setScreenedDriverIds([]);
-        try {
-          localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: [] }));
-        } catch (e) {
-          console.error("Error writing reset state to localStorage:", e);
-        }
+        setScreeningDate(today);
       }
     }, 10000);
-    return () => clearInterval(interval);
+    const reloadWhenVisible = () => { if (document.visibilityState === 'visible') setScreeningReload(n => n + 1); };
+    document.addEventListener('visibilitychange', reloadWhenVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', reloadWhenVisible);
+    };
   }, [screeningDate]);
 
   const handleScreenDriver = (driverId: string) => {
-    const todayStr = kualaLumpurToday();
-    setScreenedDriverIds(prev => {
-      if (prev.includes(driverId)) return prev;
-      const next = [...prev, driverId];
-      try {
-        localStorage.setItem('eca_rental_screening_status', JSON.stringify({ date: todayStr, screenedIds: next }));
-      } catch (e) {
-        console.error("Error writing screening status to localStorage:", e);
-      }
-      return next;
-    });
+    if (screenedDriverIds.includes(driverId)) return;
+    setScreenedDriverIds(previous => (previous.includes(driverId) ? previous : [...previous, driverId]));
+    markScreened(driverId, screeningDate).catch(() => setScreeningShared(false));
   };
 
 
@@ -893,7 +878,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 {/* Daily screening progress (resets at midnight, Malaysia time) */}
-                <div className="rounded-xl border border-black px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2" title="Resets at midnight, Malaysia time (GMT+8)">
+                <div className="rounded-xl border border-black px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2" title={screeningShared ? 'Shared by all staff. Resets at midnight, Malaysia time (GMT+8)' : 'Not shared yet: the screening database update has not been installed, so marks last only while this page is open'}>
                   <span className="flex items-center gap-2">
                     <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full bg-[#E11D48] shrink-0" />
                     <span className="text-xs font-extrabold uppercase tracking-wider text-[#991B1B]">Screened today</span>
