@@ -1,5 +1,5 @@
 import { DriverStatus } from './types.ts';
-import type { Driver, DriverMetrics, Invoice } from './types.ts';
+import type { Driver, DriverMetrics, Invoice, PaymentTransaction } from './types.ts';
 
 export const parseDate = (dateVal: string | Date | number | null | undefined): Date => {
   if (!dateVal) return new Date(NaN);
@@ -445,6 +445,39 @@ export const formatNric = (value: string): string => {
   if (digits.length > 8) return `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}`;
   if (digits.length > 6) return `${digits.slice(0, 6)}-${digits.slice(6)}`;
   return digits;
+};
+
+/** A row of the payments table (only the columns the app reads). */
+export interface PaymentRow {
+  id: string;
+  date: string;
+  amount: number | string;
+  service_claim?: number | string | null;
+  payment_method?: string | null;
+}
+
+/** A payments row as the app's payment: no claim and bank transfer when those columns are empty. */
+export const paymentFromRow = (row: PaymentRow): PaymentTransaction => ({
+  id: String(row.id),
+  date: row.date,
+  amount: Number(row.amount) || 0,
+  serviceClaim: Number(row.service_claim ?? 0) || 0,
+  paymentMethod: (row.payment_method || 'BANK TRANSFER') as PaymentTransaction['paymentMethod'],
+});
+
+/**
+ * A driver profile with its payments attached: newest first, the cash-plus-claims total, and the payment-timing
+ * figures the list sorts on. Used for the full load and for updating one driver after a payment is saved.
+ */
+export const withPayments = (profile: Omit<Driver, 'totalAmountPaid' | 'paymentHistory'>, payments: PaymentTransaction[]): Driver => {
+  const paymentHistory = [...payments].sort((a, b) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
+  const driver: Driver = {
+    ...profile,
+    totalAmountPaid: paymentHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0),
+    paymentHistory,
+  };
+  const momentum = calculateMomentum(driver);
+  return { ...driver, avgDaysLate: momentum.avgLateness, lastDaysLate: momentum.lastLateness, performanceVelocity: momentum.velocity };
 };
 
 /** A row of the drivers table (only the columns the app reads or writes). */

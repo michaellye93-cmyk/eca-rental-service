@@ -45,7 +45,6 @@ interface AdminDashboardProps {
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
   onLogout: () => void;
-  onRefresh: () => Promise<void>;
 }
 
 // Fixed baseline for the "Restored / Slipped" recovery bar on each driver row.
@@ -212,7 +211,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDelistDriver,
   onDeleteDriver,
   onLogout,
-  onRefresh
 }) => {
   // Search, tab and filters are remembered in this browser between visits.
   const [searchTerm, setSearchTerm] = usePersistedState<string>('eca_admin_search_term', '');
@@ -724,8 +722,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (drivers.some(d => d.nric === formData.nric)) { setDriverFormError('A driver with this NRIC already exists.'); return; }
         await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
       }
-      // Immediate Refresh on Update
-      await onRefresh();
+      // The save handlers reload the list themselves
       setDriverFormError(null);
       setIsDriverModalOpen(false); setFormData(initialFormState);
     } catch (e) {

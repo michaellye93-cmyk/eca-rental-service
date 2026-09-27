@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
-import { Driver } from './types';
-import { calculateMomentum, parseDate, generateDriverInvoices, kualaLumpurToday, fromDriverRow, toDriverRow } from './utils'; // Import frontend metric calculation
+import type { Driver, PaymentTransaction } from './types';
+import { kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
@@ -29,6 +29,8 @@ const App: React.FC = () => {
   // Save errors and confirmations shown in a message bar instead of browser alert boxes
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
   const dismissNotice = useCallback(() => setNotice(null), []);
+  // When the full driver and payment list was last loaded (payments saved here update one driver only)
+  const lastFullLoad = useRef(0);
 
   useEffect(() => {
     currentViewRef.current = currentView;
@@ -80,33 +82,13 @@ const App: React.FC = () => {
         }
         const paymentsData = allPayments;
         
-        const formattedDrivers: Driver[] = (driversData || []).map((d: any) => {
-            const myPayments = (paymentsData || [])
-            .filter((p: any) => p.driver_id === d.id)
-            .map((p: any) => ({
-                id: p.id,
-                date: p.date,
-                amount: p.amount,
-                serviceClaim: p.service_claim || 0,
-                paymentMethod: p.payment_method || 'BANK TRANSFER'
-            }))
-            .sort((a: any, b: any) => parseDate(b.date).getTime() - parseDate(a.date).getTime());
-
-            const totalPaid = myPayments.reduce((sum: number, p: any) => sum + p.amount + (p.serviceClaim || 0), 0);
-
-            const profile = fromDriverRow(d);
-            // Payment timing trend, calculated locally
-            const momentum = calculateMomentum({ ...profile, totalAmountPaid: totalPaid, paymentHistory: myPayments });
-
-            return {
-            ...profile,
-            totalAmountPaid: totalPaid,
-            paymentHistory: myPayments,
-            avgDaysLate: momentum.avgLateness,
-            lastDaysLate: momentum.lastLateness,
-            performanceVelocity: momentum.velocity
-            };
-        });
+        const paymentsByDriver = new Map<string, PaymentTransaction[]>();
+        for (const row of paymentsData || []) {
+            const list = paymentsByDriver.get(row.driver_id) ?? [];
+            list.push(paymentFromRow(row));
+            paymentsByDriver.set(row.driver_id, list);
+        }
+        const formattedDrivers: Driver[] = (driversData || []).map((d: any) => withPayments(fromDriverRow(d), paymentsByDriver.get(d.id) ?? []));
 
         return { formattedDrivers };
 
@@ -115,6 +97,7 @@ const App: React.FC = () => {
       // Race the fetch against the timeout
       const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[] };
       setDrivers(result.formattedDrivers);
+      lastFullLoad.current = Date.now();
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Failed to connect to database');
@@ -225,6 +208,18 @@ const App: React.FC = () => {
     fetchDriversAndPayments();
   }, []);
 
+  // Payments saved here update one driver only, so entries other staff made arrive with a quiet reload when this tab
+  // comes back into view (at most once a minute).
+  useEffect(() => {
+    const reloadWhenVisible = () => {
+      if (document.visibilityState === 'visible' && currentViewRef.current === 'ADMIN' && Date.now() - lastFullLoad.current > 60_000) {
+        void fetchDriversAndPayments(true);
+      }
+    };
+    document.addEventListener('visibilitychange', reloadWhenVisible);
+    return () => document.removeEventListener('visibilitychange', reloadWhenVisible);
+  }, []);
+
   // --- Login Handlers ---
 
   /** Opens the driver's own dashboard; returns false when no driver has this NRIC (the login card says so). */
@@ -252,99 +247,41 @@ const App: React.FC = () => {
   };
 
   // --- CRUD Operations (Passed to AdminDashboard) ---
-  
-  const syncDriverInvoicesToDb = async (driver: Driver) => {
-    
-    const invoices = generateDriverInvoices(driver);
-    const payload = invoices.map(inv => ({
-      id: inv.id,
-      driver_id: inv.driverId,
-      cycle_index: inv.cycleIndex,
-      due_date: inv.dueDate,
-      amount: inv.amount,
-      amount_paid: inv.amountPaid,
-      remaining_balance: inv.remainingBalance,
-      status: inv.status
-    }));
-    
-    // Chunk upsert
-    for (let i=0; i<payload.length; i+=100) {
-      await supabase.from('invoices').upsert(payload.slice(i, i+100), { onConflict: 'id' });
-    }
-  };
+
+  /** Replaces one driver's payments and recomputes that driver's totals; other drivers are untouched. */
+  const updateDriverPayments = (driverId: string, update: (payments: PaymentTransaction[]) => PaymentTransaction[]) =>
+    setDrivers(prev => prev.map(d => (d.id === driverId ? withPayments(d, update(d.paymentHistory)) : d)));
+  const PAYMENT_COLUMNS = 'id,driver_id,date,amount,service_claim,payment_method';
 
   const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' = 'BANK TRANSFER') => {
+    // Shown straight away, then swapped for the saved row; the rest of the list is not reloaded.
+    const tempId = `temp-${Date.now()}`;
+    updateDriverPayments(driverId, payments => [{ id: tempId, amount, serviceClaim, date, paymentMethod }, ...payments]);
     try {
-      setDrivers(prev => prev.map(d => {
-        if (d.id === driverId) {
-          const newTx = { id: 'temp-' + Date.now(), amount, serviceClaim, date, paymentMethod };
-          return {
-             ...d,
-             totalAmountPaid: d.totalAmountPaid + amount + serviceClaim,
-             paymentHistory: [newTx, ...d.paymentHistory]
-          };
-        }
-        return d;
-      }));
-
-      const { error } = await supabase.from('payments').insert({ 
-        driver_id: driverId, 
-        amount, 
-        service_claim: serviceClaim, 
-        date,
-        payment_method: paymentMethod
-      });
+      const { data, error } = await supabase
+        .from('payments')
+        .insert({ driver_id: driverId, amount, service_claim: serviceClaim, date, payment_method: paymentMethod })
+        .select(PAYMENT_COLUMNS)
+        .single();
       if (error) throw error;
-      await fetchDriversAndPayments(true);
-      const updatedDriver = drivers.find(d => d.id === driverId);
-      if (updatedDriver) {
-         // Re-calculate based on new payment
-         const newTx = { id: 'temp-' + Date.now(), amount, serviceClaim, date, paymentMethod };
-         const syncDriver = {
-             ...updatedDriver,
-             totalAmountPaid: updatedDriver.totalAmountPaid + amount + serviceClaim,
-             paymentHistory: [newTx, ...updatedDriver.paymentHistory]
-         };
-         await syncDriverInvoicesToDb(syncDriver);
-      }
+      updateDriverPayments(driverId, payments => payments.map(p => (p.id === tempId ? paymentFromRow(data) : p)));
     } catch (err: any) {
+      updateDriverPayments(driverId, payments => payments.filter(p => p.id !== tempId));
       setNotice({ type: 'error', text: `Payment not saved: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
 
   const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => {
+    const driverId = drivers.find(d => d.paymentHistory.some(p => p.id === paymentId))?.id;
+    if (!driverId) return;
+    updateDriverPayments(driverId, payments => payments.map(p => (p.id === paymentId ? { ...p, amount, serviceClaim, date, paymentMethod: paymentMethod || p.paymentMethod } : p)));
     try {
-      setDrivers(prev => prev.map(d => {
-        const hasTx = d.paymentHistory.some(p => p.id === paymentId);
-        if (hasTx) {
-          const updatedHistory = d.paymentHistory.map(p => {
-            if (p.id === paymentId) {
-              return { ...p, amount, serviceClaim, date, paymentMethod: paymentMethod || p.paymentMethod };
-            }
-            return p;
-          });
-          const totalPaid = updatedHistory.reduce((sum, p) => sum + p.amount + (p.serviceClaim || 0), 0);
-          return {
-            ...d,
-            paymentHistory: updatedHistory,
-            totalAmountPaid: totalPaid
-          };
-        }
-        return d;
-      }));
-
-      const updateData: any = { amount, service_claim: serviceClaim, date };
-      if (paymentMethod) {
-        updateData.payment_method = paymentMethod;
-      }
-
-      const { error } = await supabase
-        .from('payments')
-        .update(updateData)
-        .eq('id', paymentId);
+      const updateData: Record<string, unknown> = { amount, service_claim: serviceClaim, date };
+      if (paymentMethod) updateData.payment_method = paymentMethod;
+      const { data, error } = await supabase.from('payments').update(updateData).eq('id', paymentId).select(PAYMENT_COLUMNS).single();
       if (error) throw error;
-      await fetchDriversAndPayments(true);
+      updateDriverPayments(driverId, payments => payments.map(p => (p.id === paymentId ? paymentFromRow(data) : p)));
     } catch (err: any) {
       setNotice({ type: 'error', text: `Payment not updated: ${err.message}` });
       await fetchDriversAndPayments(true);
@@ -481,7 +418,6 @@ const App: React.FC = () => {
           onDelistDriver={handleDelistDriver}
           onDeleteDriver={handleDeleteDriver}
           onLogout={handleLogout}
-          onRefresh={() => fetchDriversAndPayments(true)}
         />
         <Notice notice={notice} onDismiss={dismissNotice} />
       </>
