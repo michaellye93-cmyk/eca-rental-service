@@ -32,15 +32,18 @@ const App: React.FC = () => {
   // Save errors and confirmations shown in a message bar instead of browser alert boxes
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
   const dismissNotice = useCallback(() => setNotice(null), []);
-  // When the full driver and payment list was last loaded (payments saved here update one driver only)
+  // When the full driver and payment list was last loaded (payments saved here update one driver only), and when a
+  // payment was last changed here (a background reload that started earlier must not overwrite it)
   const lastFullLoad = useRef(0);
+  const lastLocalChange = useRef(0);
 
   useEffect(() => {
     currentViewRef.current = currentView;
   }, [currentView]);
 
   // --- Data Fetching ---
-  const fetchDriversAndPayments = async (silent: boolean = false) => {
+  const fetchDriversAndPayments = async (silent: boolean = false, background: boolean = false) => {
+    const startedAt = Date.now();
     try {
       if (!silent) {
         setLoading(true);
@@ -100,6 +103,7 @@ const App: React.FC = () => {
       // Race the fetch against the timeout
       const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[] };
       if (currentViewRef.current !== 'ADMIN') return; // signed out while loading: keep nothing
+      if (background && lastLocalChange.current >= startedAt) return; // a payment saved meanwhile would be lost; the next reload catches up
       setDrivers(result.formattedDrivers);
       setDataLoaded(true);
       lastFullLoad.current = Date.now();
@@ -216,16 +220,20 @@ const App: React.FC = () => {
     if (currentView === 'ADMIN') void fetchDriversAndPayments();
   }, [currentView]);
 
-  // Payments saved here update one driver only, so entries other staff made arrive with a quiet reload when this tab
-  // comes back into view (at most once a minute).
+  // Payments saved here update one driver only, so entries other staff made arrive with a quiet reload: every 3 minutes
+  // while this tab is in view, and when it comes back into view (at most once a minute).
   useEffect(() => {
-    const reloadWhenVisible = () => {
+    const quietReload = () => {
       if (document.visibilityState === 'visible' && currentViewRef.current === 'ADMIN' && Date.now() - lastFullLoad.current > 60_000) {
-        void fetchDriversAndPayments(true);
+        void fetchDriversAndPayments(true, true);
       }
     };
-    document.addEventListener('visibilitychange', reloadWhenVisible);
-    return () => document.removeEventListener('visibilitychange', reloadWhenVisible);
+    const timer = window.setInterval(quietReload, 180_000);
+    document.addEventListener('visibilitychange', quietReload);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', quietReload);
+    };
   }, []);
 
   // --- Login Handlers ---
@@ -265,8 +273,10 @@ const App: React.FC = () => {
   // --- CRUD Operations (Passed to AdminDashboard) ---
 
   /** Replaces one driver's payments and recomputes that driver's totals; other drivers are untouched. */
-  const updateDriverPayments = (driverId: string, update: (payments: PaymentTransaction[]) => PaymentTransaction[]) =>
+  const updateDriverPayments = (driverId: string, update: (payments: PaymentTransaction[]) => PaymentTransaction[]) => {
+    lastLocalChange.current = Date.now();
     setDrivers(prev => prev.map(d => (d.id === driverId ? withPayments(d, update(d.paymentHistory)) : d)));
+  };
   const PAYMENT_COLUMNS = 'id,driver_id,date,amount,service_claim,payment_method';
 
   const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' = 'BANK TRANSFER') => {
@@ -280,7 +290,11 @@ const App: React.FC = () => {
         .select(PAYMENT_COLUMNS)
         .single();
       if (error) throw error;
-      updateDriverPayments(driverId, payments => payments.map(p => (p.id === tempId ? paymentFromRow(data) : p)));
+      const saved = paymentFromRow(data);
+      // Swap the placeholder for the saved row; if a reload already replaced the list, add the row unless it arrived with it
+      updateDriverPayments(driverId, payments => payments.some(p => p.id === tempId)
+        ? payments.map(p => (p.id === tempId ? saved : p))
+        : payments.some(p => p.id === saved.id) ? payments : [saved, ...payments]);
     } catch (err: any) {
       updateDriverPayments(driverId, payments => payments.filter(p => p.id !== tempId));
       setNotice({ type: 'error', text: `Payment not saved: ${err.message}` });

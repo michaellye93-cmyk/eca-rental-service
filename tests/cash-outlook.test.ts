@@ -147,3 +147,17 @@ test('the Cash page outlook runs from today to the end of the third month ahead,
   assert.equal(december.bills.insurance, 800);
   assert.equal(december.closingIfAllRentPaid, round(rest.closingIfAllRentPaid + december.rent.full + december.otherIncome - december.bills.total));
 });
+
+test('with no bills recorded in Finance the line says so instead of showing Covered', () => {
+  const noBills = outlook({
+    balances: [balance('1', 'Maybank operating', 1000, '2026-10-30')],
+    months: [{ month: '2026-11-01', recurring: 0, fixed: 0 }],
+    insurance: [],
+    history: [{ month: '2026-10-01', has_data: false, workshop: 0, vehicle_costs: 0, one_off_opex: 0, smart_drive_net: 0, other_income: 0 }],
+  });
+  const line = cashLine({ today: TODAY, outlook: noBills, drivers: [weekly], overdue: 0, overdueChange: 0 });
+  assert.equal(line.bills.total, 0);
+  assert.equal(line.status, 'WATCH');
+  assert.equal(plain(line.sentence), 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Money → Expenses.');
+  assert.ok(!line.notes.some(note => note.startsWith('No bills are recorded')));
+});

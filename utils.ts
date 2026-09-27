@@ -410,6 +410,17 @@ export const buildLateAlerts = <T extends Driver>(drivers: T[], referenceDate: D
     })
     .sort((a, b) => b.days - a.days);
 
+/**
+ * Rent that fell due before the reference day and is still unpaid, from the shared rent schedule. Rent falling due on the
+ * day itself is not overdue yet, so a due day does not look like growth before the day's transfers arrive.
+ */
+export const overdueRent = (driver: Driver, referenceDate: Date = kualaLumpurNow()): number => {
+  const dayStart = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  return generateDriverInvoices(driver, referenceDate)
+    .filter(invoice => parseDate(invoice.dueDate) < dayStart)
+    .reduce((sum, invoice) => sum + invoice.remainingBalance, 0);
+};
+
 /** What the driver list's default order needs about a driver: late-alert days (null when delisted or unknown) and balance. */
 export interface CashAtRiskKey {
   name: string;

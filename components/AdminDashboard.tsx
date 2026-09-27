@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, normalizeMalaysianPhone, parseDate, rentDueAndPaid, startOfMonthBaseline, whatsappLink } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, normalizeMalaysianPhone, parseDate, rentDueAndPaid, startOfMonthBaseline, whatsappLink } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
@@ -511,15 +511,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const setBalances = (rows: CashBalanceEntry[]) => setOutlook(current => (current ? { ...current, balances: rows } : current));
   const cashSummary = useMemo(() => {
     if (!outlook) return null;
+    // Overdue = rent that fell due before today and is unpaid; compared with the same day last week
     const active = driverData.filter(d => !d.isDelisted);
-    return cashLine({
-      today: todayStr,
-      outlook,
-      drivers: driverData,
-      overdue: active.reduce((sum, d) => sum + d.activeBalance.baseValue, 0),
-      overdueChange: active.reduce((sum, d) => sum + d.debtTrend.raw, 0),
-    });
-  }, [outlook, driverData, todayStr]);
+    const weekAgo = new Date(todayNormalized);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const overdue = active.reduce((sum, d) => sum + overdueRent(d, todayNormalized), 0);
+    const overdueWeekAgo = active.reduce((sum, d) => sum + overdueRent(d, weekAgo), 0);
+    return cashLine({ today: todayStr, outlook, drivers: driverData, overdue, overdueChange: overdue - overdueWeekAgo });
+  }, [outlook, driverData, todayStr, todayNormalized]);
   const openCashPage = () => { setSection('MONEY'); setMoneyPage('cash'); };
 
   // Termination review count (admins); the review itself loads its own snapshot when opened

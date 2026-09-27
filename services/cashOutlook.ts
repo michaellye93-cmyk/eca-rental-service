@@ -178,9 +178,9 @@ export interface CashLineInput {
   today: string;
   outlook: CashOutlookData;
   drivers: Driver[];
-  /** Rent owed by active drivers today (the list's outstanding amounts added up). */
+  /** Rent owed by active drivers that fell due before today (overdueRent added up). */
   overdue: number;
-  /** How much that figure changed over the last 7 days. */
+  /** How much that figure changed since the same day last week. */
   overdueChange: number;
 }
 
@@ -241,6 +241,9 @@ export function cashLine(input: CashLineInput): CashLineSummary {
   } else if (left < 0) {
     status = 'SHORT';
     sentence = `Short: the next 30 days of bills are ${formatCurrency(-left)} more than your cash plus the money expected in.`;
+  } else if (bills.total === 0) {
+    status = 'WATCH';
+    sentence = 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Money → Expenses.';
   } else if (daysLeft !== null && daysLeft < TIGHT_DAYS) {
     status = 'TIGHT';
     const days = daysLeft < 1 ? 'less than a day' : `under ${Math.floor(daysLeft) + 1} days`;
@@ -251,9 +254,7 @@ export function cashLine(input: CashLineInput): CashLineSummary {
     sentence = stale ? `Watch: the bank balance is ${cash.ageDays} days old. Update it on the Cash page.` : `Watch: overdue rent grew ${formatCurrency(input.overdueChange)} this week.`;
   } else {
     status = 'COVERED';
-    sentence = daysLeft === null
-      ? `Covered: ${formatCurrency(left)} left after the next 30 days; no bills are recorded for them.`
-      : `Covered: ${formatCurrency(left)} left after the next 30 days of bills, about ${Math.floor(daysLeft)} days of bills.`;
+    sentence = `Covered: ${formatCurrency(left)} left after the next 30 days of bills, about ${Math.floor(daysLeft ?? 0)} days of bills.`;
   }
 
   const notes: string[] = [];
@@ -267,7 +268,7 @@ export function cashLine(input: CashLineInput): CashLineSummary {
     const n = num(duplicates.vehicles);
     notes.push(`${n} ${n === 1 ? 'vehicle carries' : 'vehicles carry'} the same monthly cost twice (${formatCurrency(num(duplicates.monthly_amount))} a month), so bills may be overstated. Check Finance → Expenses → Monthly Vehicle Costs.`);
   }
-  if (bills.total === 0) notes.push('No bills are recorded in Finance for the next 30 days.');
+  if (bills.total === 0 && !cash) notes.push('No bills are recorded in Finance for the next 30 days.');
 
   return {
     window: { from, to }, cash, rate, rent, otherIncome, bills, expectedIn, net, left, daysLeft,
