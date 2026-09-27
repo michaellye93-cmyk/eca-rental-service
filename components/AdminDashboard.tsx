@@ -982,7 +982,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Controls stay in view while scrolling the list */}
               <div className="lg:sticky lg:top-0 lg:z-10 bg-white border-b border-gray-200 print:hidden">
                 <div className="px-3 sm:px-4 py-3 flex flex-col lg:flex-row gap-3 lg:items-center">
-                  <div role="group" aria-label="Which drivers" className="flex bg-gray-100 p-1 rounded-lg shrink-0">
+                  <div role="group" aria-label="Which drivers" className="flex flex-wrap bg-gray-100 p-1 rounded-lg shrink-0">
                     {([['ACTIVE', 'Active', activeFleetCount], ['DELISTED', 'Delisted / Returned', delistedCount], ...(userRole === 'admin' ? [['TERMINATION', 'Termination review', terminationCount] as const] : [])] as const).map(([id, label, count]) => (
                       <button
                         key={id}
