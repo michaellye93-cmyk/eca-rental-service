@@ -1,5 +1,5 @@
 import { formatCurrency } from "../../utils";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { FinanceInput } from "../../types/finance";
 import type {
   BankMatchKind,
@@ -13,6 +13,7 @@ import {
   validateBankReview,
 } from "../../services/finance/bankStatements";
 import { postBankStatement, reviewBankMatch } from "../../services/finance/api";
+import { suggestPaymentMatches, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
 
 const vehicleCategories = [
   "Road Tax",
@@ -68,6 +69,26 @@ export default function BankStatementPanel({
     (BankReviewRow & { import_id: string; match_valid?: boolean }) | null
   >(null);
   const generation = useRef(0);
+  // Payments already matched to a posted bank credit this month, and in the statement being reviewed
+  const postedPaymentIds = useMemo(() => new Set((input?.bank_rows ?? []).filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id && row.match_valid !== false).map((row) => row.matched_id as string)), [input]);
+  const previewPaymentIds = useMemo(() => new Set((preview?.rows ?? []).filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id).map((row) => row.matched_id as string)), [preview]);
+  // Suggested matches for pending credits, ported from the retired Bank Recon screen
+  const suggestions = useMemo(() => (preview && input ? suggestPaymentMatches(preview.rows, input.ehailing, new Set([...postedPaymentIds, ...previewPaymentIds])) : new Map<number, PaymentSuggestion>()), [preview, input, postedPaymentIds, previewPaymentIds]);
+  const paymentLabel = (id: string) => {
+    const payment = input?.ehailing.find((p) => p.source_payment_id === id);
+    return payment ? `${payment.driver_name_snapshot ?? "Driver"} · ${payment.car_plate_snapshot ?? payment.plate_key ?? ""} · ${payment.payment_date} · ${money(payment.cash_amount)}` : id;
+  };
+  const applySuggestion = (suggestion: PaymentSuggestion) =>
+    setPreview((current) => current ? { ...current, rows: current.rows.map((row) => row.source_row === suggestion.sourceRow ? { ...row, decision: "MATCHED", payment_source: null, category: null, plate_key: null, matched_kind: "payment", matched_id: suggestion.paymentId, review_note: `Suggested match: ${suggestion.reason}` } : row) } : current);
+  const applyAllSuggestions = () => suggestions.forEach((suggestion) => applySuggestion(suggestion));
+  // Prints only the reconciliation report (same approach as the termination report)
+  const printReport = () => {
+    document.body.classList.add("printing-reconcile-report");
+    const cleanup = () => document.body.classList.remove("printing-reconcile-report");
+    window.addEventListener("afterprint", cleanup, { once: true });
+    window.print();
+    cleanup();
+  };
   useEffect(() => {
     generation.current++;
     setPreview(null);
@@ -204,7 +225,10 @@ export default function BankStatementPanel({
   };
   return (
     <section className="rounded-lg border bg-white p-4">
-      <h2 className="font-semibold">Bank statement review</h2>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h2 className="font-semibold">Bank statement review</h2>
+        <button type="button" onClick={printReport} disabled={!input} className="rounded border px-3 py-1.5 text-sm">Print reconciliation report</button>
+      </div>
       <p className="mt-1 text-sm text-slate-600">
         Statements support reconciliation only. Credits never create Finance
         revenue.
@@ -287,6 +311,12 @@ export default function BankStatementPanel({
             </span>
             <span>{preview.rows.length} extracted rows</span>
           </div>
+          {suggestions.size > 0 && (
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-emerald-900">
+              {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"} from name, plate, amount and date. Check each one before posting.
+              <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {suggestions.size}</button>
+            </p>
+          )}
           {preview.issues.length > 0 && (
             <ul className="mt-3 text-sm text-amber-800">
               {preview.issues.map((issue, i) => (
@@ -309,14 +339,18 @@ export default function BankStatementPanel({
                 </tr>
               </thead>
               <tbody>
-                {preview.rows.map((row, index) => (
-                  <ReviewRow
-                    key={`${row.source_row}-${row.reference ?? ""}`}
-                    row={row}
-                    input={input}
-                    onChange={(values) => update(index, values)}
-                  />
-                ))}
+                {preview.rows.map((row, index) => {
+                  const suggestion = suggestions.get(row.source_row);
+                  return (
+                    <ReviewRow
+                      key={`${row.source_row}-${row.reference ?? ""}`}
+                      row={row}
+                      input={input}
+                      onChange={(values) => update(index, values)}
+                      suggestion={suggestion ? { text: `${paymentLabel(suggestion.paymentId)} (${suggestion.reason})`, onUse: () => applySuggestion(suggestion) } : undefined}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -407,6 +441,8 @@ export default function BankStatementPanel({
           </div>
         </details>
       ) : null}
+      <SystemUnsolved input={input} matchedIds={new Set([...postedPaymentIds, ...previewPaymentIds])} />
+      {input && <ReconcileReport month={month} input={input} postedIds={postedPaymentIds} paymentLabel={paymentLabel} />}
       {reviewing && (
         <div className="mt-4 rounded border-2 border-amber-300 bg-amber-50 p-3">
           <h3 className="font-semibold">Review posted bank match</h3>
@@ -447,12 +483,14 @@ function ReviewRow({
   input,
   onChange,
   restrict = false,
+  suggestion,
 }: {
   key?: React.Key;
   row: BankReviewRow;
   input: FinanceInput | null;
   onChange: (v: Partial<BankReviewRow>) => void;
   restrict?: boolean;
+  suggestion?: { text: string; onUse: () => void };
 }) {
   const vehicles = input?.vehicles ?? [];
   const expense = row.decision === "EXPENSE";
@@ -492,6 +530,12 @@ function ReviewRow({
           <option>MATCHED</option>
           <option>EXCLUDED</option>
         </select>
+        {suggestion && row.decision === "PENDING" && (
+          <span className="reconcile-suggestion">
+            Suggested: {suggestion.text}
+            <button type="button" onClick={suggestion.onUse}>Use</button>
+          </span>
+        )}
       </td>
       <td>
         {expense && (
@@ -593,6 +637,112 @@ function ReviewRow({
     </tr>
   );
 }
+/** Cash payments recorded this month that no bank credit has been matched to yet (the old Bank Recon "System Unsolved"). */
+function SystemUnsolved({ input, matchedIds }: { input: FinanceInput | null; matchedIds: Set<string> }) {
+  const [cashDepositsOnly, setCashDepositsOnly] = useState(false);
+  if (!input) return null;
+  const all = unsolvedPayments(input.ehailing, matchedIds);
+  const rows = cashDepositsOnly ? all.filter((p) => String(p.payment_method ?? "").toUpperCase() === "CASH DEPOSIT") : all;
+  const total = rows.reduce((sum, p) => sum + p.cash_amount, 0);
+  return (
+    <section className="mt-4 rounded border p-3" aria-labelledby="system-unsolved-heading">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="system-unsolved-heading" className="font-semibold">
+          System unsolved: {rows.length} {rows.length === 1 ? "payment" : "payments"}, {money(total)}
+        </h3>
+        <label className="text-sm">
+          <input type="checkbox" checked={cashDepositsOnly} onChange={(e) => setCashDepositsOnly(e.target.checked)} className="mr-1" />
+          Cash deposits only
+        </label>
+      </div>
+      <p className="mt-1 text-sm text-slate-600">
+        Payments recorded in the app this month that no bank credit is matched to yet: still to be matched, not in the bank yet, or recorded by mistake.
+      </p>
+      {rows.length > 0 && (
+        <div className="mt-2 max-h-72 overflow-auto">
+          <table className="w-full min-w-[560px] text-xs">
+            <thead><tr><th>Date</th><th>Driver</th><th>Plate</th><th>Method</th><th>Cash</th></tr></thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr className="border-t" key={p.source_payment_id}>
+                  <td>{p.payment_date}</td>
+                  <td>{p.driver_name_snapshot ?? "—"}</td>
+                  <td>{p.car_plate_snapshot ?? p.plate_key ?? "—"}</td>
+                  <td>{p.payment_method ?? "BANK TRANSFER"}</td>
+                  <td>{money(p.cash_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** The printable reconciliation report for the month's posted statements (shown only when printing). */
+function ReconcileReport({ month, input, postedIds, paymentLabel }: { month: string; input: FinanceInput; postedIds: Set<string>; paymentLabel: (id: string) => string }) {
+  const rows = input.bank_rows ?? [];
+  const byDecision = (decision: BankReviewRow["decision"]) => rows.filter((row) => row.decision === decision);
+  const amountOf = (list: BankReviewRow[]) => list.reduce((sum, row) => sum + row.credit + row.debit, 0);
+  const matched = byDecision("MATCHED");
+  const expenses = byDecision("EXPENSE");
+  const excluded = byDecision("EXCLUDED");
+  const unsolved = unsolvedPayments(input.ehailing, postedIds);
+  const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  return (
+    <div className="reconcile-report" aria-hidden="true">
+      <h2>Bank reconciliation, {monthName}</h2>
+      <p>Printed {new Date().toLocaleString("en-GB", { timeZone: "Asia/Kuala_Lumpur" })} (Malaysia time). Posted statements only.</p>
+      <h3>Statements</h3>
+      <table>
+        <thead><tr><th>File</th><th>Account</th><th>Rows</th><th>Debits</th><th>Credits</th></tr></thead>
+        <tbody>
+          {(input.bank_imports ?? []).map((item) => (
+            <tr key={item.id}><td>{item.filename}</td><td>{item.account_label}</td><td className="num">{item.row_count}</td><td className="num">{money(item.total_debits)}</td><td className="num">{money(item.total_credits)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <h3>Summary</h3>
+      <table>
+        <tbody>
+          <tr><td>Matched to Finance records</td><td className="num">{matched.length}</td><td className="num">{money(amountOf(matched))}</td></tr>
+          <tr><td>Posted as expenses</td><td className="num">{expenses.length}</td><td className="num">{money(amountOf(expenses))}</td></tr>
+          <tr><td>Excluded, with reasons</td><td className="num">{excluded.length}</td><td className="num">{money(amountOf(excluded))}</td></tr>
+          <tr><td>System unsolved (recorded, not matched to the bank)</td><td className="num">{unsolved.length}</td><td className="num">{money(unsolved.reduce((sum, p) => sum + p.cash_amount, 0))}</td></tr>
+        </tbody>
+      </table>
+      <h3>Matched credits</h3>
+      <table>
+        <thead><tr><th>Date</th><th>Bank description</th><th>Amount</th><th>Matched to</th></tr></thead>
+        <tbody>
+          {matched.filter((row) => row.credit > 0).map((row) => (
+            <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit)}</td><td>{row.matched_kind === "payment" && row.matched_id ? paymentLabel(row.matched_id) : row.matched_kind}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <h3>Excluded rows</h3>
+      <table>
+        <thead><tr><th>Date</th><th>Bank description</th><th>Amount</th><th>Reason</th></tr></thead>
+        <tbody>
+          {excluded.map((row) => (
+            <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit || row.debit)}</td><td>{row.review_note}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <h3>System unsolved</h3>
+      <table>
+        <thead><tr><th>Date</th><th>Driver</th><th>Plate</th><th>Method</th><th>Cash</th></tr></thead>
+        <tbody>
+          {unsolved.map((p) => (
+            <tr key={p.source_payment_id}><td>{p.payment_date}</td><td>{p.driver_name_snapshot ?? "—"}</td><td>{p.car_plate_snapshot ?? p.plate_key ?? "—"}</td><td>{p.payment_method ?? "BANK TRANSFER"}</td><td className="num">{money(p.cash_amount)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function matchCandidates(
   row: BankReviewRow,
   input: FinanceInput | null,
@@ -605,18 +755,21 @@ function matchCandidates(
   const candidates: Array<{ kind: BankMatchKind; id: string; label: string }> =
     [];
   if (row.credit > 0) {
+    // Any payment recorded this month with the same cash amount, nearest date first (Finance checks month and amount)
+    const distance = (date: string) => Math.abs(Date.parse(`${date}T00:00:00Z`) - Date.parse(`${row.transaction_date}T00:00:00Z`));
     input.ehailing
       .filter(
         (payment) =>
           payment.finance_month.slice(0, 7) === month &&
-          payment.payment_date === row.transaction_date &&
+          payment.cash_amount > 0 &&
           same(payment.cash_amount),
       )
+      .sort((a, b) => distance(a.payment_date) - distance(b.payment_date))
       .forEach((payment) =>
         candidates.push({
           kind: "payment",
           id: payment.source_payment_id,
-          label: `E-hailing ${payment.driver_name_snapshot ?? payment.driver_id ?? "driver"} · ${payment.payment_date} · ${money(payment.cash_amount)}`,
+          label: `E-hailing ${payment.driver_name_snapshot ?? payment.driver_id ?? "driver"} · ${payment.car_plate_snapshot ?? ""} · ${payment.payment_date}${payment.payment_date === row.transaction_date ? " (same day)" : ""} · ${money(payment.cash_amount)}`,
         }),
       );
     if (input.smart_import?.finance_month.slice(0, 7) === month)

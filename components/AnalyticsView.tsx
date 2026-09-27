@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import type { Driver, DriverWithMetrics, Invoice } from '../types';
-import TerminationReport from './TerminationReport';
 import { buildWeeklyFinancials, generateDriverInvoices, formatCurrency, formatDate, kualaLumpurNow, monthlyReceipts, parseDate } from '../utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import { TrendingUp, Activity, DollarSign, PieChart, Wrench, Search, CarFront, X, ShieldAlert, BadgeCheck } from 'lucide-react';
@@ -145,13 +144,6 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ drivers }) => {
 
   return (
     <div className="space-y-6">
-      <TerminationReport />
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Collections</h2>
-          <p className="text-gray-500 text-sm mt-1">Rent due, rent settled and cash received. Repair credits (service claims) settle rent but bring in no money, so they are never counted as cash.</p>
-        </div>
-      </div>
 
       {/* KPI Cards section (Integrated Arrears & Collections) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">

@@ -1,10 +1,14 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
 import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, parseDate, rentDueAndPaid, startOfMonthBaseline } from '../utils';
-const AnalyticsView = React.lazy(() => import('./AnalyticsView'));
-const BankReconciliation = React.lazy(() => import('./BankReconciliation'));
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
+const TerminationReport = React.lazy(() => import('./TerminationReport'));
+import type { Page as MoneyPage } from './finance/FinanceView';
+import CashLine from './money/CashLine';
+import { cashLine, type CashBalanceEntry, type CashOutlookData } from '../services/cashOutlook';
+import { loadCashOutlook } from '../services/finance/api';
+import { buildTerminationReport } from '../terminationReport';
 import {
   LogOut,
   TrendingUp,
@@ -18,7 +22,6 @@ import {
   UserMinus,
   Trash2,
   Calendar,
-  PieChart,
   AlertTriangle,
   Filter,
   Users,
@@ -95,7 +98,7 @@ class ScreenLoadBoundary extends React.Component<{ children: React.ReactNode }, 
   }
 }
 
-type Section = 'DRIVERS' | 'ANALYTICS' | 'RECONCILE' | 'FINANCE';
+type Section = 'DRIVERS' | 'MONEY';
 
 /** Saved tab values, including the ones used before the Drivers section existed. */
 const SECTION_FROM_STORED: Record<string, Section> = {
@@ -103,18 +106,20 @@ const SECTION_FROM_STORED: Record<string, Section> = {
   ACTIVE: 'DRIVERS',
   DELISTED: 'DRIVERS',
   DRIVER_LIST: 'DRIVERS',
-  ANALYTICS: 'ANALYTICS',
-  RECONCILE: 'RECONCILE',
-  FINANCE: 'FINANCE',
+  ANALYTICS: 'MONEY',
+  RECONCILE: 'MONEY',
+  FINANCE: 'MONEY',
+  MONEY: 'MONEY',
 };
+/** The Money page to open when an older saved tab is carried over (Analytics, Bank Recon, Finance). */
+const MONEY_PAGE_FROM_STORED: Record<string, MoneyPage> = { ANALYTICS: 'collections', RECONCILE: 'reconcile', FINANCE: 'overview' };
+const MONEY_PAGES: MoneyPage[] = ['cash', 'collections', 'overview', 'vehicles', 'close', 'expenses', 'reconcile'];
 const sectionFromStored = (stored: string | null): Section | null =>
   stored !== null && Object.hasOwn(SECTION_FROM_STORED, stored) ? SECTION_FROM_STORED[stored] : null;
 
 const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'DRIVERS', label: 'Drivers', Icon: Users },
-  { id: 'ANALYTICS', label: 'Analytics', Icon: PieChart },
-  { id: 'RECONCILE', label: 'Bank Recon', Icon: CheckCircle2 },
-  { id: 'FINANCE', label: 'Finance', Icon: DollarSign },
+  { id: 'MONEY', label: 'Money', Icon: DollarSign },
 ];
 
 /** The fleet overview's risk tiles; each one filters the driver list. */
@@ -215,8 +220,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [legacyView] = useState<string | null>(() => {
     try { return localStorage.getItem('eca_admin_view_mode'); } catch { return null; }
   });
+  const [storedSection] = useState<string | null>(() => {
+    try { return localStorage.getItem('eca_admin_section'); } catch { return null; }
+  });
   const [section, setSection] = usePersistedState<Section>('eca_admin_section', sectionFromStored(legacyView) ?? 'DRIVERS', sectionFromStored);
-  const [driverScope, setDriverScope] = usePersistedState<'ACTIVE' | 'DELISTED'>('eca_admin_driver_scope', legacyView === 'DELISTED' ? 'DELISTED' : 'ACTIVE', stored => stored === 'ACTIVE' || stored === 'DELISTED' ? stored : null);
+  const [moneyPage, setMoneyPage] = usePersistedState<MoneyPage>(
+    'eca_admin_money_page',
+    MONEY_PAGE_FROM_STORED[storedSection ?? ''] ?? MONEY_PAGE_FROM_STORED[legacyView ?? ''] ?? 'cash',
+    stored => (MONEY_PAGES as string[]).includes(stored) ? stored as MoneyPage : null,
+  );
+  const [storedScope, setDriverScope] = usePersistedState<'ACTIVE' | 'DELISTED' | 'TERMINATION'>('eca_admin_driver_scope', legacyView === 'DELISTED' ? 'DELISTED' : 'ACTIVE', stored => stored === 'ACTIVE' || stored === 'DELISTED' || stored === 'TERMINATION' ? stored : null);
+  // The termination review is for admins; staff always see Active or Delisted
+  const driverScope = storedScope === 'TERMINATION' && userRole !== 'admin' ? 'ACTIVE' : storedScope;
   const [listView, setListView] = usePersistedState<'COLLECTIONS' | 'DETAILS'>('eca_admin_driver_list_view', legacyView === 'DRIVER_LIST' ? 'DETAILS' : 'COLLECTIONS', stored => stored === 'COLLECTIONS' || stored === 'DETAILS' ? stored : null);
   // Staff see the Drivers section only, and contact details are for admins
   const activeSection: Section = userRole === 'admin' ? section : 'DRIVERS';
@@ -492,8 +507,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const lateAlerts = useMemo(() => buildLateAlerts(driverData, todayNormalized), [driverData, todayNormalized]);
   const lateAlertsOwed = lateAlerts.reduce((sum, { driver }) => sum + driver.activeBalance.baseValue, 0);
 
-  // Analytics and Bank Recon receive all drivers in the list's default order (Bank Recon's matching keeps the first
-  // of equally good candidates, so the order is part of its behaviour).
+  // --- Cash position (admins): finance_cash_outlook plus the driver ledger ---
+  const [outlook, setOutlook] = useState<CashOutlookData | null>(null);
+  const [outlookState, setOutlookState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const reloadOutlook = useCallback(async () => {
+    if (userRole !== 'admin') return;
+    try {
+      setOutlook(await loadCashOutlook(kualaLumpurToday()));
+      setOutlookState('ready');
+    } catch {
+      setOutlookState('unavailable');
+    }
+  }, [userRole]);
+  useEffect(() => { void reloadOutlook(); }, [reloadOutlook, todayStr]);
+  const setBalances = (rows: CashBalanceEntry[]) => setOutlook(current => (current ? { ...current, balances: rows } : current));
+  const cashSummary = useMemo(() => {
+    if (!outlook) return null;
+    const active = driverData.filter(d => !d.isDelisted);
+    return cashLine({
+      today: todayStr,
+      outlook,
+      drivers: driverData,
+      overdue: active.reduce((sum, d) => sum + d.activeBalance.baseValue, 0),
+      overdueChange: active.reduce((sum, d) => sum + d.debtTrend.raw, 0),
+    });
+  }, [outlook, driverData, todayStr]);
+  const openCashPage = () => { setSection('MONEY'); setMoneyPage('cash'); };
+
+  // Termination review count (admins); the review itself loads its own snapshot when opened
+  const terminationCount = useMemo(
+    () => (userRole === 'admin' ? buildTerminationReport(driverData.filter(d => !d.isDelisted)).recommendations.length : 0),
+    [driverData, userRole],
+  );
+
+  // Money (Collections and the cash forecast) receives all drivers in the list's default order.
   const driversInDefaultOrder = useMemo(() => [...driverData].sort((a, b) => compareForList(a, b, DEFAULT_LIST_SORT)), [driverData]);
 
   // Drivers in the chosen scope, before the other filters
@@ -788,6 +835,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       </header>
+      {userRole === 'admin' && <CashLine summary={cashSummary} state={outlookState} onOpen={openCashPage} />}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3 print:p-0 print:m-0 print:w-full print:max-w-none">
         {activeSection === 'DRIVERS' ? (
@@ -929,7 +977,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="lg:sticky lg:top-0 lg:z-10 bg-white border-b border-gray-200 print:hidden">
                 <div className="px-3 sm:px-4 py-3 flex flex-col lg:flex-row gap-3 lg:items-center">
                   <div role="group" aria-label="Which drivers" className="flex bg-gray-100 p-1 rounded-lg shrink-0">
-                    {([['ACTIVE', 'Active', activeFleetCount], ['DELISTED', 'Delisted / Returned', delistedCount]] as const).map(([id, label, count]) => (
+                    {([['ACTIVE', 'Active', activeFleetCount], ['DELISTED', 'Delisted / Returned', delistedCount], ...(userRole === 'admin' ? [['TERMINATION', 'Termination review', terminationCount] as const] : [])] as const).map(([id, label, count]) => (
                       <button
                         key={id}
                         type="button"
@@ -942,6 +990,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ))}
                   </div>
 
+                  {driverScope !== 'TERMINATION' && <>
                   <div className="relative flex-1 min-w-0">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
                     <input
@@ -977,9 +1026,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <button type="button" aria-pressed={showDetails} onClick={() => setListView('DETAILS')} className={`flex-1 lg:flex-none px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors ${showDetails ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>Contact details</button>
                     </div>
                   )}
+                  </>}
                 </div>
 
-                {filtersActive && (
+                {filtersActive && driverScope !== 'TERMINATION' && (
                   <div className="px-3 sm:px-4 py-2 bg-blue-50 border-t border-blue-100 flex flex-wrap items-center gap-2 text-xs text-blue-900">
                     <span className="font-semibold">Showing {filteredDrivers.length} of {scopeDrivers.length}:</span>
                     {statusFilter !== 'ALL' && <span className="bg-white border border-blue-200 px-2 py-0.5 rounded-full font-bold">Risk: {statusFilter}</span>}
@@ -990,7 +1040,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
 
-              {showDetails ? (
+              {driverScope === 'TERMINATION' ? (
+                /* Termination review (admins): drivers the 8-week evidence recommends ending, from its own snapshot */
+                <div className="p-3 sm:p-6">
+                  <ScreenLoadBoundary><React.Suspense fallback={<p className="p-6 text-sm text-gray-600">Loading the termination review…</p>}><TerminationReport /></React.Suspense></ScreenLoadBoundary>
+                </div>
+              ) : showDetails ? (
                 /* Contact details (admins) */
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
@@ -1233,17 +1288,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
-            {activeSection === 'FINANCE' ? (
-              <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Finance…</div>}><FinanceView /></React.Suspense></ScreenLoadBoundary>
-            ) : activeSection === 'ANALYTICS' ? (
-              <div className="p-6 bg-gray-50/50">
-                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Analytics…</div>}><AnalyticsView drivers={driversInDefaultOrder} /></React.Suspense></ScreenLoadBoundary>
-              </div>
-            ) : (
-              <div className="p-6 bg-gray-50/50">
-                <ScreenLoadBoundary><React.Suspense fallback={<div className="p-6">Loading Bank Recon…</div>}><BankReconciliation drivers={driversInDefaultOrder} /></React.Suspense></ScreenLoadBoundary>
-              </div>
-            )}
+            <ScreenLoadBoundary>
+              <React.Suspense fallback={<div className="p-6">Loading Money…</div>}>
+                <FinanceView
+                  page={moneyPage}
+                  onPageChange={setMoneyPage}
+                  drivers={driversInDefaultOrder}
+                  today={todayStr}
+                  outlook={outlook}
+                  outlookState={outlookState}
+                  cashSummary={cashSummary}
+                  onBalancesChange={setBalances}
+                  onReloadOutlook={() => void reloadOutlook()}
+                />
+              </React.Suspense>
+            </ScreenLoadBoundary>
           </div>
         )}
       </main>

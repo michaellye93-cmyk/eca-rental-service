@@ -758,3 +758,167 @@
     padding: 18px;
   }
 }
+
+/* Money → Cash (cash position, the next three months, bills coming up) */
+.cash-status {
+  display: grid;
+  gap: 10px;
+}
+.cash-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.cash-status-line p {
+  flex: 1 1 320px;
+  margin: 0;
+  color: var(--f-ink);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.cash-notes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cash-hint {
+  color: var(--f-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.cash-balance-table input {
+  width: 100%;
+  min-width: 110px;
+  height: 36px;
+  border: 1px solid var(--f-line);
+  border-radius: 8px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--f-ink);
+  font: inherit;
+  font-size: 13px;
+}
+.cash-balance-table input:focus {
+  outline: none;
+  border-color: var(--f-accent);
+  box-shadow: 0 0 0 3px rgb(22 124 112 / 0.12);
+}
+.cash-balance-table #cash-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cash-balance-table .cash-input-row td {
+  background: #f7faf9;
+  vertical-align: middle;
+}
+.cash-older-row td {
+  color: var(--f-muted);
+}
+.cash-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cash-remove input {
+  width: 150px;
+  min-width: 0;
+}
+.cash-warning {
+  margin: 6px 0 0;
+  color: #805819;
+  font-size: 13px;
+}
+.cash-outlook-table th[scope="row"] {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+.cash-outlook-table .cash-group th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  background: #f5f8fa;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cash-outlook-table .cash-reference th,
+.cash-outlook-table .cash-reference td {
+  color: var(--f-muted);
+  font-style: italic;
+}
+.cash-outlook-table .cash-total-row th,
+.cash-outlook-table .cash-total-row td {
+  border-top: 2px solid var(--f-line);
+  font-weight: 600;
+}
+.cash-outlook-table .cash-lowest {
+  background: #fff9ed;
+}
+.cash-outlook-table .cash-if-paid th,
+.cash-outlook-table .cash-if-paid td {
+  color: var(--f-accent);
+}
+.cash-method summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cash-method ul {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Money → Reconcile: suggestions, system unsolved, and the printable report */
+.reconcile-suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: #176a59;
+  font-size: 12px;
+  white-space: normal;
+}
+.reconcile-suggestion button {
+  border: 1px solid #b8dfd2;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: #f0faf6;
+  color: #176a59;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reconcile-report {
+  display: none;
+}
+@media print {
+  body.printing-reconcile-report > :not(:has(.reconcile-report)),
+  body.printing-reconcile-report :has(.reconcile-report) > :not(.reconcile-report):not(:has(.reconcile-report)) { display: none !important; }
+  body.printing-reconcile-report :has(.reconcile-report) { position: static !important; height: auto !important; min-height: 0 !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; border: 0 !important; background: white !important; }
+  body.printing-reconcile-report .reconcile-report { display: block !important; width: 100%; color: #111; font-size: 11pt; }
+  body.printing-reconcile-report .reconcile-report table { width: 100%; border-collapse: collapse; margin: 4mm 0 8mm; }
+  body.printing-reconcile-report .reconcile-report th,
+  body.printing-reconcile-report .reconcile-report td { border-bottom: 1px solid #ccc; padding: 1.5mm 2mm; text-align: left; }
+  body.printing-reconcile-report .reconcile-report td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  body.printing-reconcile-report .reconcile-report tr { break-inside: avoid; }
+  body.printing-reconcile-report .reconcile-report h2 { font-size: 16pt; margin: 0 0 2mm; }
+  body.printing-reconcile-report .reconcile-report h3 { font-size: 12pt; margin: 6mm 0 0; break-after: avoid; }
+}

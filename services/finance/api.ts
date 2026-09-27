@@ -1,5 +1,6 @@
 import { supabase } from '../../supabaseClient';
 import type { FinanceInput, SmartDriveRow } from '../../types/finance';
+import type { CashBalanceEntry, CashOutlookData } from '../cashOutlook';
 
 async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(name, args);
@@ -20,6 +21,11 @@ function recordPayload(kind: RecordKind, record: object): object {
   return result;
 }
 export const getFinanceAccess = () => rpc<boolean>('finance_access');
+// Cash position and outlook (Admin only): see supabase/migrations/20260927090000_cash_position_and_outlook.sql
+export const loadCashOutlook = (today: string) => rpc<CashOutlookData>('finance_cash_outlook', { p_today: today });
+export const saveCashBalance = (account: string, balance: number, asOf: string, note: string) =>
+  rpc<CashBalanceEntry[]>('finance_save_cash_balance', { p_account: account, p_balance: balance, p_as_of: asOf, p_note: note || null });
+export const cancelCashBalance = (id: string, reason: string) => rpc<CashBalanceEntry[]>('finance_cancel_cash_balance', { p_id: id, p_reason: reason });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });
 export const transitionMonth = (month: string, action: 'READY' | 'CLOSE' | 'REOPEN', revision: number, acknowledgement = '') =>

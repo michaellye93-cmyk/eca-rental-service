@@ -174,7 +174,7 @@ export default function TerminationReport() {
   };
   return <section className="termination-report mb-8" aria-labelledby="termination-report-title" aria-busy={loading}>
     <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
-      <div><h2 id="termination-report-title" className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">A. Recommended for Termination</h2><p className="text-sm text-gray-500 mt-1">Drivers showing persistent payment non-performance during the latest 8-week observation period.</p></div>
+      <div><h2 id="termination-report-title" className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Recommended for termination</h2><p className="text-sm text-gray-500 mt-1">Drivers showing persistent payment non-performance during the latest 8-week observation period.</p></div>
       <div className="termination-no-print flex shrink-0 gap-2"><button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"><RefreshCw aria-hidden="true" className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Refreshing…' : 'Refresh Report'}</button><button type="button" onClick={print} disabled={loading || error || !snapshot} className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"><Printer aria-hidden="true" className="w-3.5 h-3.5" />Print Report</button></div>
     </div>
     {loading ? <p className="py-6 text-sm text-gray-500" role="status">Reading the complete active-driver payment ledger…</p>

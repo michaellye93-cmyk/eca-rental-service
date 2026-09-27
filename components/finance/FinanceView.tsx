@@ -62,16 +62,43 @@ import {
 } from "./FinanceRecordForms";
 import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from "./FinanceCustomizationForms";
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
+import CashPage from "../money/CashPage";
+import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
+import type { DriverWithMetrics } from "../../types";
 import "./finance.css";
 import "./finance-mobile.css";
 
+const AnalyticsView = React.lazy(() => import("../AnalyticsView"));
 const formatMoney = (value = 0) => formatCurrency(Number(value || 0));
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
     month: "long",
     year: "numeric",
   });
-type Page = "overview" | "close" | "vehicles" | "expenses";
+/** The Money tab's pages: Cash and Collections, then the month-based Finance pages. */
+export type Page = "cash" | "collections" | "overview" | "vehicles" | "close" | "expenses" | "reconcile";
+const MONEY_PAGES: [Page, string][] = [
+  ["cash", "Cash"],
+  ["collections", "Collections"],
+  ["overview", "P&L"],
+  ["vehicles", "Vehicles"],
+  ["close", "Month close"],
+  ["expenses", "Expenses"],
+  ["reconcile", "Reconcile"],
+];
+const monthBased = (page: Page) => page !== "cash" && page !== "collections";
+interface MoneyProps {
+  /** The page to show; with onPageChange the parent controls it (the cash line opens Cash). */
+  page?: Page;
+  onPageChange?: (page: Page) => void;
+  drivers?: DriverWithMetrics[];
+  today?: string;
+  outlook?: CashOutlookData | null;
+  outlookState?: "loading" | "ready" | "unavailable";
+  cashSummary?: CashLineSummary | null;
+  onBalancesChange?: (rows: CashBalanceEntry[]) => void;
+  onReloadOutlook?: () => void;
+}
 type UploadKind = "SMART_DRIVE" | "WORKSHOP" | SectionKind;
 type UploadPreview = {
   kind: UploadKind;
@@ -84,7 +111,7 @@ type UploadPreview = {
   replaceUploadId?: string | null;
 };
 
-export default function FinanceView() {
+export default function FinanceView(props: MoneyProps = {}) {
   const [sessionState, setSessionState] = useState<
     "checking" | "login" | "denied" | "ready"
   >("checking");
@@ -96,10 +123,10 @@ export default function FinanceView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [reason, setReason] = useState("");
-  const [page, setPage] = useState<Page>("overview");
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [pageState, setPageState] = useState<Page>(props.page ?? "overview");
+  const page = props.page ?? pageState;
+  const setPage = (next: Page) => (props.onPageChange ? props.onPageChange(next) : setPageState(next));
   const [auditOpen, setAuditOpen] = useState(false);
-  const [bankOpen, setBankOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
   const [smartFile, setSmartFile] = useState<{
@@ -132,8 +159,6 @@ export default function FinanceView() {
     setIssuesOpen(false);
     setImportOpen(false);
     setAuditOpen(false);
-    setBankOpen(false);
-    setMoreOpen(false);
     setAcknowledged(false);
     setNotice(null);
     setError(null);
@@ -472,13 +497,25 @@ export default function FinanceView() {
     <main className="finance-workspace">
       <header className="finance-topbar">
         <div>
-          <p className="finance-eyebrow">Management finance</p>
-          <h1>Management P&amp;L</h1>
-          <p className="finance-subtitle">
-            Monthly performance, costs and close preparation.
-          </p>
+          <p className="finance-eyebrow">Money</p>
+          {page === "cash" ? (
+            <>
+              <h1>Cash</h1>
+              <p className="finance-subtitle">Cash in bank, the next three months, and bills coming up.</p>
+            </>
+          ) : page === "collections" ? (
+            <>
+              <h1>Collections</h1>
+              <p className="finance-subtitle">Rent due, rent settled and cash received. Repair credits settle rent but bring in no money.</p>
+            </>
+          ) : (
+            <>
+              <h1>Management P&amp;L</h1>
+              <p className="finance-subtitle">Monthly performance, costs, close preparation and bank reconciliation.</p>
+            </>
+          )}
         </div>
-        <div className="finance-top-actions">
+        {monthBased(page) && <div className="finance-top-actions">
           <label className="finance-month">
             <span>Reporting month</span>
             <input
@@ -496,60 +533,47 @@ export default function FinanceView() {
             />
           </label>
           <StatusBadge status={input?.month.status} />
-        </div>
+        </div>}
       </header>
-      <nav aria-label="Finance sections" className="finance-nav">
-        {(
-          [
-            ["overview", "Overview"],
-            ["close", "Month Close"],
-            ["vehicles", "Vehicles"],
-            ["expenses", "Expenses"],
-          ] as [Page, string][]
-        ).map(([id, label]) => (
+      <nav aria-label="Money sections" className="finance-nav">
+        {MONEY_PAGES.map(([id, label]) => (
           <button
             key={id}
             className={page === id ? "is-active" : ""}
+            aria-current={page === id ? "page" : undefined}
             onClick={() => setPage(id)}
           >
             {label}
           </button>
         ))}
-        <div className="finance-more">
-          <button
-            aria-expanded={moreOpen}
-            onClick={() => setMoreOpen(!moreOpen)}
-          >
-            More <ChevronRightIcon />
-          </button>
-          {moreOpen && (
-            <div className="finance-more-menu">
-              <button
-                onClick={() => {
-                  setAuditOpen(true);
-                  setMoreOpen(false);
-                }}
-              >
-                Audit Details
-              </button>
-              <button
-                onClick={() => {
-                  setBankOpen(true);
-                  setMoreOpen(false);
-                }}
-              >
-                Reconciliation Tools
-              </button>
-            </div>
-          )}
-        </div>
+        {monthBased(page) && (
+          <div className="finance-more">
+            <button onClick={() => setAuditOpen(true)}>Audit details</button>
+          </div>
+        )}
       </nav>
-      {error && <Message type="error">{error}</Message>}
-      {notice && <Message type="success">{notice}</Message>}
+      {page === "cash" && (
+        <CashPage
+          today={props.today ?? kualaLumpurToday()}
+          drivers={props.drivers ?? []}
+          outlook={props.outlook ?? null}
+          outlookState={props.outlookState ?? "unavailable"}
+          summary={props.cashSummary ?? null}
+          onBalancesChange={(rows) => props.onBalancesChange?.(rows)}
+          onReload={() => props.onReloadOutlook?.()}
+        />
+      )}
+      {page === "collections" && (
+        <React.Suspense fallback={<Skeleton lines={8} />}>
+          <AnalyticsView drivers={props.drivers ?? []} />
+        </React.Suspense>
+      )}
+      {monthBased(page) && error && <Message type="error">{error}</Message>}
+      {monthBased(page) && notice && <Message type="success">{notice}</Message>}
       {report && (page === "overview" || page === "vehicles" || page === "close") && (report.totals.workshop_unallocated ?? 0) > 0 && (
         <Message type="warning">{formatMoney(report.totals.workshop_unallocated)} workshop costs are not yet allocated to vehicles. Vehicle margins are incomplete until those costs are assigned.</Message>
       )}
-      {!input ? (
+      {!monthBased(page) ? null : !input ? (
         <section className="finance-panel">
           {error ? (
             <button
@@ -650,6 +674,17 @@ export default function FinanceView() {
           )}
           {page === "vehicles" && (
             <Vehicles report={report} onVehicle={setSelectedVehicle} />
+          )}
+          {page === "reconcile" && (
+            <BankStatementPanel
+              month={month}
+              input={input}
+              disabled={busy || !isDraft}
+              onPosted={(next, message) => {
+                void invoke(async () => next, message);
+              }}
+              onError={setError}
+            />
           )}
           {page === "expenses" && (
             <Expenses
@@ -768,19 +803,6 @@ export default function FinanceView() {
           month={month}
           onClose={() => setSelectedVehicle(null)}
         />
-      )}
-      {bankOpen && (
-        <Dialog title="Reconciliation tools" onClose={() => setBankOpen(false)}>
-          <BankStatementPanel
-            month={month}
-            input={input}
-            disabled={busy || !isDraft}
-            onPosted={(next, message) => {
-              void invoke(async () => next, message);
-            }}
-            onError={setError}
-          />
-        </Dialog>
       )}
     </main>
   );
