@@ -161,6 +161,16 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = kua
   };
 };
 
+/** A normal rental (SEWA BIASA), however the category is written. No category counts as rent-to-own (SEWABELI). */
+export const isSewaBiasa = (driver: Pick<Driver, 'category'>) => (driver.category || '').toUpperCase().replace(/\s+/g, '_') === 'SEWA_BIASA';
+
+/**
+ * The late-payment penalty a rent-to-own driver sees in their portal while rent is owed: the 18% p.a. projection
+ * above and what it adds today. Normal rentals never see it, and the office's figures never include it.
+ */
+export const portalPenalty = (driver: Driver, metrics: Pick<DriverMetrics, 'principalOutstanding' | 'penaltyAmount' | 'dailyInterest'>) =>
+  isSewaBiasa(driver) || metrics.principalOutstanding <= 0 ? null : { total: metrics.penaltyAmount, addedToday: metrics.dailyInterest };
+
 const ringgit = new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR', minimumFractionDigits: 2 });
 
 export const formatCurrency = (amount: number) => ringgit.format(amount);

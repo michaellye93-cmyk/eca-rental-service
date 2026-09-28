@@ -1,7 +1,7 @@
 import React from 'react';
 import { Driver, DriverStatus } from '../types';
-import { calculateDriverMetrics, formatCurrency, formatDate, generateDriverInvoices, getNextDueDate, kualaLumpurNow, parseDate } from '../utils';
-import { AlertOctagon, AlertTriangle, Calendar, CheckCircle2, CircleDollarSign, Info, LogOut, Receipt } from 'lucide-react';
+import { calculateDriverMetrics, formatCurrency, formatDate, generateDriverInvoices, getNextDueDate, isSewaBiasa, kualaLumpurNow, parseDate, portalPenalty } from '../utils';
+import { AlertOctagon, AlertTriangle, Calendar, CheckCircle2, CircleDollarSign, Info, LogOut, Receipt, TrendingUp } from 'lucide-react';
 import { PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 
 interface DriverDashboardProps {
@@ -21,7 +21,7 @@ const TONE: Record<Tone, { card: string; icon: React.ReactNode }> = {
 
 /**
  * The driver's own page: one status that matches what the office sees, what is owed and when the next payment is due,
- * how to pay, contract progress and recent payments.
+ * the late-payment penalty (rent-to-own only), how to pay, contract progress and recent payments.
  */
 const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstructions, onLogout }) => {
   const now = kualaLumpurNow();
@@ -33,7 +33,8 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstru
   const cyclesOwed = `${metrics.cyclesOwed.toFixed(1)} ${cycle}s of rent`;
   const oldestUnpaid = generateDriverInvoices(driver, now).find(inv => inv.remainingBalance > 0.01 && parseDate(inv.dueDate) <= endOfToday);
   const nextDue = driver.isDelisted ? null : getNextDueDate(driver, now);
-  const ownsAtEnd = (driver.category || 'SEWABELI').toUpperCase().replace(/\s+/g, '_') !== 'SEWA_BIASA';
+  const ownsAtEnd = !isSewaBiasa(driver);
+  const penalty = portalPenalty(driver, metrics);
   const recent = driver.paymentHistory.slice(0, 5);
 
   let status: { tone: Tone; title: string; message: string };
@@ -88,6 +89,19 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstru
             <p className="text-xl font-bold text-gray-900">{formatCurrency(driver.rentalRate)}</p>
           </div>
         </div>
+
+        {/* Late-payment penalty (rent-to-own only, while rent is owed) */}
+        {penalty && (
+          <section aria-labelledby="penalty-title" className="bg-white p-4 rounded-xl shadow-sm border border-red-300 flex items-start gap-3">
+            <TrendingUp className="w-5 h-5 text-red-700 mt-0.5 shrink-0" aria-hidden="true" />
+            <div>
+              <h2 id="penalty-title" className="text-gray-600 text-xs uppercase font-semibold">Total accrued penalty</h2>
+              <p className="text-xl font-bold text-red-700">{formatCurrency(penalty.total)}</p>
+              <p className="text-sm text-gray-800 mt-0.5"><strong className="text-red-700">+{formatCurrency(penalty.addedToday)}</strong> added today</p>
+              <p className="text-xs text-gray-600 mt-0.5">Interest compounding daily at 18% p.a.</p>
+            </div>
+          </section>
+        )}
 
         {/* When to pay next */}
         {(owed > 0 || nextDue) && (
