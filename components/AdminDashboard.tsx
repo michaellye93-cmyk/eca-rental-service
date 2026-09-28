@@ -217,8 +217,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteDriver,
   onLogout,
 }) => {
-  // Search, tab and filters are remembered in this browser between visits.
-  const [searchTerm, setSearchTerm] = usePersistedState<string>('eca_admin_search_term', '');
+  // The tab and list view are remembered in this browser between visits. Search and filters start empty on every
+  // visit, so an old search never hides drivers (the values older versions saved are removed below).
+  const [searchTerm, setSearchTerm] = useState('');
   // The tab saved before the Drivers section (ACTIVE, DELISTED, DRIVER_LIST, ...) is read once to carry it over and
   // never written again, so an older version of the app still finds a value it understands.
   const [legacyView] = useState<string | null>(() => {
@@ -240,8 +241,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Staff see the Drivers section only, and contact details are for admins
   const activeSection: Section = userRole === 'admin' ? section : 'DRIVERS';
   const showDetails = userRole === 'admin' && listView === 'DETAILS';
-  const [statusFilter, setStatusFilter] = usePersistedState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('eca_admin_status_filter', 'ALL');
-  const [selectedTagFilter, setSelectedTagFilter] = usePersistedState<string>('eca_admin_selected_tag_filter', 'ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('ALL');
+  const [selectedTagFilter, setSelectedTagFilter] = useState('ALL');
+  useEffect(() => {
+    try {
+      for (const key of ['eca_admin_search_term', 'eca_admin_status_filter', 'eca_admin_selected_tag_filter']) localStorage.removeItem(key);
+    } catch { /* storage unavailable: nothing was kept */ }
+  }, []);
 
   // A driver row briefly highlighted after choosing it from the late alerts
   const [highlight, setHighlight] = useState<{ driverId: string } | null>(null);
@@ -638,8 +644,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- Handlers ---
 
+  // Opening a driver's payment window or Edit form does not mark them screened: only the "mark screened" button does
   const handleOpenPaymentModal = (driver: Driver) => {
-    handleScreenDriver(driver.id);
     setSelectedDriverForPayment(driver);
     setPaymentAmount(driver.rentalRate.toString());
     setPaymentDate(kualaLumpurToday());
@@ -732,7 +738,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleOpenCreateModal = () => { autoDayTag.current = null; setEditingId(null); setFormData(initialFormState); setTagInput(''); setDriverFormError(null); setIsDriverModalOpen(true); };
   
   const handleOpenEditModal = (driver: Driver) => {
-    handleScreenDriver(driver.id);
     setEditingId(driver.id);
     setFormData({
       name: driver.name,
