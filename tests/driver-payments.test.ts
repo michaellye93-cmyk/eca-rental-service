@@ -29,3 +29,9 @@ test('a driver\'s ledger lists payments newest first, totals cash and claims, an
   assert.equal(driver.lastDaysLate, momentum.lastLateness);
   assert.equal(driver.performanceVelocity, momentum.velocity);
 });
+
+test('a payment reference is read back when one was typed, and left out otherwise', () => {
+  assert.equal(paymentFromRow({ id: 'p1', date: '2026-08-04', amount: 100, reference: 'DN0804XAA' }).reference, 'DN0804XAA');
+  assert.equal('reference' in paymentFromRow({ id: 'p2', date: '2026-08-04', amount: 100, reference: null }), false);
+  assert.equal('reference' in paymentFromRow({ id: 'p3', date: '2026-08-04', amount: 100 }), false);
+});

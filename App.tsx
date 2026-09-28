@@ -277,16 +277,18 @@ const App: React.FC = () => {
     lastLocalChange.current = Date.now();
     setDrivers(prev => prev.map(d => (d.id === driverId ? withPayments(d, update(d.paymentHistory)) : d)));
   };
-  const PAYMENT_COLUMNS = 'id,driver_id,date,amount,service_claim,payment_method';
+  // Whole rows, so columns added later (such as the reference) come back without a change here
+  const PAYMENT_COLUMNS = '*';
 
-  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' = 'BANK TRANSFER') => {
+  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' = 'BANK TRANSFER', reference?: string) => {
     // Shown straight away, then swapped for the saved row; the rest of the list is not reloaded.
     const tempId = `temp-${Date.now()}`;
-    updateDriverPayments(driverId, payments => [{ id: tempId, amount, serviceClaim, date, paymentMethod }, ...payments]);
+    updateDriverPayments(driverId, payments => [{ id: tempId, amount, serviceClaim, date, paymentMethod, ...(reference ? { reference } : {}) }, ...payments]);
     try {
+      // The reference is sent only when typed, so recording a payment never depends on that column otherwise
       const { data, error } = await supabase
         .from('payments')
-        .insert({ driver_id: driverId, amount, service_claim: serviceClaim, date, payment_method: paymentMethod })
+        .insert({ driver_id: driverId, amount, service_claim: serviceClaim, date, payment_method: paymentMethod, ...(reference ? { reference } : {}) })
         .select(PAYMENT_COLUMNS)
         .single();
       if (error) throw error;
@@ -302,13 +304,24 @@ const App: React.FC = () => {
     }
   };
 
-  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => {
-    const driverId = drivers.find(d => d.paymentHistory.some(p => p.id === paymentId))?.id;
-    if (!driverId) return;
-    updateDriverPayments(driverId, payments => payments.map(p => (p.id === paymentId ? { ...p, amount, serviceClaim, date, paymentMethod: paymentMethod || p.paymentMethod } : p)));
+  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM', reference?: string) => {
+    const driver = drivers.find(d => d.paymentHistory.some(p => p.id === paymentId));
+    const current = driver?.paymentHistory.find(p => p.id === paymentId);
+    if (!driver || !current) return;
+    const driverId = driver.id;
+    // The reference is written only when it changed (cleared to null when removed)
+    const referenceChanged = reference !== undefined && reference !== (current.reference ?? '');
+    updateDriverPayments(driverId, payments => payments.map(p => {
+      if (p.id !== paymentId) return p;
+      const next: PaymentTransaction = { ...p, amount, serviceClaim, date, paymentMethod: paymentMethod || p.paymentMethod };
+      if (referenceChanged && reference) next.reference = reference;
+      else if (referenceChanged) delete next.reference;
+      return next;
+    }));
     try {
       const updateData: Record<string, unknown> = { amount, service_claim: serviceClaim, date };
       if (paymentMethod) updateData.payment_method = paymentMethod;
+      if (referenceChanged) updateData.reference = reference || null;
       const { data, error } = await supabase.from('payments').update(updateData).eq('id', paymentId).select(PAYMENT_COLUMNS).single();
       if (error) throw error;
       updateDriverPayments(driverId, payments => payments.map(p => (p.id === paymentId ? paymentFromRow(data) : p)));

@@ -39,12 +39,14 @@ import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
+import { PaymentNoteLines, usePaymentNotes } from './PaymentNotes';
+import { findPossibleDuplicates, type PossibleDuplicate } from '../services/paymentLog';
 
 interface AdminDashboardProps {
   drivers: Driver[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
-  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM') => void;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM', reference?: string) => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM', reference?: string) => void;
   onCreateDriver: (driver: Driver) => Promise<void>;
   onUpdateDriver: (driver: Driver) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
@@ -289,6 +291,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editServiceClaim, setEditServiceClaim] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
   const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | null>(null);
+  const [editReference, setEditReference] = useState<string>('');
 
   const liveDriverForPayment = selectedDriverForPayment ? (drivers.find(d => d.id === selectedDriverForPayment.id) || selectedDriverForPayment) : null;
 
@@ -332,6 +335,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' | null>(null);
+  const [paymentReference, setPaymentReference] = useState('');
+  // Payments that look like the one being recorded; saving then needs a second confirmation
+  const [duplicateWarning, setDuplicateWarning] = useState<PossibleDuplicate[] | null>(null);
+  useEffect(() => { setDuplicateWarning(null); }, [paymentAmount, serviceClaimAmount, paymentDate, paymentMethod, paymentReference, selectedDriverForPayment?.id]);
+  // Who recorded and edited each payment listed in the payment window
+  const paymentWindowNotes = usePaymentNotes(isPaymentModalOpen ? liveDriverForPayment : null);
 
   // --- Daily screening, shared between staff (Kuala Lumpur calendar day) ---
   const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
@@ -635,6 +644,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPaymentAmount(driver.rentalRate.toString());
     setPaymentDate(kualaLumpurToday());
     setPaymentMethod(null); // start empty
+    setPaymentReference('');
+    setDuplicateWarning(null);
     setPaymentError(null);
     setIsPaymentModalOpen(true);
   };
@@ -652,6 +663,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const handleSubmitPayment = (e: React.FormEvent) => {
     e.preventDefault();
+    submitPayment(false);
+  };
+
+  /** Records the payment; a possible duplicate stops it until `confirmDuplicates` (the "Save anyway" button). */
+  const submitPayment = (confirmDuplicates: boolean) => {
     if (!selectedDriverForPayment) return;
     const amount = parseFloat(paymentAmount) || 0;
     const serviceClaim = parseFloat(serviceClaimAmount) || 0;
@@ -668,8 +684,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     
     setPaymentError(null);
-    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod);
-    setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null);
+    const reference = paymentReference.trim();
+    const duplicates = findPossibleDuplicates(drivers, selectedDriverForPayment.id, { amount, serviceClaim, date: paymentDate, reference });
+    if (duplicates.length > 0 && !confirmDuplicates) { setDuplicateWarning(duplicates); return; }
+    onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod, reference || undefined);
+    setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null); setPaymentReference(''); setDuplicateWarning(null);
   };
 
   const handleStartEditTx = (tx: any) => {
@@ -679,6 +698,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditServiceClaim((tx.serviceClaim || 0).toString());
     setEditDate(tx.date);
     setEditPaymentMethod(tx.paymentMethod || 'BANK TRANSFER');
+    setEditReference(tx.reference || '');
   };
 
   const handleCancelEditTx = () => {
@@ -687,6 +707,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditServiceClaim('');
     setEditDate('');
     setEditPaymentMethod(null);
+    setEditReference('');
   };
 
   const handleSaveEditTx = async (txId: string) => {
@@ -702,7 +723,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setEditTxError(null);
     if (onEditPayment) {
-      onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER');
+      onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER', editReference.trim());
     }
     setEditingTxId(null);
     setEditPaymentMethod(null);
@@ -1489,6 +1510,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <input id="payment-date" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1" />
                   </div>
 
+                  <div>
+                    <label htmlFor="payment-reference" className="text-xs font-bold text-gray-500 uppercase">Reference <span className="normal-case font-medium">(optional)</span></label>
+                    <input id="payment-reference" type="text" maxLength={100} autoComplete="off" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="Receipt or DuitNow reference" className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1 font-mono" />
+                  </div>
+
                   <div role="group" aria-labelledby="payment-method-label">
                     <span id="payment-method-label" className="text-xs font-bold text-gray-500 uppercase block mb-2">Payment Method</span>
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -1507,10 +1533,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   {paymentError && <p role="alert" className="text-sm font-medium text-rose-600">{paymentError}</p>}
 
-                  <div className="flex gap-3 pt-4 border-t border-gray-100">
-                    <button type="button" onClick={closePaymentModal} className="flex-1 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-                    <button type="submit" className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Confirm</button>
-                  </div>
+                  {duplicateWarning ? (
+                    <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
+                      <p className="font-bold">This may already be recorded. Check before saving:</p>
+                      <ul className="list-disc pl-5 space-y-1 text-xs">
+                        {duplicateWarning.map(({ driver, payment, reason }) => (
+                          <li key={payment.id}>
+                            {reason === 'SAME_AMOUNT_AND_DATE'
+                              ? <>{formatCurrency(payment.amount > 0 ? payment.amount : payment.serviceClaim || 0)}{payment.amount > 0 ? '' : ' claim'} on {formatDate(payment.date)} is already recorded for this driver</>
+                              : <>Reference <span className="font-mono font-bold">{payment.reference}</span> is already on {driver.id === liveDriverForPayment.id ? 'this driver' : `${driver.name} (${driver.carPlate})`}: {formatCurrency(payment.amount)} on {formatDate(payment.date)}</>}
+                            {' '}<span className="font-mono text-amber-800">(ID {payment.id.slice(-6)})</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex gap-2 pt-1">
+                        <button type="button" onClick={() => setDuplicateWarning(null)} className="flex-1 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg">Go back</button>
+                        <button type="button" onClick={() => submitPayment(true)} className="flex-1 py-2 text-sm font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg">Save anyway</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-3 pt-4 border-t border-gray-100">
+                      <button type="button" onClick={closePaymentModal} className="flex-1 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
+                      <button type="submit" className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Confirm</button>
+                    </div>
+                  )}
                 </form>
               </div>
             </div>
@@ -1562,6 +1608,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </div>
                           </div>
+                          <div>
+                            <label htmlFor={`edit-reference-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase">Reference</label>
+                            <input id={`edit-reference-${tx.id}`} type="text" maxLength={100} autoComplete="off" value={editReference} onChange={e => setEditReference(e.target.value)} placeholder="Optional" className="w-full p-1 border border-gray-300 rounded text-xs font-mono" />
+                          </div>
                           {editTxError && <p role="alert" className="text-xs font-medium text-rose-600">{editTxError}</p>}
                           <div className="flex gap-2 justify-end pt-1">
                             <button type="button" onClick={handleCancelEditTx} className="text-xs text-gray-600 bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded transition-colors">Cancel</button>
@@ -1570,10 +1620,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       ) : (
                         <>
-                          <div>
+                          <div className="min-w-0">
                             <div className="text-xs text-gray-500">{formatDate(tx.date)} <span className="font-mono text-xs bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
                             <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: <PaymentAmount payment={tx} /></div>
-                            <PaymentMethodBadge method={tx.paymentMethod} />
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <PaymentMethodBadge method={tx.paymentMethod} />
+                              {tx.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {tx.reference}</span>}
+                            </div>
+                            <PaymentNoteLines lines={paymentWindowNotes.get(tx.id)} />
                           </div>
                           <button type="button" onClick={() => handleStartEditTx(tx)} className="text-xs text-blue-600 font-semibold hover:bg-blue-50 px-2 py-1.5 rounded transition-colors bg-white border border-blue-100">Edit payment</button>
                         </>

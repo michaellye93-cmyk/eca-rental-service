@@ -13,6 +13,8 @@ export interface PaymentTransaction {
   amount: number;
   serviceClaim?: number;
   paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM';
+  /** The receipt or DuitNow reference, when one was typed. */
+  reference?: string;
 }
 
 export interface Driver {

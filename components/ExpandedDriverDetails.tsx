@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Driver } from '../types';
 import { formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
+import { DeletedPayments, PaymentNoteLines, usePaymentNotes } from './PaymentNotes';
 import { 
   Phone, 
   User, 
@@ -37,6 +38,8 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
 
   // The latest six obligations from the shared rent schedule, newest first
   const billingSchedule = React.useMemo(() => latestInvoices(driver), [driver]);
+  // Who recorded and changed each payment (payments from before the change log carry nothing)
+  const notes = usePaymentNotes(driver);
   // Latest payment compared with the driver's average timing: 3+ days later reads as slipping, 2+ days earlier as recovering
   const velocity = driver.performanceVelocity || 0;
   const paymentTiming = velocity > 3
@@ -218,6 +221,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
             Live Payment Transactions & Timelines
           </h5>
 
+          <DeletedPayments notes={notes} payments={driver.paymentHistory} />
           {driver.paymentHistory.length === 0 ? (
             <div className="p-12 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-gray-500 text-xs italic">
               No historical payment logs located. Expand driver with new receipts.
@@ -237,10 +241,12 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                         <div className="flex items-center gap-2 flex-wrap">
                           <PaymentAmount payment={pt} className="font-extrabold text-base text-gray-950" />
                           <PaymentMethodBadge method={pt.paymentMethod} />
+                          {pt.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {pt.reference}</span>}
                         </div>
                         <p className="text-gray-500 font-medium font-mono mt-1 text-xs">
                           Paid on {formatDate(pt.date, 'N/A')}
                         </p>
+                        <PaymentNoteLines lines={notes.get(pt.id)} />
                       </div>
 
                       {/* Display Receipt Attachments */}
