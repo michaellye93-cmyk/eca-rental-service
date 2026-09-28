@@ -546,6 +546,7 @@ export interface DriverRow {
   is_delisted?: boolean | null;
   delist_date?: string | null;
   tags?: string[] | null;
+  whatsapp_group?: string | null;
 }
 
 /** The profile and contract columns written when a driver is created or edited. */
@@ -562,8 +563,9 @@ export const toDriverRow = (driver: Driver) => ({
   contract_duration_weeks: driver.contractDuration,
   rental_rate: driver.rentalRate,
   tags: driver.tags,
-  // Written only when set or being cleared, so saving a driver never depends on the phone column otherwise
+  // Written only when set or being cleared, so saving a driver never depends on these columns otherwise
   ...(driver.phone !== undefined ? { phone: driver.phone || null } : {}),
+  ...(driver.whatsappGroup !== undefined ? { whatsapp_group: driver.whatsappGroup.trim() || null } : {}),
 });
 
 /** A drivers row as the app's driver profile; payments and totals are attached by the caller. */
@@ -584,6 +586,7 @@ export const fromDriverRow = (row: DriverRow): Omit<Driver, 'totalAmountPaid' | 
   delistDate: row.delist_date ?? undefined,
   tags: row.tags || [],
   ...(row.phone ? { phone: row.phone } : {}),
+  ...(row.whatsapp_group ? { whatsappGroup: row.whatsapp_group } : {}),
 });
 
 /**

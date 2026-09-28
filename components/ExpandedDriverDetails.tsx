@@ -143,6 +143,14 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
               )}
             </div>
 
+            {/* WhatsApp group, so messages go to the right chat */}
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">WhatsApp group</span>
+              {driver.whatsappGroup
+                ? <span className="font-bold text-gray-800 text-right break-words">{driver.whatsappGroup}</span>
+                : <span className="text-gray-600 italic">Not set: add it with Edit</span>}
+            </div>
+
             {/* NRIC */}
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">NRIC No</span>

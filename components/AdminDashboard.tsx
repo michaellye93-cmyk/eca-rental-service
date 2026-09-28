@@ -320,6 +320,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     name: '',
     email: '',
     phone: '',
+    whatsappGroup: '',
     address: '',
     nric: '',
     // contactNumber removed
@@ -743,6 +744,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       name: driver.name,
       email: driver.email || '',
       phone: driver.phone ? formatPhone(driver.phone) : '',
+      whatsappGroup: driver.whatsappGroup || '',
       address: driver.address || '',
       nric: driver.nric,
       // contactNumber removed
@@ -777,11 +779,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const phone = typedPhone ? normalizeMalaysianPhone(typedPhone) : null;
     if (typedPhone && !phone) { setDriverFormError('Enter a Malaysian phone number, for example 012-345 6789, or leave it empty.'); return; }
     const originalPhone = editingId ? drivers.find(d => d.id === editingId)?.phone : undefined;
+    // The WhatsApp group name is written when typed, and cleared only when one was set before
+    const whatsappGroup = formData.whatsappGroup.trim();
+    const originalGroup = editingId ? drivers.find(d => d.id === editingId)?.whatsappGroup : undefined;
 
     // AUTOMATED LOGIC: Sync Duration if End Date is set
     const finalDuration = contractCyclesBetween(formData.contractStartDate, formData.contractEndDate, formData.rentalCycle) ?? formData.contractDuration;
 
-    const submissionData = { ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined) };
+    const submissionData = { ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined), whatsappGroup: whatsappGroup || (originalGroup ? '' : undefined) };
 
     try {
       if (editingId) {
@@ -1106,6 +1111,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </th>
                         <th className="px-6 py-3">Email Address</th>
                         <th className="px-6 py-3">Phone</th>
+                        <th className="px-6 py-3">WhatsApp group</th>
                         <th className="px-6 py-3">Address</th>
                         <th className="px-6 py-3">NRIC</th>
                         <th className="px-6 py-3">Plate Number</th>
@@ -1135,6 +1141,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={driver.email || ''}>{driver.email || '-'}</td>
                             <td className="px-6 py-4 text-gray-600 whitespace-nowrap font-mono">{driver.phone ? formatPhone(driver.phone) : '-'}</td>
+                            <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{driver.whatsappGroup || '-'}</td>
                             <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={driver.address || ''}>{driver.address || '-'}</td>
                             <td className="px-6 py-4 text-gray-600">{driver.nric}</td>
                             <td className="px-6 py-4 text-gray-700 font-mono">{driver.carPlate}</td>
@@ -1157,7 +1164,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       })}
                       {detailsRows.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-6 py-8 text-center text-gray-500">No drivers match these filters.</td>
+                          <td colSpan={9} className="px-6 py-8 text-center text-gray-500">No drivers match these filters.</td>
                         </tr>
                       )}
                     </tbody>
@@ -1380,6 +1387,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <label htmlFor="driver-phone" className="block text-sm font-bold text-gray-700 mb-1">Phone (WhatsApp)</label>
               <input id="driver-phone" type="tel" inputMode="tel" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="e.g. 012-345 6789 (optional)" />
+            </div>
+            <div>
+              <label htmlFor="driver-group" className="block text-sm font-bold text-gray-700 mb-1">WhatsApp group name</label>
+              <input id="driver-group" type="text" maxLength={100} autoComplete="off" aria-describedby="driver-group-note" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.whatsappGroup} onChange={e => setFormData({...formData, whatsappGroup: e.target.value})} placeholder="e.g. ALI XAA1001 TUE (optional)" />
+              <p id="driver-group-note" className="text-xs text-gray-500 mt-1">Exactly as the group is named in WhatsApp</p>
             </div>
             <div>
               <label htmlFor="driver-address" className="block text-sm font-bold text-gray-700 mb-1">Address</label>

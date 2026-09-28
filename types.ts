@@ -23,6 +23,8 @@ export interface Driver {
   email?: string;
   /** Mobile or phone number stored as 60 followed by the number (no spaces), for WhatsApp. */
   phone?: string;
+  /** The exact name of the driver's WhatsApp group, e.g. "ALI XAA1001 TUE". */
+  whatsappGroup?: string;
   name: string;
   address?: string;
   carPlate: string;

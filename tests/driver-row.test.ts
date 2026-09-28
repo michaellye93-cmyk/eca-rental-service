@@ -89,3 +89,15 @@ test('a plate is saved in capitals without spaces, however it was typed', () => 
   assert.equal(toDriverRow({ ...driver, carPlate: 'xaa 1001' }).car_plate, 'XAA1001');
   assert.equal(toDriverRow({ ...driver, carPlate: ' XAA  1001 ' }).car_plate, 'XAA1001');
 });
+
+test('a WhatsApp group name is written when set and cleared to null when removed; untouched rows leave the column alone', () => {
+  assert.equal(toDriverRow({ ...driver, whatsappGroup: '  FIXTURE XAA1001 SAT ' }).whatsapp_group, 'FIXTURE XAA1001 SAT');
+  assert.equal(toDriverRow({ ...driver, whatsappGroup: '' }).whatsapp_group, null);
+  assert.equal('whatsapp_group' in toDriverRow(driver), false);
+});
+
+test('fromDriverRow reads the WhatsApp group name back, and leaves it out when there is none', () => {
+  const row = { id: 'd4', nric: '900101-01-5678', name: 'Other', car_plate: 'XAB2001', contract_start_date: '2026-02-02', contract_duration_weeks: 10, rental_rate: 300 };
+  assert.equal(fromDriverRow({ ...row, whatsapp_group: 'OTHER XAB2001 MON' }).whatsappGroup, 'OTHER XAB2001 MON');
+  assert.equal('whatsappGroup' in fromDriverRow({ ...row, whatsapp_group: null }), false);
+});
