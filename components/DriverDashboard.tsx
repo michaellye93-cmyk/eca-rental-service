@@ -1,13 +1,11 @@
 import React from 'react';
 import { Driver, DriverStatus } from '../types';
 import { calculateDriverMetrics, formatCurrency, formatDate, generateDriverInvoices, getNextDueDate, isSewaBiasa, kualaLumpurNow, parseDate, portalPenalty } from '../utils';
-import { AlertOctagon, AlertTriangle, Calendar, CheckCircle2, CircleDollarSign, Info, LogOut, Receipt, TrendingUp } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Calendar, CheckCircle2, Info, LogOut, Receipt, TrendingUp } from 'lucide-react';
 import { PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 
 interface DriverDashboardProps {
   driver: Driver;
-  /** What the ECA office wants drivers to read about paying (set by an Admin); null when none has been written. */
-  paymentInstructions?: string | null;
   onLogout: () => void;
 }
 
@@ -21,9 +19,9 @@ const TONE: Record<Tone, { card: string; icon: React.ReactNode }> = {
 
 /**
  * The driver's own page: one status that matches what the office sees, what is owed and when the next payment is due,
- * the late-payment penalty (rent-to-own only), how to pay, contract progress and recent payments.
+ * the late-payment penalty while rent is owed, contract progress and recent payments.
  */
-const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstructions, onLogout }) => {
+const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) => {
   const now = kualaLumpurNow();
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
@@ -34,7 +32,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstru
   const oldestUnpaid = generateDriverInvoices(driver, now).find(inv => inv.remainingBalance > 0.01 && parseDate(inv.dueDate) <= endOfToday);
   const nextDue = driver.isDelisted ? null : getNextDueDate(driver, now);
   const ownsAtEnd = !isSewaBiasa(driver);
-  const penalty = portalPenalty(driver, metrics);
+  const penalty = portalPenalty(metrics);
   const recent = driver.paymentHistory.slice(0, 5);
 
   let status: { tone: Tone; title: string; message: string };
@@ -90,7 +88,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstru
           </div>
         </div>
 
-        {/* Late-payment penalty (rent-to-own only, while rent is owed) */}
+        {/* Late-payment penalty, for every driver while rent is owed */}
         {penalty && (
           <section aria-labelledby="penalty-title" className="bg-white p-4 rounded-xl shadow-sm border border-red-300 flex items-start gap-3">
             <TrendingUp className="w-5 h-5 text-red-700 mt-0.5 shrink-0" aria-hidden="true" />
@@ -119,15 +117,6 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, paymentInstru
             </div>
           </section>
         )}
-
-        {/* How to pay, as written by the ECA office */}
-        <section aria-labelledby="how-to-pay-title" className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-start gap-3">
-          <CircleDollarSign className="w-5 h-5 text-emerald-700 mt-0.5 shrink-0" aria-hidden="true" />
-          <div className="min-w-0">
-            <h2 id="how-to-pay-title" className="text-sm font-bold text-gray-900">How to pay</h2>
-            <p className="text-sm text-gray-800 mt-0.5 whitespace-pre-line break-words">{paymentInstructions?.trim() || 'Ask the ECA office how to pay.'}</p>
-          </div>
-        </section>
 
         {/* Contract progress */}
         {!driver.isDelisted && driver.contractDuration > 0 && (

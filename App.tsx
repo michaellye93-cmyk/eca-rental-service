@@ -19,7 +19,7 @@ const App: React.FC = () => {
 
   const [currentView, setCurrentView] = useState<'LOGIN' | 'DRIVER' | 'ADMIN'>('LOGIN');
   // A signed-in driver's own record, from driver_portal_login (never the driver list)
-  const [portal, setPortal] = useState<{ driver: Driver; paymentInstructions: string | null } | null>(null);
+  const [portal, setPortal] = useState<{ driver: Driver } | null>(null);
 
   // Auth State
   const [, setSession] = useState<Session | null>(null);
@@ -249,7 +249,7 @@ const App: React.FC = () => {
     }
     if (!data?.driver) return false;
     const profile = fromDriverRow({ ...data.driver, nric, email: null, address: null, tags: [] });
-    setPortal({ driver: withPayments(profile, (data.payments ?? []).map(paymentFromRow)), paymentInstructions: data.payment_instructions ?? null });
+    setPortal({ driver: withPayments(profile, (data.payments ?? []).map(paymentFromRow)) });
     setCurrentView('DRIVER');
     return true;
   };
@@ -430,7 +430,7 @@ const App: React.FC = () => {
   }
 
   if (currentView === 'DRIVER' && portal) {
-    return <DriverDashboard driver={portal.driver} paymentInstructions={portal.paymentInstructions} onLogout={handleLogout} />;
+    return <DriverDashboard driver={portal.driver} onLogout={handleLogout} />;
   }
 
   if (currentView === 'ADMIN') {

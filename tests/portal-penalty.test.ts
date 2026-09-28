@@ -10,12 +10,12 @@ const driver = (overrides: Partial<Driver> = {}): Driver => ({
   contractStartDate: '2026-08-01', contractEndDate: '2026-08-02', rentalCycle: 'WEEKLY', contractDuration: 1, rentalRate: 100,
   totalAmountPaid: 0, paymentHistory: [], ...overrides,
 });
-const penaltyOn = (d: Driver, iso: string) => portalPenalty(d, calculateDriverMetrics(d, on(iso)));
+const penaltyOn = (d: Driver, iso: string) => portalPenalty(calculateDriverMetrics(d, on(iso)));
 
-test('a rent-to-own driver who owes rent sees the accrued 18% penalty and what it adds today', () => {
+test('a driver who owes rent sees the accrued 18% penalty and what it adds today', () => {
   const d = driver({ category: 'SEWABELI' });
   const metrics = calculateDriverMetrics(d, on('2026-08-11'));
-  const penalty = portalPenalty(d, metrics);
+  const penalty = portalPenalty(metrics);
   assert.ok(penalty);
   assert.ok(Math.abs(penalty.total - 100 * (Math.pow(1 + 0.18 / 365, 10) - 1)) < 1e-9);
   assert.ok(penalty.addedToday > 0);
@@ -29,13 +29,14 @@ test('on the day rent falls due the card already shows, at RM 0.00, as the old p
   assert.equal(penalty.addedToday, 0);
 });
 
-test('a driver with no category counts as rent-to-own, as before', () => {
+test('a driver with no category sees it too', () => {
   assert.ok(penaltyOn(driver({ category: undefined }), '2026-08-11'));
 });
 
-test('normal rental drivers (SEWA BIASA) never see the penalty, however the category is written', () => {
-  assert.equal(penaltyOn(driver({ category: 'SEWA_BIASA' }), '2026-08-11'), null);
-  assert.equal(penaltyOn(driver({ category: 'Sewa Biasa' as Driver['category'] }), '2026-08-11'), null);
+test('normal rental drivers (SEWA BIASA) who owe rent see the same penalty (owner decision, 28 Sep 2026)', () => {
+  const rentToOwn = penaltyOn(driver({ category: 'SEWABELI' }), '2026-08-11');
+  assert.deepEqual(penaltyOn(driver({ category: 'SEWA_BIASA' }), '2026-08-11'), rentToOwn);
+  assert.deepEqual(penaltyOn(driver({ category: 'Sewa Biasa' as Driver['category'] }), '2026-08-11'), rentToOwn);
 });
 
 test('a driver who owes nothing sees no penalty', () => {
@@ -43,6 +44,6 @@ test('a driver who owes nothing sees no penalty', () => {
   assert.equal(penaltyOn(paid, '2026-08-11'), null);
 });
 
-test('a delisted rent-to-own driver who still owes sees the penalty beside the final settlement, as before', () => {
+test('a delisted driver who still owes sees the penalty beside the final settlement, as before', () => {
   assert.ok(penaltyOn(driver({ category: 'SEWABELI', isDelisted: true, delistDate: '2026-08-05' }), '2026-08-11'));
 });

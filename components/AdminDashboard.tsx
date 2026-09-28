@@ -36,7 +36,6 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
-import PortalInstructions from './PortalInstructions';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
@@ -1052,9 +1051,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <ScreenLoadBoundary><React.Suspense fallback={<p className="p-6 text-sm text-gray-600">Loading the termination review…</p>}><TerminationReport /></React.Suspense></ScreenLoadBoundary>
                 </div>
               ) : showDetails ? (
-                /* Contact details (admins), with the text drivers see about paying */
+                /* Contact details (admins) */
                 <div className="overflow-x-auto">
-                  <div className="p-3 sm:p-4 border-b border-gray-200"><PortalInstructions /></div>
                   <table className="w-full text-left text-sm">
                     <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
                       <tr>
