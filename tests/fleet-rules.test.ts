@@ -93,14 +93,22 @@ test('the form needs make, model, plate, road tax and insurance; inspection may 
   assert.match(carFormError(car({ inspectionExpiry: '2026-02-30' }), []) ?? '', /inspection/);
 });
 
-test('a cars row becomes a car: notes fall back to the older label column, and only "Others" is Others', () => {
+test('a cars row becomes a car: only the notes column is shown, and only "Others" is Others', () => {
   const row = { id: 'r1', make: ' PERODUA ', model: 'BEZZA', plateNumber: 'TST 1001', roadtaxExpiry: '2026-10-01',
-    insuranceExpiry: '2026-10-02', inspectionExpiry: null, notes: '', label: 'Fixture owner note', ownership: 'others' };
+    insuranceExpiry: '2026-10-02', inspectionExpiry: null, notes: ' Fixture note ', label: 'Older fixture label', ownership: 'others' };
   assert.deepEqual(carFromRow(row), { id: 'r1', make: 'PERODUA', model: 'BEZZA', plateNumber: 'TST 1001',
-    roadtaxExpiry: '2026-10-01', insuranceExpiry: '2026-10-02', inspectionExpiry: '', notes: 'Fixture owner note', ownership: 'Others' });
-  assert.equal(carFromRow({ id: 'r2', notes: 'kept', label: 'not used' }).notes, 'kept');
+    roadtaxExpiry: '2026-10-01', insuranceExpiry: '2026-10-02', inspectionExpiry: '', notes: 'Fixture note', ownership: 'Others' });
   assert.equal(carFromRow({ id: 'r3', ownership: 'Company' }).ownership, 'Own Fleet');
   assert.equal(carFromRow({ id: 'r4', ownership: null }).ownership, 'Own Fleet');
+});
+
+test('a note cleared in the form stays cleared after saving and reloading, even if the older label column held it', () => {
+  // Live data: 54 cars hold the same text in notes and in Guardian's older label column; 2 hold different text.
+  const stored = { id: 'r5', make: 'PERODUA', model: 'BEZZA', plateNumber: 'TST 1005', roadtaxExpiry: '2026-10-01',
+    insuranceExpiry: '2026-10-02', inspectionExpiry: '', notes: 'Fixture note', label: 'Fixture note', ownership: 'Others' };
+  const cleared = carToRow({ ...carFromRow(stored), notes: '' });
+  const reloaded = carFromRow({ ...stored, ...cleared });
+  assert.equal(reloaded.notes, '');
 });
 
 test('saving writes notes but never the older label column, and trims what was typed', () => {

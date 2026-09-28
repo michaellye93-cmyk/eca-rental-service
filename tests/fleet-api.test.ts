@@ -23,10 +23,10 @@ const sample: Car = { id: 'car-1', make: 'PERODUA', model: 'BEZZA', plateNumber:
 
 test('the list is read from the cars table and each row becomes a car', async () => {
   const { client, calls } = fakeClient({ data: [{ id: 'r1', make: 'PERODUA', model: 'BEZZA', plateNumber: 'TST 1001',
-    roadtaxExpiry: '2026-10-01', insuranceExpiry: '2026-10-02', inspectionExpiry: '', notes: null, label: 'older label', ownership: 'Others' }], error: null });
+    roadtaxExpiry: '2026-10-01', insuranceExpiry: '2026-10-02', inspectionExpiry: '', notes: 'fixture note', label: 'older label', ownership: 'Others' }], error: null });
   const cars = await fleetApi(client).listCars();
   assert.deepEqual(calls, [{ method: 'from', args: ['cars'] }, { method: 'select', args: ['*'] }]);
-  assert.deepEqual([cars[0].notes, cars[0].ownership], ['older label', 'Others']);
+  assert.deepEqual([cars[0].plateNumber, cars[0].notes, cars[0].ownership], ['TST 1001', 'fixture note', 'Others']);
 });
 
 test('adding a car inserts its columns, without the older label column', async () => {

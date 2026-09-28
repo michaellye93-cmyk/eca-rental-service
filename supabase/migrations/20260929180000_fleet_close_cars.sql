@@ -2,8 +2,8 @@
 --
 -- RUN THIS ONLY AFTER the Fleet page is live on the rental system and the owner has checked that it shows every car.
 -- From then on the car list is readable and writable only by signed-in accounts whose profile role is admin or staff,
--- the same rule as drivers and payments. Eca Guardian (carinventory-seven.vercel.app) has no sign-in, so it stops
--- showing cars: that is the switch-off.
+-- the same rule as drivers and payments. The Eca Guardian app has no sign-in, so it stops showing cars: that is the
+-- switch-off.
 --
 -- Every policy this file removes is printed in the SQL Editor's output first ("Dropping policy ..."); keep that output.
 -- supabase/rollback/20260929_fleet_reopen_cars.sql reopens the car list if Guardian ever has to come back.

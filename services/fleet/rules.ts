@@ -30,7 +30,6 @@ export interface CarRow {
   insuranceExpiry?: string | null;
   inspectionExpiry?: string | null;
   notes?: string | null;
-  label?: string | null;
   ownership?: string | null;
 }
 
@@ -132,7 +131,10 @@ export const carFormError = (car: Car, cars: Car[]): string | null => {
   return duplicate ? `This plate is already in the list (${duplicate.make} ${duplicate.model}).` : null;
 };
 
-/** A public.cars row as a car: notes fall back to the older label column; anything but "Others" is Own Fleet. */
+/**
+ * A public.cars row as a car; anything but "Others" is Own Fleet. Only `notes` is shown: Guardian's older `label`
+ * column is neither read nor written, because it copies the notes, and reading it would bring a cleared note back.
+ */
 export const carFromRow = (row: CarRow): Car => ({
   id: String(row.id),
   make: text(row.make),
@@ -141,11 +143,11 @@ export const carFromRow = (row: CarRow): Car => ({
   roadtaxExpiry: text(row.roadtaxExpiry),
   insuranceExpiry: text(row.insuranceExpiry),
   inspectionExpiry: text(row.inspectionExpiry),
-  notes: text(row.notes) || text(row.label),
+  notes: text(row.notes),
   ownership: text(row.ownership).toLowerCase() === 'others' ? 'Others' : 'Own Fleet',
 });
 
-/** The columns a save writes. Never `label`: Guardian's older column is only read. */
+/** The columns a save writes (never Guardian's older `label` column). */
 export const carToRow = (car: Car) => ({
   id: car.id,
   make: text(car.make),
