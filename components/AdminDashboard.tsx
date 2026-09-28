@@ -3,17 +3,21 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Driver, DriverMetrics, DriverStatus } from '../types';
 import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
+const FleetView = React.lazy(() => import('./fleet/FleetView'));
 const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
 import CashLine from './money/CashLine';
 import { cashLine, type CashBalanceEntry, type CashOutlookData } from '../services/cashOutlook';
 import { loadCashOutlook } from '../services/finance/api';
 import { buildTerminationReport } from '../terminationReport';
+import { fleet } from '../services/fleet/client';
+import { attentionCount, type Car as FleetCar } from '../services/fleet/rules';
 import {
   LogOut,
   TrendingUp,
   Search,
   DollarSign,
+  CarFront,
   X,
   UserPlus,
   Pencil,
@@ -107,11 +111,12 @@ class ScreenLoadBoundary extends React.Component<{ children: React.ReactNode }, 
   }
 }
 
-type Section = 'DRIVERS' | 'MONEY';
+type Section = 'DRIVERS' | 'FLEET' | 'MONEY';
 
 /** Saved tab values, including the ones used before the Drivers section existed. */
 const SECTION_FROM_STORED: Record<string, Section> = {
   DRIVERS: 'DRIVERS',
+  FLEET: 'FLEET',
   ACTIVE: 'DRIVERS',
   DELISTED: 'DRIVERS',
   DRIVER_LIST: 'DRIVERS',
@@ -128,6 +133,7 @@ const sectionFromStored = (stored: string | null): Section | null =>
 
 const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'DRIVERS', label: 'Drivers', Icon: Users },
+  { id: 'FLEET', label: 'Fleet', Icon: CarFront },
   { id: 'MONEY', label: 'Money', Icon: DollarSign },
 ];
 
@@ -255,8 +261,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // The termination review is for admins; staff always see Active or Delisted
   const driverScope = storedScope === 'TERMINATION' && userRole !== 'admin' ? 'ACTIVE' : storedScope;
   const [listView, setListView] = usePersistedState<'COLLECTIONS' | 'DETAILS'>('eca_admin_driver_list_view', legacyView === 'DRIVER_LIST' ? 'DETAILS' : 'COLLECTIONS', stored => stored === 'COLLECTIONS' || stored === 'DETAILS' ? stored : null);
-  // Staff see the Drivers section only, and contact details are for admins
-  const activeSection: Section = userRole === 'admin' ? section : 'DRIVERS';
+  // Staff see Drivers and Fleet (Money is for admins), and contact details are for admins
+  const activeSection: Section = userRole === 'admin' || section !== 'MONEY' ? section : 'DRIVERS';
   const showDetails = userRole === 'admin' && listView === 'DETAILS';
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'GOOD' | 'MID' | 'BAD'>('ALL');
   const [selectedTagFilter, setSelectedTagFilter] = useState('ALL');
@@ -527,6 +533,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- Rent targets and late alerts ---
   // Re-read when the screening day rolls over at Kuala Lumpur midnight.
   const todayStr = useMemo(() => kualaLumpurToday(), [screeningDate]);
+  // The Fleet tab's red count: loaded once here, then kept current by the Fleet page. No count if the list can't
+  // load (the Fleet page itself reports errors).
+  const [fleetCars, setFleetCars] = useState<FleetCar[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    fleet.listCars().then(cars => { if (active) setFleetCars(cars); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const fleetAttention = useMemo(() => (fleetCars ? attentionCount(fleetCars, todayStr) : 0), [fleetCars, todayStr]);
   const todayNormalized = useMemo(() => parseDate(todayStr), [todayStr]);
   // The recovery bar on each row measures from the 1st of this month, e.g. "since 1 Sep"
   const recoverySinceLabel = `1 ${todayNormalized.toLocaleDateString('en-GB', { month: 'short' })}`;
@@ -863,21 +878,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 min-h-14 flex flex-wrap items-center gap-x-4 gap-y-2">
           <h1 className="text-lg sm:text-xl font-bold tracking-tight shrink-0">Admin<span className="text-blue-400">Control</span></h1>
 
-          {userRole === 'admin' && (
-            <nav aria-label="Sections" className="order-last basis-full md:order-none md:basis-auto flex gap-1 overflow-x-auto">
-              {SECTIONS.map(({ id, label, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-current={activeSection === id ? 'page' : undefined}
-                  onClick={() => setSection(id)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${activeSection === id ? 'bg-white/15 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
-                >
-                  <Icon className="w-4 h-4" aria-hidden="true" /> {label}
-                </button>
-              ))}
-            </nav>
-          )}
+          <nav aria-label="Sections" className="order-last basis-full md:order-none md:basis-auto flex gap-1 overflow-x-auto">
+            {SECTIONS.filter(({ id }) => userRole === 'admin' || id !== 'MONEY').map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                aria-current={activeSection === id ? 'page' : undefined}
+                onClick={() => setSection(id)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${activeSection === id ? 'bg-white/15 text-white' : 'text-gray-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <Icon className="w-4 h-4" aria-hidden="true" /> {label}
+                {id === 'FLEET' && fleetAttention > 0 && (
+                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-600 text-white text-xs font-bold flex items-center justify-center">
+                    <span aria-hidden="true">{fleetAttention}</span>
+                    <span className="sr-only">, {fleetAttention} {fleetAttention === 1 ? 'car needs' : 'cars need'} attention</span>
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-4">
             {/* Current role (hidden on phones so Add Driver and Log out stay on screen) */}
@@ -1383,6 +1402,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </section>
           </>
+        ) : activeSection === 'FLEET' ? (
+          <section aria-label="Fleet" className="min-h-[500px]">
+            <ScreenLoadBoundary>
+              <React.Suspense fallback={<div className="p-6">Loading Fleet…</div>}>
+                <FleetView today={todayStr} onCarsChange={setFleetCars} />
+              </React.Suspense>
+            </ScreenLoadBoundary>
+          </section>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
             <ScreenLoadBoundary>
