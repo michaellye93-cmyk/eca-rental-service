@@ -19,11 +19,13 @@ export interface PaymentChange {
   after: Record<string, unknown> | null;
 }
 
-/** Who made a change as the office reads it: Admin or Staff from the account's role, otherwise the stored name. */
+/** Who did something as the office reads it: Admin or Staff from the account's role, otherwise the stored name. */
+export const whoLabel = (role: string | null | undefined, name: string | null | undefined): string =>
+  role === 'admin' ? 'Admin' : role === 'staff' ? 'Staff' : (name || '').trim() || 'Unknown account';
+
+/** Who made a payment change (see whoLabel). */
 export const actorLabel = (change: Pick<PaymentChange, 'changed_by_role' | 'changed_by_name'>): string =>
-  change.changed_by_role === 'admin' ? 'Admin'
-    : change.changed_by_role === 'staff' ? 'Staff'
-      : (change.changed_by_name || '').trim() || 'Unknown account';
+  whoLabel(change.changed_by_role, change.changed_by_name);
 
 const stampFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, normalizeMalaysianPhone, normalizePlate, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
@@ -434,15 +434,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // 1. Current Snapshot (Base Only)
     const currentDebt = metrics.principalOutstanding;
 
-    // 2. Historical Snapshot (7 Days Ago)
-    // Script: Scan unpaid invoices from 7 days ago
-    const sevenDaysAgo = kualaLumpurNow();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    sevenDaysAgo.setHours(23, 59, 59, 999); // End of day to capture full day's state
-    
-    const lastWeekMetrics = calculateDriverMetrics(d, sevenDaysAgo);
-    // Calculation Sync: Ensure snapshot only includes Base Principal
-    const lastWeekDebt = lastWeekMetrics.principalOutstanding;
+    // 2. Historical Snapshot (7 Days Ago): base principal at the end of that day
+    const lastWeekDebt = outstandingDaysAgo(d, 7);
 
     // 3. Trend Calculation
     const trendValue = currentDebt - lastWeekDebt;
@@ -450,15 +443,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const isDebtDecreasing = trendValue < 0;
 
     // 4. Debt Streak Calculation (3-Week Increase)
-    const fourteenDaysAgo = kualaLumpurNow();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-    const metrics14 = calculateDriverMetrics(d, fourteenDaysAgo);
-    const debt14 = metrics14.principalOutstanding;
-
-    const twentyOneDaysAgo = kualaLumpurNow();
-    twentyOneDaysAgo.setDate(twentyOneDaysAgo.getDate() - 21);
-    const metrics21 = calculateDriverMetrics(d, twentyOneDaysAgo);
-    const debt21 = metrics21.principalOutstanding;
+    const debt14 = outstandingDaysAgo(d, 14);
+    const debt21 = outstandingDaysAgo(d, 21);
 
     // Logic: Debt must be strictly increasing week-over-week
     const inc1 = currentDebt > lastWeekDebt;
@@ -497,18 +483,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // The recovery bar on each row measures from the 1st of this month, e.g. "since 1 Sep"
   const recoverySinceLabel = `1 ${todayNormalized.toLocaleDateString('en-GB', { month: 'short' })}`;
 
-  const startOfWeek = useMemo(() => {
-    const d = new Date(todayNormalized);
-    const diff = d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1); // target Monday
-    d.setDate(diff);
-    return d;
-  }, [todayNormalized]);
-
-  const endOfWeek = useMemo(() => {
-    const d = new Date(startOfWeek);
-    d.setDate(startOfWeek.getDate() + 6);
-    return d;
-  }, [startOfWeek]);
+  // Monday to Sunday of this week (the collections data view uses the same week)
+  const { start: startOfWeek, end: endOfWeek } = useMemo(() => mondayToSunday(todayNormalized), [todayNormalized]);
 
   const startOfMonth = useMemo(() => {
     return new Date(todayNormalized.getFullYear(), todayNormalized.getMonth(), 1);

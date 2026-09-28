@@ -115,6 +115,9 @@ const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming:
   return obligations;
 };
 
+/** Rent cycles owed at which a driver turns BAD: 3 weeks of weekly rent, 1.1 months of monthly rent (MID below it). */
+export const badThresholdCycles = (cycle: Driver['rentalCycle']): number => (cycle === 'MONTHLY' ? 1.1 : 3);
+
 export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = kualaLumpurNow()): DriverMetrics => {
   const now = endOfDay(referenceDate);
   const obligations = buildRentSchedule(driver, referenceDate, false);
@@ -149,7 +152,7 @@ export const calculateDriverMetrics = (driver: Driver, referenceDate: Date = kua
   }
 
   const cyclesOwed = driver.rentalRate > 0 ? principalOutstanding / driver.rentalRate : 0;
-  const badThreshold = driver.rentalCycle === 'MONTHLY' ? 1.1 : 3;
+  const badThreshold = badThresholdCycles(driver.rentalCycle);
   let status: DriverStatus = DriverStatus.GOOD;
   if (cyclesOwed >= badThreshold) status = DriverStatus.BAD;
   else if (cyclesOwed > 0) status = DriverStatus.MID;
@@ -248,6 +251,23 @@ export const generateDriverInvoices = (driver: Driver, referenceDate: Date = kua
       status
     };
   });
+};
+
+/**
+ * The principal outstanding at the end of the day `days` days before `now`: the driver list's "in 7 days" change is
+ * today's outstanding less this.
+ */
+export const outstandingDaysAgo = (driver: Driver, days: number, now: Date = kualaLumpurNow()): number => {
+  const then = new Date(now);
+  then.setDate(then.getDate() - days);
+  then.setHours(23, 59, 59, 999);
+  return calculateDriverMetrics(driver, then).principalOutstanding;
+};
+
+/** The Monday-to-Sunday week containing `day`, as calendar days (midnight): the weekly target's period. */
+export const mondayToSunday = (day: Date): { start: Date; end: Date } => {
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate() - ((day.getDay() + 6) % 7));
+  return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6) };
 };
 
 /** The next rent due date: the oldest obligation not fully paid, or the next cycle while the contract continues. */
