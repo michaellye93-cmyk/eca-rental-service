@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { asUser, database, migrate } from './finance-db-fixture.ts';
 
-// The Finance chain as it stands in production, then the Cash & Efficiency and collections files in the order the owner runs them.
+// The Finance chain as it stands in production, then the Cash & Efficiency, collections and car-list files in the order the owner runs them.
 const CHAIN = [
   '20260915084108_secure_profile_roles.sql',
   '20260915084110_finance_foundation.sql',
@@ -19,7 +19,9 @@ const CHAIN = [
   '20260927090000_cash_position_and_outlook.sql',
   '20260927090100_driver_portal_phone_screening.sql',
   '20260927090200_close_public_access.sql',
+  '20260929010000_reopen_cars_for_guardian.sql',
   '20260929090000_collections_support.sql',
+  '20260929180000_fleet_close_cars.sql',
 ];
 
 test('the new files apply after the whole Finance chain, and the additive ones can safely run twice', async () => {
@@ -28,7 +30,14 @@ test('the new files apply after the whole Finance chain, and the additive ones c
     await db.exec(`alter table public.drivers add column nric text, add column contract_start_date date, add column contract_end_date date,
       add column category text, add column rental_cycle text, add column contract_duration_weeks integer, add column rental_rate numeric,
       add column is_delisted boolean, add column delist_date date, add column created_at timestamptz default now()`);
+    await db.exec(`create table public.cars(id text primary key, make text, model text, "plateNumber" text, "roadtaxExpiry" text,
+      "insuranceExpiry" text, "inspectionExpiry" text, notes text, label text, ownership text);
+      alter table public.cars enable row level security;
+      create policy "Enable all access for cars" on public.cars for all using (true) with check (true);
+      grant all on public.cars to anon, authenticated, service_role;`);
     for (const file of CHAIN) await migrate(db, file);
+    assert.equal((await db.query<{ open: boolean }>(`select has_table_privilege('anon', 'public.cars', 'SELECT') open`)).rows[0].open, false,
+      'at the end of the chain signed-out visitors cannot read the car list');
     // Running the two additive files again (by mistake) changes nothing and does not fail.
     for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql', '20260929090000_collections_support.sql']) await migrate(db, file);
     await asUser(db);
