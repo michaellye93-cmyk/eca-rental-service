@@ -1,4 +1,4 @@
-import { AlertTriangle, Building2, CarFront, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, Building2, CarFront, Pencil, Plus, Search, StickyNote, Trash2, Users } from 'lucide-react';
 import { formatDate } from '../../utils';
 import { attentionCount, byUrgency, carStatuses, EXPIRY_LABELS, matchesSearch, needsAttention, type Car, type ExpiryTone } from '../../services/fleet/rules';
 
@@ -89,40 +89,53 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
           )}
         </div>
       ) : (
-        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {shown.map(car => (
-            <li key={car.id} className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="px-3 py-2 border-b border-gray-100 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-gray-900 truncate">{car.make} {car.model}</h3>
-                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs">
-                    <span className="font-mono font-semibold bg-gray-100 text-gray-800 px-2 py-0.5 rounded">{car.plateNumber}</span>
-                    <span className={`px-2 py-0.5 rounded border font-medium ${car.ownership === 'Others' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{car.ownership}</span>
-                    {car.notes && <span className="bg-gray-50 text-gray-700 border border-gray-200 px-2 py-0.5 rounded max-w-[16rem] truncate" title={car.notes}>{car.notes}</span>}
+        <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {shown.map(car => {
+            const statuses = carStatuses(car, today);
+            // A coloured left edge for the car's worst date, so the list can be scanned at a glance
+            const accent = statuses.some(status => status.tone === 'expired') ? 'border-l-rose-500'
+              : statuses.some(status => status.needsAttention) ? 'border-l-amber-400' : 'border-l-emerald-400';
+            return (
+              <li key={car.id} className={`@container bg-white rounded-xl border border-gray-200 border-l-4 ${accent} shadow-sm`}>
+                <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-gray-900 truncate">{car.make} {car.model}</h3>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs">
+                      <span className="font-mono font-semibold bg-gray-100 text-gray-800 px-2 py-0.5 rounded">{car.plateNumber}</span>
+                      <span className={`px-2 py-0.5 rounded border font-medium ${car.ownership === 'Others' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{car.ownership}</span>
+                    </div>
+                    {car.notes && (
+                      <p className="mt-1.5 flex items-center gap-1 text-xs text-gray-500 min-w-0" title={car.notes}>
+                        <StickyNote className="w-3.5 h-3.5 shrink-0 text-gray-400" aria-hidden="true" />
+                        <span className="truncate">{car.notes}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center shrink-0 -mr-2 -mt-1">
+                    <button type="button" onClick={() => onEdit(car)} aria-label={`Edit ${car.plateNumber}`} title="Edit" className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <Pencil className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                    <button type="button" onClick={() => onDelete(car)} aria-label={`Delete ${car.plateNumber}`} title="Delete" className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg">
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => onEdit(car)} aria-label={`Edit ${car.plateNumber}`} title="Edit" className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                    <Pencil className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                  <button type="button" onClick={() => onDelete(car)} aria-label={`Delete ${car.plateNumber}`} title="Delete" className="p-2 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg">
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-              <dl className="px-3 py-2 space-y-1.5 text-sm">
-                {carStatuses(car, today).map(status => (
-                  <div key={status.kind} className="flex items-center justify-between gap-3">
-                    <dt className="text-gray-600 font-medium shrink-0">{EXPIRY_LABELS[status.kind]}</dt>
-                    <dd className="flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-right">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${TONE_LOOK[status.tone]}`}>{status.text}</span>
-                      {status.date && <span className="text-xs text-gray-400">{formatDate(status.date, status.date)}</span>}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </li>
-          ))}
+                {/* Each row: the label, then the badge and its date. On a wide card the dates sit in one fixed column at
+                    the right so every row lines up; on a narrow card the date goes under its badge. */}
+                <dl className="px-4 pt-2 pb-3 border-t border-gray-100 space-y-1.5 text-sm">
+                  {statuses.map(status => (
+                    <div key={status.kind} className="flex items-center justify-between gap-3">
+                      <dt className="text-gray-600 shrink-0">{EXPIRY_LABELS[status.kind]}</dt>
+                      <dd className="flex flex-col items-end gap-0.5 @sm:flex-row @sm:items-center @sm:gap-3">
+                        <span className={`inline-flex justify-center min-w-[8.5rem] px-2.5 py-0.5 rounded-full text-xs font-semibold ${TONE_LOOK[status.tone]}`}>{status.text}</span>
+                        <span className="text-xs text-gray-500 tabular-nums @sm:w-[5.25rem] @sm:text-right">{status.date ? formatDate(status.date, status.date) : ''}</span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
