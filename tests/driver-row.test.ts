@@ -84,3 +84,8 @@ test('fromDriverRow reads a phone number back, and leaves it out when there is n
   assert.equal(fromDriverRow({ ...row, phone: '60123456789' }).phone, '60123456789');
   assert.equal('phone' in fromDriverRow({ ...row, phone: null }), false);
 });
+
+test('a plate is saved in capitals without spaces, however it was typed', () => {
+  assert.equal(toDriverRow({ ...driver, carPlate: 'xaa 1001' }).car_plate, 'XAA1001');
+  assert.equal(toDriverRow({ ...driver, carPlate: ' XAA  1001 ' }).car_plate, 'XAA1001');
+});

@@ -552,7 +552,7 @@ export const toDriverRow = (driver: Driver) => ({
   email: driver.email || null,
   name: driver.name,
   address: driver.address || null,
-  car_plate: driver.carPlate,
+  car_plate: normalizePlate(driver.carPlate),
   contract_start_date: driver.contractStartDate,
   contract_end_date: driver.contractEndDate || null,
   category: driver.category || 'SEWABELI',
@@ -605,3 +605,61 @@ export const formatPhone = (stored: string): string => {
 /** A WhatsApp chat link for a stored number, with an optional message the sender can edit before sending. */
 export const whatsappLink = (stored: string, message?: string): string =>
   `https://wa.me/${stored}${message ? `?text=${encodeURIComponent(message)}` : ''}`;
+
+/**
+ * A car plate as stored: capitals without spaces, e.g. "xaa 1001" as XAA1001. This is also Finance's vehicle key
+ * (upper case, whitespace removed), so hyphens and other characters are kept.
+ */
+export const normalizePlate = (typed: string): string => (typed || '').toUpperCase().replace(/\s+/g, '');
+
+/** A plate for reading, with a space where letters meet digits: XAA1001 as "XAA 1001". */
+export const displayPlate = (plate: string): string => normalizePlate(plate).replace(/(?<=[A-Z])(?=\d)|(?<=\d)(?=[A-Z])/g, ' ');
+
+/** Whether a search term matches a plate, either typed with or without spaces. */
+export const plateMatches = (plate: string, term: string): boolean => {
+  const wanted = normalizePlate(term);
+  return wanted !== '' && normalizePlate(plate).includes(wanted);
+};
+
+const WEEKDAY_TAGS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
+const isDayTag = (tag: string) => tag.trim().toUpperCase() === 'MONTHLY' || (WEEKDAY_TAGS as readonly string[]).includes(tag.trim().toUpperCase());
+
+/**
+ * The day tag a driver's rent calls for: weekly rent falls due every 7 days from the contract start, so its weekday
+ * (SAT); monthly rent is tagged MONTHLY. Null without a valid start date.
+ */
+export const rentDayTag = (driver: Pick<Driver, 'contractStartDate' | 'rentalCycle'>): string | null => {
+  if (driver.rentalCycle === 'MONTHLY') return 'MONTHLY';
+  const start = parseDate(driver.contractStartDate);
+  return isNaN(start.getTime()) ? null : WEEKDAY_TAGS[start.getDay()];
+};
+
+export interface DayTagCheck {
+  /** The tag the rent day calls for. */
+  expected: string;
+  /** The day tags the driver has (weekdays and MONTHLY), in capitals. */
+  tagged: string[];
+  /** Exactly one day tag, and it is the expected one. */
+  ok: boolean;
+}
+
+/** Whether the driver's day tag matches the day their rent falls due (a missing tag does not); null when that day is unknown. */
+export const dayTagCheck = (driver: Pick<Driver, 'contractStartDate' | 'rentalCycle' | 'tags'>): DayTagCheck | null => {
+  const expected = rentDayTag(driver);
+  if (!expected) return null;
+  const tagged = (driver.tags || []).filter(isDayTag).map(tag => tag.trim().toUpperCase());
+  return { expected, tagged, ok: tagged.length === 1 && tagged[0] === expected };
+};
+
+/** The tags with `dayTag` as the only day tag, placed first; other tags keep their order. */
+export const withDayTag = (tags: string[] | undefined, dayTag: string): string[] => [dayTag, ...(tags || []).filter(tag => !isDayTag(tag))];
+
+/** A short form of a driver's name: the first two words, stopping before bin, binti, a/l, a/p and similar. */
+export const shortName = (name: string): string => {
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  const stop = words.findIndex(word => /^(BIN|BINTI|BT|BTE|A\/L|A\/P|S\/O|D\/O|@)$/i.test(word));
+  return words.slice(0, Math.max(1, Math.min(2, stop === -1 ? words.length : stop))).join(' ');
+};
+
+/** The rental category as the office writes it: Sewa Biasa, or Sewa Beli (rent-to-own, also when no category is set). */
+export const categoryLabel = (driver: Pick<Driver, 'category'>): 'Sewa Beli' | 'Sewa Biasa' => (isSewaBiasa(driver) ? 'Sewa Biasa' : 'Sewa Beli');

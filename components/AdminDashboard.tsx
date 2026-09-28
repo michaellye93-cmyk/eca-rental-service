@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, normalizeMalaysianPhone, parseDate, rentDueAndPaid, startOfMonthBaseline, whatsappLink } from '../utils';
+import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, normalizeMalaysianPhone, normalizePlate, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
@@ -383,6 +383,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (cycles !== null) setFormData(prev => ({ ...prev, contractDuration: cycles }));
   }, [formData.contractStartDate, formData.contractEndDate, formData.rentalCycle]);
 
+  // A new driver's day tag follows the start date and cycle, until someone chooses a different day tag
+  const autoDayTag = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isDriverModalOpen || editingId) return;
+    const expected = rentDayTag(formData);
+    if (!expected) return;
+    setFormData(prev => {
+      const tagged = dayTagCheck(prev)?.tagged ?? [];
+      const followsStart = tagged.length === 0 || (tagged.length === 1 && tagged[0] === autoDayTag.current);
+      if (!followsStart || (tagged.length === 1 && tagged[0] === expected)) return prev;
+      autoDayTag.current = expected;
+      return { ...prev, tags: withDayTag(prev.tags, expected) };
+    });
+  }, [isDriverModalOpen, editingId, formData.contractStartDate, formData.rentalCycle]);
+
 
   // Enhance drivers with metrics for sorting
   const driverData = useMemo(() => drivers.map(d => {
@@ -540,12 +555,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       result = result.filter(d => d.metrics.status === statusFilter);
     }
 
-    // 2. Search
+    // 2. Search (plates match with or without spaces)
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
-      result = result.filter(d => 
-        d.name.toLowerCase().includes(lower) || 
-        d.carPlate.toLowerCase().includes(lower) ||
+      result = result.filter(d =>
+        d.name.toLowerCase().includes(lower) ||
+        plateMatches(d.carPlate, searchTerm) ||
         d.nric.includes(lower)
       );
     }
@@ -693,7 +708,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditPaymentMethod(null);
   };
 
-  const handleOpenCreateModal = () => { setEditingId(null); setFormData(initialFormState); setTagInput(''); setDriverFormError(null); setIsDriverModalOpen(true); };
+  const handleOpenCreateModal = () => { autoDayTag.current = null; setEditingId(null); setFormData(initialFormState); setTagInput(''); setDriverFormError(null); setIsDriverModalOpen(true); };
   
   const handleOpenEditModal = (driver: Driver) => {
     handleScreenDriver(driver.id);
@@ -773,6 +788,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
 
+  // The driver form's day tag against the rent day it calls for
+  const formTagCheck = dayTagCheck(formData);
   const detailsRows = sortForDetails(filteredDrivers, driverListSortConfig);
   const sortArrow = (key: 'NAME' | 'CATEGORY') =>
     driverListSortConfig.key === key && driverListSortConfig.direction === 'asc' ? '▲' : driverListSortConfig.key === key && driverListSortConfig.direction === 'desc' ? '▼' : '↕';
@@ -1148,6 +1165,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const payWarning = lastPayWarning(driver, todayNormalized);
                       const payWarningText = payWarning ? (payWarning.kind === 'overdue' ? `Rent ${payWarning.days} days overdue` : `${payWarning.days} days without payment`) : undefined;
                       const nextDueStr = formatDate(getNextDueDate(driver), 'N/A');
+                      // Active drivers whose day tag disagrees with their rent day (or who have none)
+                      const tagCheck = driver.isDelisted ? null : dayTagCheck(driver);
                       const currentOutstanding = driver.activeBalance.baseValue;
                       const baselineOutstanding = driver.recoveryBaseline;
                       let labelText = 'Restored';
@@ -1216,6 +1235,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="flex items-center gap-1 font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"><Calendar className="w-3 h-3" aria-hidden="true" /> Due {nextDueStr}</span>
                                     {driver.category && <span className={`font-bold px-1.5 py-0.5 uppercase tracking-wider rounded border ${driver.category === 'SEWABELI' ? 'bg-purple-50 text-purple-800 border-purple-200' : 'bg-orange-50 text-orange-800 border-orange-200'}`}>{driver.category === 'SEWABELI' ? 'Sewabeli' : 'Sewa Biasa'}</span>}
                                     {driver.tags?.map((tag, i) => <span key={i} className="bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">{tag}</span>)}
+                                    {tagCheck && !tagCheck.ok && (
+                                      <span title={`Rent falls due ${tagCheck.expected === 'MONTHLY' ? 'monthly' : `every ${tagCheck.expected}`}, so the day tag should be ${tagCheck.expected}. Fix it with Edit.`} className="flex items-center gap-1 font-bold text-amber-900 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded">
+                                        <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+                                        {tagCheck.tagged.length ? `Tag ${tagCheck.tagged.join('/')}` : 'No day tag'} · rent {tagCheck.expected === 'MONTHLY' ? 'monthly' : tagCheck.expected}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1341,7 +1366,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div>
                 <label htmlFor="driver-plate" className="block text-sm font-bold text-gray-700 mb-1">Plate Number</label>
-                <input id="driver-plate" required type="text" className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" value={formData.carPlate} onChange={e => setFormData({...formData, carPlate: e.target.value})} placeholder="ABC 1234" />
+                <input id="driver-plate" required type="text" aria-describedby={formData.carPlate !== normalizePlate(formData.carPlate) ? 'driver-plate-note' : undefined} className="w-full border border-gray-300 rounded p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" value={formData.carPlate} onChange={e => setFormData({...formData, carPlate: e.target.value})} placeholder="ABC1234" />
+                {formData.carPlate !== normalizePlate(formData.carPlate) && <p id="driver-plate-note" className="text-xs text-gray-500 mt-1">Saved as <span className="font-mono font-bold">{normalizePlate(formData.carPlate)}</span></p>}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1398,6 +1424,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
             </div>
+            {formTagCheck && !formTagCheck.ok && (
+              <div role="note" className="flex flex-wrap items-center gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <span className="flex-1 min-w-48">
+                  Rent falls due {formTagCheck.expected === 'MONTHLY' ? 'monthly' : `every ${formTagCheck.expected}`}, but the day tag {formTagCheck.tagged.length ? `is ${formTagCheck.tagged.join(' and ')}` : 'is missing'}.
+                </span>
+                <button type="button" onClick={() => setFormData({ ...formData, tags: withDayTag(formData.tags, formTagCheck.expected) })} className="shrink-0 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
+                  Use {formTagCheck.expected}
+                </button>
+              </div>
+            )}
             {editingId && drivers.find(d => d.id === editingId)?.rentalCycle !== formData.rentalCycle && (
               <p role="note" className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
                 Changing the rental cycle moves every due date for this driver and recalculates their balance from the contract start. Check that the rent above is per {formData.rentalCycle === 'MONTHLY' ? 'month' : 'week'} and the duration is in {formData.rentalCycle === 'MONTHLY' ? 'months' : 'weeks'}.
