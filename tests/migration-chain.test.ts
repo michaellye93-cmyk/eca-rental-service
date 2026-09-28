@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { asUser, database, migrate } from './finance-db-fixture.ts';
 
-// The Finance chain as it stands in production, then the Cash & Efficiency files in the order the owner runs them.
+// The Finance chain as it stands in production, then the Cash & Efficiency and collections files in the order the owner runs them.
 const CHAIN = [
   '20260915084108_secure_profile_roles.sql',
   '20260915084110_finance_foundation.sql',
@@ -19,9 +19,10 @@ const CHAIN = [
   '20260927090000_cash_position_and_outlook.sql',
   '20260927090100_driver_portal_phone_screening.sql',
   '20260927090200_close_public_access.sql',
+  '20260929090000_collections_support.sql',
 ];
 
-test('the new files apply after the whole Finance chain, and the first two can safely run twice', async () => {
+test('the new files apply after the whole Finance chain, and the additive ones can safely run twice', async () => {
   const db = await database();
   try {
     await db.exec(`alter table public.drivers add column nric text, add column contract_start_date date, add column contract_end_date date,
@@ -29,7 +30,7 @@ test('the new files apply after the whole Finance chain, and the first two can s
       add column is_delisted boolean, add column delist_date date, add column created_at timestamptz default now()`);
     for (const file of CHAIN) await migrate(db, file);
     // Running the two additive files again (by mistake) changes nothing and does not fail.
-    for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql']) await migrate(db, file);
+    for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql', '20260929090000_collections_support.sql']) await migrate(db, file);
     await asUser(db);
     const outlook = (await db.query<{ value: any }>(`select public.finance_cash_outlook(current_date) value`)).rows[0].value;
     assert.deepEqual(Object.keys(outlook).sort(), ['balances', 'duplicate_recurring', 'history', 'insurance', 'months', 'today']);
