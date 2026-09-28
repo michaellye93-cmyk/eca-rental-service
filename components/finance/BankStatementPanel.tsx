@@ -48,12 +48,15 @@ export default function BankStatementPanel({
   disabled,
   onPosted,
   onError,
+  paymentReferences,
 }: {
   month: string;
   input: FinanceInput | null;
   disabled: boolean;
   onPosted: (next: FinanceInput, message: string) => void;
   onError: (message: string) => void;
+  /** The receipt or DuitNow reference recorded with each payment, by payment id. */
+  paymentReferences?: Map<string, string>;
 }) {
   const [accountLabel, setAccountLabel] = useState("");
   const [preview, setPreview] = useState<
@@ -73,7 +76,7 @@ export default function BankStatementPanel({
   const postedPaymentIds = useMemo(() => new Set((input?.bank_rows ?? []).filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id && row.match_valid !== false).map((row) => row.matched_id as string)), [input]);
   const previewPaymentIds = useMemo(() => new Set((preview?.rows ?? []).filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id).map((row) => row.matched_id as string)), [preview]);
   // Suggested matches for pending credits, ported from the retired Bank Recon screen
-  const suggestions = useMemo(() => (preview && input ? suggestPaymentMatches(preview.rows, input.ehailing, new Set([...postedPaymentIds, ...previewPaymentIds])) : new Map<number, PaymentSuggestion>()), [preview, input, postedPaymentIds, previewPaymentIds]);
+  const suggestions = useMemo(() => (preview && input ? suggestPaymentMatches(preview.rows, input.ehailing, new Set([...postedPaymentIds, ...previewPaymentIds]), paymentReferences) : new Map<number, PaymentSuggestion>()), [preview, input, postedPaymentIds, previewPaymentIds, paymentReferences]);
   const paymentLabel = (id: string) => {
     const payment = input?.ehailing.find((p) => p.source_payment_id === id);
     return payment ? `${payment.driver_name_snapshot ?? "Driver"} · ${payment.car_plate_snapshot ?? payment.plate_key ?? ""} · ${payment.payment_date} · ${money(payment.cash_amount)}` : id;
@@ -313,7 +316,7 @@ export default function BankStatementPanel({
           </div>
           {suggestions.size > 0 && (
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-emerald-900">
-              {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"} from name, plate, amount and date. Check each one before posting.
+              {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"} from payment reference, name, plate, amount and date. Check each one before posting.
               <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {suggestions.size}</button>
             </p>
           )}

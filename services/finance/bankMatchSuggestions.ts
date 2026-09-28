@@ -8,6 +8,7 @@ import type { EhailingPayment } from '../../types/finance.ts';
  * Suggestions only prefill a review: an Admin still posts the statement, and Finance checks month and amount again.
  */
 export type SuggestionPass =
+  | 'REFERENCE'
   | 'NAME_OR_PLATE_1_DAY'
   | 'NAME_OR_PLATE_5_DAYS'
   | 'NAME_OR_PLATE_14_DAYS'
@@ -24,6 +25,7 @@ export interface PaymentSuggestion {
 }
 
 const REASONS: Record<SuggestionPass, string> = {
+  REFERENCE: 'Payment reference matches, same amount',
   NAME_OR_PLATE_1_DAY: 'Name or plate matches, same amount, within 1 day',
   NAME_OR_PLATE_5_DAYS: 'Name or plate matches, same amount, within 5 days',
   NAME_OR_PLATE_14_DAYS: 'Name or plate matches, same amount, within 14 days',
@@ -107,11 +109,15 @@ const isCashDepositText = (row: BankReviewRow) => /CASHDEPOSIT|CDM/.test(squash(
 const isCashDepositMethod = (payment: EhailingPayment) => ['CASH DEPOSIT', 'CASH'].includes(String(payment.payment_method ?? '').toUpperCase());
 const sameAmount = (payment: EhailingPayment, row: BankReviewRow) => Math.abs(Number(payment.cash_amount) - Number(row.credit)) < 0.01;
 
+/** References shorter than this (after removing spaces and hyphens) are too likely to appear by chance. */
+const MIN_REFERENCE_LENGTH = 6;
+
 /**
  * Suggests one recorded payment for each pending bank credit. Passes run in order, strictest first, and each payment is
  * suggested at most once. Claim-only payments (no cash) and payments in `taken` (already matched) are never suggested.
+ * `references` holds the receipt or DuitNow reference recorded with a payment, by payment id.
  */
-export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingPayment[], taken: Set<string> = new Set()): Map<number, PaymentSuggestion> {
+export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingPayment[], taken: Set<string> = new Set(), references: Map<string, string> = new Map()): Map<number, PaymentSuggestion> {
   const credits = rows.filter(row => row.credit > 0 && row.debit === 0 && row.decision === 'PENDING');
   const pool = payments.filter(payment => payment.cash_amount > 0 && !taken.has(payment.source_payment_id));
   const used = new Set<string>();
@@ -120,6 +126,16 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
     used.add(payment.source_payment_id);
     suggestions.set(row.source_row, { sourceRow: row.source_row, paymentId: payment.source_payment_id, pass, reason: REASONS[pass] });
   };
+
+  // Pass 0: the payment's recorded reference appears in the bank line (spaces, hyphens and case ignored), same amount.
+  for (const row of credits) {
+    const text = squash(row.reference) + squash(row.description);
+    const match = pool.find(payment => {
+      const reference = squash(references.get(payment.source_payment_id));
+      return !used.has(payment.source_payment_id) && reference.length >= MIN_REFERENCE_LENGTH && sameAmount(payment, row) && text.includes(reference);
+    });
+    if (match) suggest(row, match, 'REFERENCE');
+  }
 
   // Passes 1-4: name or plate, same amount, widening day windows; closer dates score higher.
   const namePasses: Array<[SuggestionPass, number, number]> = [

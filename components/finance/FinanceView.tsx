@@ -69,6 +69,7 @@ import "./finance.css";
 import "./finance-mobile.css";
 
 const AnalyticsView = React.lazy(() => import("../AnalyticsView"));
+const SegmentTrend = React.lazy(() => import("../money/SegmentTrend"));
 const formatMoney = (value = 0) => formatCurrency(Number(value || 0));
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
@@ -127,6 +128,11 @@ export default function FinanceView(props: MoneyProps = {}) {
   const page = props.page ?? pageState;
   const setPage = (next: Page) => (props.onPageChange ? props.onPageChange(next) : setPageState(next));
   const [auditOpen, setAuditOpen] = useState(false);
+  // Payment references recorded in the driver ledger, for Reconcile's match suggestions
+  const paymentReferences = useMemo(
+    () => new Map((props.drivers ?? []).flatMap((driver) => driver.paymentHistory.flatMap((payment) => (payment.reference ? [[payment.id, payment.reference] as [string, string]] : [])))),
+    [props.drivers],
+  );
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
   const [smartFile, setSmartFile] = useState<{
@@ -565,6 +571,7 @@ export default function FinanceView(props: MoneyProps = {}) {
       )}
       {page === "collections" && (
         <React.Suspense fallback={<Skeleton lines={8} />}>
+          <SegmentTrend drivers={props.drivers ?? []} />
           <AnalyticsView drivers={props.drivers ?? []} />
         </React.Suspense>
       )}
@@ -679,6 +686,7 @@ export default function FinanceView(props: MoneyProps = {}) {
             <BankStatementPanel
               month={month}
               input={input}
+              paymentReferences={paymentReferences}
               disabled={busy || !isDraft}
               onPosted={(next, message) => {
                 void invoke(async () => next, message);

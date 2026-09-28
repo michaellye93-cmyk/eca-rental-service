@@ -80,3 +80,23 @@ test('system unsolved lists recorded cash payments that no bank credit was match
   ];
   assert.deepEqual(unsolvedPayments(payments, new Set(['p2'])).map(p => p.source_payment_id), ['p1', 'p3']);
 });
+
+test('a recorded payment reference found in the bank line is the strongest match, ahead of names and dates', () => {
+  const references = new Map([['p2', 'RHB 7788 1234']]);
+  const suggestions = suggestPaymentMatches(
+    [credit(1, '2026-09-12', 400, 'DUITNOW TRANSFER FROM ALI BIN ABU', 'RHB77881234')],
+    [payment('p1', '2026-09-12', 400, 'Ali bin Abu', 'XAA 1001'), payment('p2', '2026-09-05', 400, 'Chong Wei Ming', 'XAB 2001')],
+    new Set(), references,
+  );
+  assert.deepEqual(suggestions.get(1), { sourceRow: 1, paymentId: 'p2', pass: 'REFERENCE', reason: 'Payment reference matches, same amount' });
+});
+
+test('a reference match still needs the same amount, and short references are ignored', () => {
+  const suggestions = suggestPaymentMatches(
+    [credit(1, '2026-09-12', 450, 'IBG CREDIT', 'REF 99887766'), credit(2, '2026-09-12', 300, 'IBG CREDIT 12 SEWA')],
+    [payment('p1', '2026-09-12', 400, 'Siti Aminah', 'XAA 1001'), payment('p2', '2026-09-12', 300, 'Rajesh Kumar', 'XAB 2001')],
+    new Set(), new Map([['p1', '99887766'], ['p2', '12']]),
+  );
+  assert.equal(suggestions.get(1), undefined);
+  assert.notEqual(suggestions.get(2)?.pass, 'REFERENCE');
+});
