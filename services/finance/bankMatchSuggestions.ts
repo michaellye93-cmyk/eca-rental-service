@@ -129,7 +129,8 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
 
   // Pass 0: the payment's recorded reference appears in the bank line (spaces, hyphens and case ignored), same amount.
   for (const row of credits) {
-    const text = squash(row.reference) + squash(row.description);
+    // A separator, so a reference is never found across the end of one field and the start of the other
+    const text = `${squash(row.reference)}|${squash(row.description)}`;
     const match = pool.find(payment => {
       const reference = squash(references.get(payment.source_payment_id));
       return !used.has(payment.source_payment_id) && reference.length >= MIN_REFERENCE_LENGTH && sameAmount(payment, row) && text.includes(reference);

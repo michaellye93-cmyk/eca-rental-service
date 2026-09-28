@@ -73,6 +73,10 @@ Each is readable only by signed-in staff and Admins, and none reaches the driver
 
 Without the script, the new site still works: the new boxes say the database update has not been run, and saving a payment without a reference works as before.
 
+Between running the script and publishing the new site, the old site's search finds converted plates only when they are typed without spaces (`XAA1001`, not `XAA 1001`).
+
+The change log, promises and plans store only the role of whoever made the change (Admin or Staff), never a username or email: usernames can look like Access IDs, and these records are readable by all staff.
+
 ## Going live (owner)
 
 1. Run the database script and keep its output.

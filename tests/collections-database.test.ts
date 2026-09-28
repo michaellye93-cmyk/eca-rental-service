@@ -76,12 +76,14 @@ test('every payment added, edited or deleted is logged with who did it, when, an
     const log = await rows<{ payment_id: string; driver_id: string; action: string; changed_by: string | null; changed_by_name: string; changed_by_role: string | null; before: any; after: any }>(db,
       `select payment_id, driver_id, action, changed_by, changed_by_name, changed_by_role, before, after from public.payment_changes order by id`);
     assert.deepEqual(log.map(r => [r.payment_id, r.action, r.changed_by, r.changed_by_name, r.changed_by_role]), [
-      [NEW_PAYMENT, 'INSERT', STAFF_ID, 'fixture-staff', 'staff'],
-      [NEW_PAYMENT, 'UPDATE', STAFF_ID, 'fixture-staff', 'staff'],
-      [NEW_PAYMENT, 'DELETE', ADMIN_ID, 'fixture-admin', 'admin'],
+      [NEW_PAYMENT, 'INSERT', STAFF_ID, 'Staff', 'staff'],
+      [NEW_PAYMENT, 'UPDATE', STAFF_ID, 'Staff', 'staff'],
+      [NEW_PAYMENT, 'DELETE', ADMIN_ID, 'Admin', 'admin'],
       [PAYMENT_1, 'UPDATE', null, 'Database (SQL Editor)', null],
     ]);
     assert.ok(log.every(r => r.driver_id === DRIVER_A));
+    // Only the role is kept, never the account's username or email (a username can look like an Access ID)
+    assert.equal((await rows(db, `select 1 from public.payment_changes c where c.changed_by_name in (select username from public.profiles) or c.changed_by_name like '%@%'`)).length, 0);
     assert.equal(log[0].before, null);
     assert.equal(Number(log[0].after.amount), 450);
     assert.deepEqual([Number(log[1].before.amount), log[1].before.date, Number(log[1].after.amount), log[1].after.date], [450, '2026-09-28', 500, '2026-09-27']);
@@ -147,8 +149,8 @@ test('bank-in details for statements: everyone signed in reads them, only admins
     await assert.rejects(db.query(`insert into public.collection_settings(key, value) values('something_else', 'x')`), /check/);
     await asUser(db, STAFF_ID);
     assert.deepEqual(await rows(db, `select key, value, updated_by, updated_by_name, updated_by_role from public.collection_settings order by key`), [
-      { key: 'bank_in_sewa_biasa', value: 'Fixture Bank 222', updated_by: ADMIN_ID, updated_by_name: 'fixture-admin', updated_by_role: 'admin' },
-      { key: 'bank_in_sewabeli', value: 'Fixture Bank 000-000-000 (ECA)', updated_by: ADMIN_ID, updated_by_name: 'fixture-admin', updated_by_role: 'admin' },
+      { key: 'bank_in_sewa_biasa', value: 'Fixture Bank 222', updated_by: ADMIN_ID, updated_by_name: 'Admin', updated_by_role: 'admin' },
+      { key: 'bank_in_sewabeli', value: 'Fixture Bank 000-000-000 (ECA)', updated_by: ADMIN_ID, updated_by_name: 'Admin', updated_by_role: 'admin' },
     ]);
     await assert.rejects(db.query(`insert into public.collection_settings(key, value) values('bank_in_sewabeli', 'Staff Bank') on conflict (key) do update set value = excluded.value`), /row-level security/);
     await db.query(`update public.collection_settings set value = 'Staff Bank'`);
@@ -167,7 +169,7 @@ test('promises to pay: staff and admins log them under their own name, only admi
     await db.query(`insert into public.payment_promises(driver_id, amount, promised_date, note, logged_by, logged_by_name) values($1, 900, (now() at time zone 'Asia/Kuala_Lumpur')::date + 2, 'After Friday trips', $2, 'pretend')`, [DRIVER_A, ADMIN_ID]);
     const [promise] = await rows<{ id: string; logged_by: string; logged_by_name: string; logged_by_role: string; logged_on: string; amount: string }>(db,
       `select id, logged_by, logged_by_name, logged_by_role, to_char(logged_on, 'YYYY-MM-DD') logged_on, amount from public.payment_promises`);
-    assert.deepEqual([promise.logged_by, promise.logged_by_name, promise.logged_by_role, promise.logged_on, Number(promise.amount)], [STAFF_ID, 'fixture-staff', 'staff', today, 900]);
+    assert.deepEqual([promise.logged_by, promise.logged_by_name, promise.logged_by_role, promise.logged_on, Number(promise.amount)], [STAFF_ID, 'Staff', 'staff', today, 900]);
     await assert.rejects(db.query(`insert into public.payment_promises(driver_id, amount, promised_date) values($1, 100, (now() at time zone 'Asia/Kuala_Lumpur')::date - 1)`, [DRIVER_A]), /promised date/i);
     await assert.rejects(db.query(`insert into public.payment_promises(driver_id, amount, promised_date) values($1, 0, (now() at time zone 'Asia/Kuala_Lumpur')::date)`, [DRIVER_A]), /check/);
     await assert.rejects(db.query(`update public.payment_promises set amount = 1`), /permission denied/);
@@ -188,15 +190,18 @@ test('catch-up plans: admins create, change and stop them, staff read them, and 
     await db.query(`insert into public.catch_up_plans(driver_id, extra_per_cycle, start_date, note) values($1, 100, '2026-09-28', 'Agreed by phone')`, [DRIVER_A]);
     await assert.rejects(db.query(`insert into public.catch_up_plans(driver_id, extra_per_cycle, start_date) values($1, 50, '2026-10-05')`, [DRIVER_A]), /catch_up_plans_one_running/);
     await assert.rejects(db.query(`insert into public.catch_up_plans(driver_id, extra_per_cycle, start_date, end_date) values($1, 50, '2026-10-05', '2026-10-01')`, [DRIVER_B]), /check/);
+    await assert.rejects(db.query(`update public.catch_up_plans set created_by_name = 'Someone else'`), /permission denied/);
     await db.query(`update public.catch_up_plans set stopped_on = '2026-10-04' where driver_id = $1`, [DRIVER_A]);
     await db.query(`insert into public.catch_up_plans(driver_id, extra_per_cycle, start_date, end_date) values($1, 150, '2026-10-05', '2026-12-31')`, [DRIVER_A]);
     await asUser(db, STAFF_ID);
     assert.deepEqual((await rows<{ extra: string; by: string; role: string }>(db, `select extra_per_cycle extra, created_by_name by, created_by_role role from public.catch_up_plans order by start_date`)).map(r => [Number(r.extra), r.by, r.role]),
-      [[100, 'fixture-admin', 'admin'], [150, 'fixture-admin', 'admin']]);
+      [[100, 'Admin', 'admin'], [150, 'Admin', 'admin']]);
     await assert.rejects(db.query(`insert into public.catch_up_plans(driver_id, extra_per_cycle, start_date) values($1, 50, '2026-10-05')`, [DRIVER_B]), /row-level security/);
-    await db.query(`update public.catch_up_plans set extra_per_cycle = 1`);
+    await assert.rejects(db.query(`update public.catch_up_plans set extra_per_cycle = 1`), /permission denied/);
+    await db.query(`update public.catch_up_plans set note = 'Staff note', stopped_on = '2026-10-10'`);
     await db.query(`delete from public.catch_up_plans`);
-    assert.deepEqual((await rows<{ extra: string }>(db, `select extra_per_cycle extra from public.catch_up_plans order by start_date`)).map(r => Number(r.extra)), [100, 150], 'staff changes nothing');
+    assert.deepEqual((await rows<{ extra: string; note: string | null; stopped: string | null }>(db, `select extra_per_cycle extra, note, to_char(stopped_on, 'YYYY-MM-DD') stopped from public.catch_up_plans order by start_date`))
+      .map(r => [Number(r.extra), r.note, r.stopped]), [[100, 'Agreed by phone', '2026-10-04'], [150, null, null]], 'staff changes nothing');
     await asAnon(db);
     await assert.rejects(db.query(`select * from public.catch_up_plans`), /permission denied/);
   } finally { await db.close(); }

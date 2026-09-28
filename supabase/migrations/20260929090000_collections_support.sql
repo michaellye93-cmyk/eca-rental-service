@@ -23,9 +23,9 @@ do $$ begin
   end if;
 end $$;
 
--- Who makes a change: their account's role (the app shows Admin or Staff) and name. Profiles are readable only by their
--- own account, so both are stored with each record at the time. Changes made in the SQL Editor (or by the server) have
--- no signed-in account.
+-- Who makes a change: their account's role, stored with each record at the time (profiles are readable only by their own
+-- account), and shown as Admin or Staff. Usernames and emails are never stored: a username can look like an Access ID,
+-- and these records are readable by all staff. Changes made in the SQL Editor (or by the server) have no signed-in account.
 create or replace function finance_private.actor_role() returns text
 language sql stable security definer set search_path = '' as $$
   select p.role from public.profiles p where p.id = auth.uid()
@@ -34,8 +34,7 @@ revoke all on function finance_private.actor_role() from public, anon, authentic
 create or replace function finance_private.actor_name() returns text
 language sql stable security definer set search_path = '' as $$
   select case when auth.uid() is null then 'Database (SQL Editor)' else coalesce(
-    (select nullif(btrim(p.username), '') from public.profiles p where p.id = auth.uid()),
-    (select nullif(btrim(u.email), '') from auth.users u where u.id = auth.uid()),
+    (select case p.role when 'admin' then 'Admin' when 'staff' then 'Staff' end from public.profiles p where p.id = auth.uid()),
     'Unknown account') end
 $$;
 revoke all on function finance_private.actor_name() from public, anon, authenticated;
@@ -226,7 +225,8 @@ create table if not exists public.catch_up_plans (
 create unique index if not exists catch_up_plans_one_running on public.catch_up_plans (driver_id) where stopped_on is null;
 alter table public.catch_up_plans enable row level security;
 revoke all on public.catch_up_plans from public, anon, authenticated;
-grant select, insert, update, delete on public.catch_up_plans to authenticated;
+grant select, insert, delete on public.catch_up_plans to authenticated;
+grant update (stopped_on, end_date, note) on public.catch_up_plans to authenticated;
 drop policy if exists "Staff and admins read catch-up plans" on public.catch_up_plans;
 drop policy if exists "Admins create catch-up plans" on public.catch_up_plans;
 drop policy if exists "Admins change catch-up plans" on public.catch_up_plans;
