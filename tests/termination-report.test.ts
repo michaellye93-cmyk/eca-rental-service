@@ -91,6 +91,12 @@ test('monthly contracts use billing cycles rather than weekly failure counts', (
   assert.equal(r.recommended, true);
 });
 
+test('monthly billing cycles fall on the start day, or the last day of a shorter month, as in the rent schedule', () => {
+  const r = analyseTerminationEvidence(driver({ rentalCycle:'MONTHLY',rentalRate:1000,contractStartDate:'2026-01-31',contractDuration:12 }), '2026-03-01');
+  assert.deepEqual(r.billingCycles.map(c => [c.start, c.end]), [['2026-01-31','2026-02-27'], ['2026-02-28','2026-03-01']]);
+  assert.equal(r.rentalDue, 2000);
+});
+
 test('a monthly cycle only just due does not create persistent non-performance', () => {
   const r = analyseTerminationEvidence(driver({ rentalCycle:'MONTHLY',rentalRate:1900,contractStartDate:'2026-09-01',contractDuration:12 }), date);
   assert.equal(r.recommended, false);

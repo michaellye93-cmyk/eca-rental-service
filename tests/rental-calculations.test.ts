@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWeeklyFinancials, calculateDriverMetrics, formatNric, generateDriverInvoices, getNextDueDate, latestInvoices } from '../utils.ts';
+import { buildWeeklyFinancials, calculateDriverMetrics, calculateMomentum, formatNric, generateDriverInvoices, getNextDueDate, latestInvoices } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const on = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -57,9 +57,23 @@ test('unpaid principal compounds penalty daily from the second day after it fall
   assert.ok(Math.abs(calculateDriverMetrics(d, on('2026-08-11')).penaltyAmount - expected) < 1e-9);
 });
 
-test('monthly obligations are anchored to the start date with calendar rollover', () => {
+// Decision 2026-09-28: monthly rent falls due on the start date's day each month; a month without that day uses its last day.
+
+test('monthly obligations fall on the start day each month, or the last day of a shorter month', () => {
   const d = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 4, contractStartDate: '2026-01-31' });
-  assert.deepEqual(generateDriverInvoices(d, on('2026-01-31')).map(inv => inv.dueDate), ['2026-01-31', '2026-03-03', '2026-03-31', '2026-05-01']);
+  assert.deepEqual(generateDriverInvoices(d, on('2026-01-31')).map(inv => inv.dueDate), ['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30']);
+});
+
+test('a monthly contract starting on the 29th or 30th bills that day every month, and the last day of February', () => {
+  const on29 = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 7, contractStartDate: '2026-09-29' });
+  assert.deepEqual(generateDriverInvoices(on29, on('2026-09-29')).map(inv => inv.dueDate),
+    ['2026-09-29', '2026-10-29', '2026-11-29', '2026-12-29', '2027-01-29', '2027-02-28', '2027-03-29']);
+  const leapYear = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 3, contractStartDate: '2027-12-29' });
+  assert.deepEqual(generateDriverInvoices(leapYear, on('2027-12-29')).map(inv => inv.dueDate), ['2027-12-29', '2028-01-29', '2028-02-29']);
+  const on30 = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 5, contractStartDate: '2025-11-30' });
+  assert.deepEqual(generateDriverInvoices(on30, on('2025-11-30')).map(inv => inv.dueDate), ['2025-11-30', '2025-12-30', '2026-01-30', '2026-02-28', '2026-03-30']);
+  const on15 = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 3, contractStartDate: '2026-01-15' });
+  assert.deepEqual(generateDriverInvoices(on15, on('2026-01-15')).map(inv => inv.dueDate), ['2026-01-15', '2026-02-15', '2026-03-15']);
 });
 
 test('future obligations within the recorded contract length are listed as FUTURE', () => {
@@ -138,4 +152,12 @@ test('NRIC input is reduced to 12 digits and hyphenated as it is typed', () => {
   assert.equal(formatNric('9001010'), '900101-0');
   assert.equal(formatNric('900101'), '900101');
   assert.equal(formatNric('9001010112345678'), '900101-01-1234');
+});
+
+test('the next due date and payment timing use the same month-end rule as the schedule', () => {
+  const d = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 12, contractStartDate: '2026-01-31', paymentHistory: [pay('2026-01-31', 1000)] });
+  assert.equal(ymd(getNextDueDate(d, on('2026-02-10'))), '2026-02-28');
+  // Paid on the due date both months: no lateness, the second payment is not "3 days early"
+  const onTime = driver({ rentalCycle: 'MONTHLY', rentalRate: 1000, contractDuration: 12, contractStartDate: '2026-01-31', paymentHistory: [pay('2026-01-31', 1000), pay('2026-02-28', 1000)] });
+  assert.equal(calculateMomentum(onTime).lastLateness, 0);
 });

@@ -90,9 +90,10 @@ export function analyseTerminationEvidence(driver: Driver, reportDate: string): 
     .sort((a, b) => a.date - b.date || a.id.localeCompare(b.id));
   const dueAt = (index: number) => {
     if (!monthly) return commenced + index * 7;
-    const d = new Date(commenced * DAY);
-    d.setUTCMonth(d.getUTCMonth() + index); // Same anchored month rollover as generateDriverInvoices.
-    return d.getTime() / DAY;
+    // Same rule as generateDriverInvoices: the start date's day each month, or the last day of a month without it.
+    const c = new Date(commenced * DAY);
+    const lastDay = new Date(Date.UTC(c.getUTCFullYear(), c.getUTCMonth() + index + 1, 0)).getUTCDate();
+    return Date.UTC(c.getUTCFullYear(), c.getUTCMonth() + index, Math.min(c.getUTCDate(), lastDay)) / DAY;
   };
   const invoices: { date: number; index: number; remaining: number }[] = [];
   if (Number.isFinite(commenced) && Number.isFinite(rate) && rate > 0) {

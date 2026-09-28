@@ -42,11 +42,17 @@ const endOfDay = (value: Date): Date => {
   return end;
 };
 
-/** Due date of rent cycle `index`, anchored to the contract start (months use calendar rollover). */
+/**
+ * Due date of rent cycle `index`, anchored to the contract start: weekly every 7 days; monthly on the start date's day
+ * each month, or the last day of a month without that day (a 31 Jan start falls due 28 Feb, 31 Mar, 30 Apr, ...).
+ */
 const dueDateOf = (start: Date, cycle: Driver['rentalCycle'], index: number): Date => {
+  if (cycle === 'MONTHLY') {
+    const lastDay = new Date(start.getFullYear(), start.getMonth() + index + 1, 0).getDate();
+    return new Date(start.getFullYear(), start.getMonth() + index, Math.min(start.getDate(), lastDay));
+  }
   const due = new Date(start);
-  if (cycle === 'MONTHLY') due.setMonth(start.getMonth() + index);
-  else due.setDate(start.getDate() + index * 7);
+  due.setDate(start.getDate() + index * 7);
   return due;
 };
 
@@ -186,13 +192,8 @@ export const calculateMomentum = (driver: Driver) => {
     
     // LOGIC: Map N-th payment transaction to N-th cycle due date
     const latenessData = payments.map((p, index) => {
-        // Expected Due Date = Start Date + (index * CycleInterval)
-        const expectedDate = new Date(startDate);
-        if (driver.rentalCycle === 'MONTHLY') {
-            expectedDate.setMonth(startDate.getMonth() + index);
-        } else {
-            expectedDate.setDate(startDate.getDate() + (index * 7));
-        }
+        // Expected due date: the schedule's due date for the N-th cycle
+        const expectedDate = dueDateOf(startDate, driver.rentalCycle, index);
         
         const actualDate = parseDate(p.date);
         const diffTime = actualDate.getTime() - expectedDate.getTime();
