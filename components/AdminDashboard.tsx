@@ -34,6 +34,7 @@ import {
   Activity,
   Clock,
   MessageCircle,
+  MessageSquareText,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
@@ -41,6 +42,10 @@ import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { PaymentNoteLines, usePaymentNotes } from './PaymentNotes';
 import { findPossibleDuplicates, type PossibleDuplicate } from '../services/paymentLog';
+import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
+import { useCollectionsExtras } from './useCollectionsExtras';
+import CollectionsPanels, { planLabel } from './CollectionsPanels';
+import StatementDialog from './StatementDialog';
 
 interface AdminDashboardProps {
   drivers: Driver[];
@@ -163,6 +168,18 @@ function TargetCard({ title, period, icon, look, totals }: { title: string; peri
   );
 }
 
+/** A calendar day as YYYY-MM-DD. */
+const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+/** A day as a short label, e.g. "1 Oct". */
+const shortDay = (isoDate: string) => parseDate(isoDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const PLAN_CHIP: Record<CatchUpStatus['state'], string> = {
+  ON_TRACK: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  BEHIND: 'bg-rose-50 text-rose-800 border-rose-200',
+  NOT_STARTED: 'bg-slate-50 text-slate-700 border-slate-200',
+  ENDED: 'bg-slate-50 text-slate-700 border-slate-200',
+  STOPPED: 'bg-slate-50 text-slate-700 border-slate-200',
+};
+
 /** Smooth scrolling, unless the viewer prefers reduced motion. */
 const scrollBehavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
@@ -278,6 +295,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Modal States
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // The driver whose WhatsApp statement is open
+  const [statementDriver, setStatementDriver] = useState<Driver | null>(null);
+  // Bank-in lines for statements, promises to pay and catch-up plans
+  const extras = useCollectionsExtras();
 
   // Confirmation Modal State
   const [driverToDelist, setDriverToDelist] = useState<Driver | null>(null);
@@ -468,6 +490,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
     };
   }), [drivers]);
+
+  // Each active driver's open or recently missed promise, and running catch-up plan, for the row's chips
+  const collectionChips = useMemo(() => {
+    const now = kualaLumpurNow();
+    const today = kualaLumpurToday();
+    const fortnightAgo = parseDate(today);
+    fortnightAgo.setDate(fortnightAgo.getDate() - 14);
+    const chips = new Map<string, { promise?: { text: string; missed: boolean }; plan?: { text: string; state: CatchUpStatus['state'] } }>();
+    for (const d of driverData) {
+      if (d.isDelisted) continue;
+      const entry: { promise?: { text: string; missed: boolean }; plan?: { text: string; state: CatchUpStatus['state'] } } = {};
+      const promise = extras.promises ? latestPromise(extras.promises, d.id) : null;
+      if (promise) {
+        const { state } = promiseStatus(promise, d, today);
+        if (state === 'OPEN') entry.promise = { text: `Promise ${formatCurrency(promise.amount)} by ${shortDay(promise.promised_date)}`, missed: false };
+        else if (state === 'MISSED' && promise.promised_date >= isoDay(fortnightAgo)) entry.promise = { text: `Promise missed (${shortDay(promise.promised_date)})`, missed: true };
+      }
+      const plan = extras.plans ? runningPlan(extras.plans, d.id, today) : null;
+      if (plan) {
+        const status = catchUpStatus(plan, d, now);
+        entry.plan = { text: `Plan: ${planLabel(status, plan.start_date)}`, state: status.state };
+      }
+      if (entry.promise || entry.plan) chips.set(d.id, entry);
+    }
+    return chips;
+  }, [driverData, extras.promises, extras.plans]);
 
   // Extract all unique tags for filter dropdown
   const allTags = useMemo(() => {
@@ -1150,7 +1198,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 /* Collections list */
                 <div className="p-2 sm:p-3">
                   {/* Column headings and sorting (on phones, just the sort buttons) */}
-                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] xl:grid-cols-[minmax(0,1fr)_14rem_18.5rem_12.5rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
+                  <div className="flex items-center gap-2 px-1 pb-2 text-xs font-bold uppercase tracking-wider text-gray-500 lg:grid lg:grid-cols-[minmax(0,1fr)_13rem_17rem_14.5rem] xl:grid-cols-[minmax(0,1fr)_14rem_18.5rem_14.5rem] lg:gap-0 lg:px-3 lg:pl-4 lg:border lg:border-transparent">
                     <span className="hidden lg:block lg:pl-10">Driver</span>
                     <span className="lg:hidden">Sort</span>
                     <button type="button" aria-pressed={sortConfig.key === 'RISK_STATUS'} onClick={() => handleSort('RISK_STATUS')} className="flex items-center justify-center gap-1 rounded px-2 py-1 border border-gray-200 lg:border-0 lg:px-3 uppercase font-bold tracking-wider hover:text-gray-800 transition-colors">
@@ -1212,7 +1260,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <li key={driver.id} id={`driver-row-${driver.id}`}>
                           <div className={`relative bg-white rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors ${highlight?.driverId === driver.id ? 'ring-2 ring-orange-500' : ''}`}>
                             <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1.5 rounded-l-lg ${m.status === 'GOOD' ? 'bg-emerald-500' : m.status === 'MID' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
-                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_13rem_17rem_12.5rem] xl:grid-cols-[minmax(0,1fr)_14rem_18.5rem_12.5rem] lg:items-center lg:gap-0">
+                            <div className="grid gap-3 px-3 py-2.5 pl-4 lg:grid-cols-[minmax(0,1fr)_13rem_17rem_14.5rem] xl:grid-cols-[minmax(0,1fr)_14rem_18.5rem_14.5rem] lg:items-center lg:gap-0">
                               {/* Driver */}
                               <div className="flex items-start gap-2 min-w-0 lg:pr-4">
                                 <button
@@ -1244,6 +1292,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="flex items-center gap-1 font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"><Calendar className="w-3 h-3" aria-hidden="true" /> Due {nextDueStr}</span>
                                     {driver.category && <span className={`font-bold px-1.5 py-0.5 uppercase tracking-wider rounded border ${driver.category === 'SEWABELI' ? 'bg-purple-50 text-purple-800 border-purple-200' : 'bg-orange-50 text-orange-800 border-orange-200'}`}>{driver.category === 'SEWABELI' ? 'Sewabeli' : 'Sewa Biasa'}</span>}
                                     {driver.tags?.map((tag, i) => <span key={i} className="bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">{tag}</span>)}
+                                    {collectionChips.get(driver.id)?.promise && (
+                                      <span className={`font-bold px-1.5 py-0.5 rounded border ${collectionChips.get(driver.id)!.promise!.missed ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{collectionChips.get(driver.id)!.promise!.text}</span>
+                                    )}
+                                    {collectionChips.get(driver.id)?.plan && (
+                                      <span className={`font-bold px-1.5 py-0.5 rounded border ${PLAN_CHIP[collectionChips.get(driver.id)!.plan!.state]}`}>{collectionChips.get(driver.id)!.plan!.text}</span>
+                                    )}
                                     {tagCheck && !tagCheck.ok && (
                                       <span title={`Rent falls due ${tagCheck.expected === 'MONTHLY' ? 'monthly' : `every ${tagCheck.expected}`}, so the day tag should be ${tagCheck.expected}. Fix it with Edit.`} className="flex items-center gap-1 font-bold text-amber-900 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded">
                                         <AlertTriangle className="w-3 h-3" aria-hidden="true" />
@@ -1300,6 +1354,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button type="button" onClick={() => handleOpenPaymentModal(driver)} aria-label={`Record payment for ${driver.name}`} className="flex-1 lg:flex-none min-h-11 lg:min-h-0 px-3 lg:px-2.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1 transition-colors">
                                   <span className="font-bold text-xs">RM</span> Payment
                                 </button>
+                                <button type="button" onClick={() => setStatementDriver(driver)} aria-label={`WhatsApp statement for ${driver.name}`} title="WhatsApp statement" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-emerald-800 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"><MessageSquareText className="w-4 h-4" aria-hidden="true" /></button>
                                 <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-4 h-4" aria-hidden="true" /></button>
                                 {driverScope === 'ACTIVE'
                                   ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><UserMinus className="w-4 h-4" aria-hidden="true" /></button>
@@ -1310,6 +1365,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {expanded && (
                             <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 sm:p-4">
                               <ExpandedDriverDetails driver={driver} onLogPaymentClick={() => handleOpenPaymentModal(driver)} />
+                              {!driver.isDelisted && <CollectionsPanels driver={driver} extras={extras} isAdmin={userRole === 'admin'} today={todayStr} now={kualaLumpurNow()} />}
                             </div>
                           )}
                         </li>
@@ -1460,6 +1516,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </form>
         </Dialog>
+      )}
+
+      {/* WhatsApp statement, ready to paste */}
+      {statementDriver && (
+        <StatementDialog
+          driver={drivers.find(d => d.id === statementDriver.id) ?? statementDriver}
+          bankIn={extras.bankIn}
+          isAdmin={userRole === 'admin'}
+          onClose={() => setStatementDriver(null)}
+          onBankInSaved={extras.reload}
+        />
       )}
 
       {/* Delist confirmation */}

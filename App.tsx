@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import CollectionsDataPage from './components/CollectionsDataPage';
 import type { Driver, PaymentTransaction } from './types';
 import { kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
 import { supabase } from './supabaseClient';
@@ -9,6 +10,9 @@ import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
 import Notice, { type NoticeMessage } from './components/Notice';
+
+/** The read-only collections data view (admins, after the normal sign-in). */
+const isCollectionsDataPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin/collections';
 
 const App: React.FC = () => {
   // Driver and payment records load only after a staff or admin signs in, and are cleared when they sign out.
@@ -444,6 +448,10 @@ const App: React.FC = () => {
 
   if (currentView === 'DRIVER' && portal) {
     return <DriverDashboard driver={portal.driver} onLogout={handleLogout} />;
+  }
+
+  if (currentView === 'ADMIN' && isCollectionsDataPath()) {
+    return <CollectionsDataPage drivers={drivers} userRole={userRole || 'staff'} />;
   }
 
   if (currentView === 'ADMIN') {
