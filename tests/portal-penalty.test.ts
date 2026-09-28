@@ -22,6 +22,13 @@ test('a rent-to-own driver who owes rent sees the accrued 18% penalty and what i
   assert.equal(penalty.addedToday, metrics.dailyInterest);
 });
 
+test('on the day rent falls due the card already shows, at RM 0.00, as the old panel did', () => {
+  const penalty = penaltyOn(driver({ category: 'SEWABELI' }), '2026-08-01');
+  assert.ok(penalty);
+  assert.equal(penalty.total, 0);
+  assert.equal(penalty.addedToday, 0);
+});
+
 test('a driver with no category counts as rent-to-own, as before', () => {
   assert.ok(penaltyOn(driver({ category: undefined }), '2026-08-11'));
 });
