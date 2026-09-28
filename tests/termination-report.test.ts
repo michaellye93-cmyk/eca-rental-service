@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Driver } from '../types.ts';
 import { analyseTerminationEvidence, buildTerminationReport, getReportDate } from '../terminationReport.ts';
+import { generateDriverInvoices } from '../utils.ts';
 
 const driver = (overrides: Partial<Driver> = {}): Driver => ({
   id: 'test-account', name: 'Test account', nric: '', carPlate: 'TEST123',
@@ -95,6 +96,18 @@ test('monthly billing cycles fall on the start day, or the last day of a shorter
   const r = analyseTerminationEvidence(driver({ rentalCycle:'MONTHLY',rentalRate:1000,contractStartDate:'2026-01-31',contractDuration:12 }), '2026-03-01');
   assert.deepEqual(r.billingCycles.map(c => [c.start, c.end]), [['2026-01-31','2026-02-27'], ['2026-02-28','2026-03-01']]);
   assert.equal(r.rentalDue, 2000);
+});
+
+test('monthly billing cycles match the rent schedule for starts on the 28th to 31st, across a leap February', () => {
+  const reportDate = '2028-03-15';
+  for (const day of [28, 29, 30, 31]) {
+    const d = driver({ rentalCycle:'MONTHLY',rentalRate:1000,contractStartDate:`2027-10-${day}`,contractDuration:12 });
+    const r = analyseTerminationEvidence(d, reportDate);
+    const schedule = generateDriverInvoices(d, new Date(`${reportDate}T00:00:00`)).map(i => i.dueDate).filter(due => due >= r.windowStart && due <= reportDate);
+    assert.deepEqual(r.billingCycles.map(c => c.start), schedule, `start day ${day}`);
+  }
+  const from31 = analyseTerminationEvidence(driver({ rentalCycle:'MONTHLY',rentalRate:1000,contractStartDate:'2027-10-31',contractDuration:12 }), reportDate);
+  assert.deepEqual(from31.billingCycles.map(c => c.start), ['2028-01-31','2028-02-29']);
 });
 
 test('a monthly cycle only just due does not create persistent non-performance', () => {
