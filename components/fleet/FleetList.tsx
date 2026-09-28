@@ -41,7 +41,7 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
   const shown = byUrgency(cars.filter(car => inFilter(car) && matchesSearch(car, query)));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Fleet</h2>
@@ -52,17 +52,17 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
         </button>
       </div>
 
-      <div role="group" aria-label="Filter cars" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div role="group" aria-label="Filter cars" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {tiles.map(({ id, label, count, Icon, look }) => (
           <button
             key={id}
             type="button"
             aria-pressed={filter === id}
             onClick={() => onFilterChange(filter === id ? 'ALL' : id)}
-            className={`text-left p-4 rounded-xl border bg-white transition-colors ${filter === id ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-gray-300'}`}
+            className={`text-left px-3 py-2.5 rounded-xl border bg-white transition-colors ${filter === id ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-gray-300'}`}
           >
             <span className="flex items-center justify-between gap-2 text-sm font-medium text-gray-500">{label}<Icon className="w-4 h-4 shrink-0" aria-hidden="true" /></span>
-            <span className={`block text-2xl font-bold mt-1 ${look}`}>{count}</span>
+            <span className={`block text-xl font-bold mt-0.5 ${look}`}>{count}</span>
           </button>
         ))}
       </div>
@@ -89,13 +89,13 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
           )}
         </div>
       ) : (
-        <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {shown.map(car => (
             <li key={car.id} className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="p-4 border-b border-gray-100 flex items-start justify-between gap-3">
+              <div className="px-3 py-2 border-b border-gray-100 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h3 className="font-bold text-gray-900 truncate">{car.make} {car.model}</h3>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs">
                     <span className="font-mono font-semibold bg-gray-100 text-gray-800 px-2 py-0.5 rounded">{car.plateNumber}</span>
                     <span className={`px-2 py-0.5 rounded border font-medium ${car.ownership === 'Others' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{car.ownership}</span>
                     {car.notes && <span className="bg-gray-50 text-gray-700 border border-gray-200 px-2 py-0.5 rounded max-w-[16rem] truncate" title={car.notes}>{car.notes}</span>}
@@ -110,13 +110,13 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
                   </button>
                 </div>
               </div>
-              <dl className="p-4 space-y-3 text-sm">
+              <dl className="px-3 py-2 space-y-1.5 text-sm">
                 {carStatuses(car, today).map(status => (
                   <div key={status.kind} className="flex items-center justify-between gap-3">
-                    <dt className="text-gray-600 font-medium">{EXPIRY_LABELS[status.kind]}</dt>
-                    <dd className="text-right">
+                    <dt className="text-gray-600 font-medium shrink-0">{EXPIRY_LABELS[status.kind]}</dt>
+                    <dd className="flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-right">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${TONE_LOOK[status.tone]}`}>{status.text}</span>
-                      {status.date && <span className="block text-xs text-gray-400 mt-1">{formatDate(status.date, status.date)}</span>}
+                      {status.date && <span className="text-xs text-gray-400">{formatDate(status.date, status.date)}</span>}
                     </dd>
                   </div>
                 ))}
