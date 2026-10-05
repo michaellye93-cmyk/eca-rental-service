@@ -62,7 +62,7 @@ import {
 } from "./FinanceRecordForms";
 import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from "./FinanceCustomizationForms";
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
-import { nextContributionSort, sortByContribution, type ContributionSort } from "../../services/finance/vehicleSort";
+import { nextVehicleSort, sortVehicles, type VehicleSort, type VehicleSortKey } from "../../services/finance/vehicleSort";
 import { directCostBreakdown } from "../../services/finance/directCost";
 import CashPage from "../money/CashPage";
 import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
@@ -995,19 +995,22 @@ function Vehicles({
   report: FinanceReport | null;
   onVehicle: (plate: string) => void;
 }) {
-  const [contributionSort, setContributionSort] = useState<ContributionSort>(null);
+  const [vehicleSort, setVehicleSort] = useState<VehicleSort>(null);
   if (!report)
     return (
       <section className="finance-panel">
         <Skeleton lines={8} />
       </section>
     );
-  const contributionHeader = {
-    key: "contribution",
-    ariaSort: contributionSort === "asc" ? "ascending" as const : contributionSort === "desc" ? "descending" as const : "none" as const,
-    content: <button type="button" className="finance-table-sort" onClick={() => setContributionSort(nextContributionSort)} aria-label={`Sort Contribution ${contributionSort === "desc" ? "lowest first" : "highest first"}`}>
-      Contribution <span className="finance-sort-indicator" aria-hidden="true">{contributionSort === "asc" ? "▲" : contributionSort === "desc" ? "▼" : "↕"}</span>
-    </button>,
+  const sortHeader = (key: VehicleSortKey, label: string, nextLabel: (direction: "asc" | "desc") => string) => {
+    const direction = vehicleSort?.key === key ? vehicleSort.direction : null;
+    return {
+      key,
+      ariaSort: direction === "asc" ? "ascending" as const : direction === "desc" ? "descending" as const : "none" as const,
+      content: <button type="button" className="finance-table-sort" onClick={() => setVehicleSort((current) => nextVehicleSort(current, key))} aria-label={`Sort ${label} ${nextLabel(nextVehicleSort(vehicleSort, key).direction)}`}>
+        {label} <span className="finance-sort-indicator" aria-hidden="true">{direction === "asc" ? "▲" : direction === "desc" ? "▼" : "↕"}</span>
+      </button>,
+    };
   };
   return (
     <div className="finance-content">
@@ -1021,17 +1024,17 @@ function Vehicles({
         <DataTable
           headers={[
             "Vehicle",
-            "Business",
+            sortHeader("business", "Business", (direction) => direction === "asc" ? "A to Z" : "Z to A"),
             "Revenue",
             "Recurring",
             "Maintenance",
             "Insurance",
             "Other cost",
-            contributionHeader,
+            sortHeader("contribution", "Contribution", (direction) => direction === "desc" ? "highest first" : "lowest first"),
             "Margin",
           ]}
         >
-          {sortByContribution(report.vehicles, contributionSort).map((v) => (
+          {sortVehicles(report.vehicles, vehicleSort).map((v) => (
             <tr
               key={v.plate_key}
               className="finance-click-row"

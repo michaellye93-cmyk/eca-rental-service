@@ -1,28 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextContributionSort, sortByContribution } from '../services/finance/vehicleSort.ts';
+import { nextVehicleSort, sortVehicles } from '../services/finance/vehicleSort.ts';
 
 const rows = [
-  { plate_key: 'XAA1001', contribution: 120 },
-  { plate_key: 'XAA1002', contribution: -40 },
-  { plate_key: 'XAA1003', contribution: 900 },
-  { plate_key: 'XAA1004', contribution: 120 },
+  { plate_key: 'XAA1001', business_unit: 'E-HAILING', contribution: 120 },
+  { plate_key: 'XAA1002', business_unit: 'SAMBUNG BAYAR', contribution: -40 },
+  { plate_key: 'XAA1003', business_unit: 'DAILY RENTAL', contribution: 900 },
+  { plate_key: 'XAA1004', business_unit: 'E-HAILING', contribution: 120 },
+  { plate_key: 'XAA1005', business_unit: 'E-HAILING', contribution: 300 },
 ];
+const plates = (list: typeof rows) => list.map((row) => row.plate_key);
 
-test('contribution sort starts highest first and then flips to lowest first', () => {
-  assert.equal(nextContributionSort(null), 'desc');
-  assert.equal(nextContributionSort('desc'), 'asc');
-  assert.equal(nextContributionSort('asc'), 'desc');
+test('contribution starts highest first and business starts A to Z, each flipping on the next click', () => {
+  assert.deepEqual(nextVehicleSort(null, 'contribution'), { key: 'contribution', direction: 'desc' });
+  assert.deepEqual(nextVehicleSort({ key: 'contribution', direction: 'desc' }, 'contribution'), { key: 'contribution', direction: 'asc' });
+  assert.deepEqual(nextVehicleSort({ key: 'contribution', direction: 'asc' }, 'contribution'), { key: 'contribution', direction: 'desc' });
+  assert.deepEqual(nextVehicleSort(null, 'business'), { key: 'business', direction: 'asc' });
+  assert.deepEqual(nextVehicleSort({ key: 'business', direction: 'asc' }, 'business'), { key: 'business', direction: 'desc' });
 });
 
-test('sortByContribution orders highest or lowest first and keeps ties in their original order', () => {
-  assert.deepEqual(sortByContribution(rows, 'desc').map((row) => row.plate_key), ['XAA1003', 'XAA1001', 'XAA1004', 'XAA1002']);
-  assert.deepEqual(sortByContribution(rows, 'asc').map((row) => row.plate_key), ['XAA1002', 'XAA1001', 'XAA1004', 'XAA1003']);
+test('switching to another column starts that column at its own first direction', () => {
+  assert.deepEqual(nextVehicleSort({ key: 'contribution', direction: 'asc' }, 'business'), { key: 'business', direction: 'asc' });
+  assert.deepEqual(nextVehicleSort({ key: 'business', direction: 'desc' }, 'contribution'), { key: 'contribution', direction: 'desc' });
 });
 
-test('sortByContribution leaves the report order alone when no sort is chosen and never changes the input', () => {
-  const before = rows.map((row) => row.plate_key);
-  assert.deepEqual(sortByContribution(rows, null).map((row) => row.plate_key), before);
-  sortByContribution(rows, 'desc');
-  assert.deepEqual(rows.map((row) => row.plate_key), before);
+test('contribution sort orders highest or lowest first and keeps ties in their original order', () => {
+  assert.deepEqual(plates(sortVehicles(rows, { key: 'contribution', direction: 'desc' })), ['XAA1003', 'XAA1005', 'XAA1001', 'XAA1004', 'XAA1002']);
+  assert.deepEqual(plates(sortVehicles(rows, { key: 'contribution', direction: 'asc' })), ['XAA1002', 'XAA1001', 'XAA1004', 'XAA1005', 'XAA1003']);
+});
+
+test('business sort groups A to Z or Z to A, with cars in each business highest contribution first', () => {
+  assert.deepEqual(plates(sortVehicles(rows, { key: 'business', direction: 'asc' })), ['XAA1003', 'XAA1005', 'XAA1001', 'XAA1004', 'XAA1002']);
+  assert.deepEqual(plates(sortVehicles(rows, { key: 'business', direction: 'desc' })), ['XAA1002', 'XAA1005', 'XAA1001', 'XAA1004', 'XAA1003']);
+});
+
+test('no sort keeps the report order and the input is never changed', () => {
+  const before = plates(rows);
+  assert.deepEqual(plates(sortVehicles(rows, null)), before);
+  sortVehicles(rows, { key: 'business', direction: 'desc' });
+  assert.deepEqual(plates(rows), before);
 });
