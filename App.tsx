@@ -9,6 +9,7 @@ import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
+import { readAllRows } from './services/pagedRead';
 import Notice, { type NoticeMessage } from './components/Notice';
 
 /** The read-only collections data view (admins, after the normal sign-in). */
@@ -61,36 +62,8 @@ const App: React.FC = () => {
 
       // Actual Data Fetch
       const fetchData = async () => {
-        let allDrivers: any[] = [];
-        let dFrom = 0;
-        while (true) {
-            const { data, error } = await supabase
-                .from('drivers')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .range(dFrom, dFrom + 999);
-            if (error) throw error;
-            if (data) allDrivers.push(...data);
-            if (!data || data.length < 1000) break;
-            dFrom += 1000;
-        }
-        const driversData = allDrivers;
-
-        let allPayments: any[] = [];
-        let fromIdx = 0;
-        const pageLimit = 1000;
-        while (true) {
-            const { data, error } = await supabase
-                .from('payments')
-                .select('*')
-                .order('date', { ascending: false })
-                .range(fromIdx, fromIdx + pageLimit - 1);
-            if (error) throw error;
-            if (data) allPayments.push(...data);
-            if (!data || data.length < pageLimit) break;
-            fromIdx += pageLimit;
-        }
-        const paymentsData = allPayments;
+        const driversData = await readAllRows<any>(() => supabase.from('drivers').select('*'), 'created_at', false);
+        const paymentsData = await readAllRows<any>(() => supabase.from('payments').select('*'), 'date', false);
         
         const paymentsByDriver = new Map<string, PaymentTransaction[]>();
         for (const row of paymentsData || []) {
