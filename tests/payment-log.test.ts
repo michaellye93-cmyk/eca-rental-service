@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Driver } from '../types.ts';
-import { actorLabel, findPossibleDuplicates, paymentNotes, type PaymentChange } from '../services/paymentLog.ts';
+import { actorLabel, findPossibleDuplicates, paymentNotes, paymentRecorders, type PaymentChange } from '../services/paymentLog.ts';
 
 process.env.TZ = 'America/New_York'; // times must read in Kuala Lumpur time whatever the computer's zone
 
@@ -73,4 +73,15 @@ test('deleted payments are listed with who deleted them and what they were', () 
   const notes = paymentNotes([change({}), change({ id: 2, action: 'DELETE', changed_at: '2026-09-29T09:30:00Z', changed_by_role: 'admin', changed_by_name: 'Admin',
     before: { id: 'p1', amount: 450, service_claim: 0, date: '2026-09-28', payment_method: 'BANK TRANSFER', reference: null }, after: null })]);
   assert.match((notes.get('p1') ?? [])[1], /^Deleted by Admin · 29 Sept? 2026, 5:30 pm: RM\s450\.00 on 28 Sept? 2026$/);
+});
+
+test('each payment is tagged with the account that recorded it, not whoever edited it later; older payments have no tag', () => {
+  const recorders = paymentRecorders([
+    change({}),
+    change({ id: 2, action: 'UPDATE', changed_by_role: 'admin', changed_by_name: 'Admin' }),
+    change({ id: 3, payment_id: 'p2', changed_by_role: 'admin', changed_by_name: 'Admin' }),
+    change({ id: 4, payment_id: 'p3', changed_by_role: null, changed_by_name: 'Database (SQL Editor)' }),
+    change({ id: 5, payment_id: 'p4', action: 'UPDATE', changed_by_role: 'staff' }),
+  ]);
+  assert.deepEqual([...recorders], [['p1', 'Staff'], ['p2', 'Admin'], ['p3', 'Database (SQL Editor)']]);
 });

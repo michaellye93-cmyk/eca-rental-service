@@ -44,7 +44,7 @@ import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
-import { PaymentNoteLines, usePaymentNotes } from './PaymentNotes';
+import { PaymentNoteLines, usePaymentLog } from './PaymentNotes';
 import { findPossibleDuplicates, type PossibleDuplicate } from '../services/paymentLog';
 import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
@@ -375,7 +375,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [duplicateWarning, setDuplicateWarning] = useState<PossibleDuplicate[] | null>(null);
   useEffect(() => { setDuplicateWarning(null); }, [paymentAmount, serviceClaimAmount, paymentDate, paymentMethod, paymentReference, selectedDriverForPayment?.id]);
   // Who recorded and edited each payment listed in the payment window
-  const paymentWindowNotes = usePaymentNotes(isPaymentModalOpen ? liveDriverForPayment : null);
+  const { notes: paymentWindowNotes, recorders: paymentWindowRecorders } = usePaymentLog(isPaymentModalOpen ? liveDriverForPayment : null);
 
   // --- Daily screening, shared between staff (Kuala Lumpur calendar day) ---
   const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
@@ -1708,7 +1708,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       ) : (
                         <>
                           <div className="min-w-0">
-                            <div className="text-xs text-gray-500">{formatDate(tx.date)} <span className="font-mono text-xs bg-gray-200 px-1 rounded ml-1">ID: {tx.id.slice(-6)}</span></div>
+                            <div className="text-xs text-gray-500">{formatDate(tx.date)}{paymentWindowRecorders.has(tx.id) && <span className="text-xs font-semibold text-gray-700 bg-gray-200 px-1.5 rounded ml-1">{paymentWindowRecorders.get(tx.id)}</span>}</div>
                             <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: <PaymentAmount payment={tx} /></div>
                             <div className="flex flex-wrap items-center gap-1.5">
                               <PaymentMethodBadge method={tx.paymentMethod} />
