@@ -121,3 +121,30 @@ test('excludes softly cancelled Finance costs without removing their history', (
   assert.equal(report.totals.workshop, 0);
   assert.equal(report.totals.direct_costs, 0);
 });
+
+test('an Operation Fix Cost marked cash flow only stays out of the P&L and is reported separately', () => {
+  const template = (id: string, series: string, category: string, payee: string | null) => ({ id, series_id: series, version_no: 1, category,
+    monthly_amount: 0, effective_from: '2026-08-01', effective_until: null, payee, note: null, source: null, linked_expense_id: null, record_version: 1, cancelled_at: null });
+  const expense = (id: string, templateId: string, category: string, amount: number) => ({ id, finance_month: '2026-08-01', billing_date: null,
+    plate_key: null, category, payment_source: 'Corporate Opex' as const, supplier: null, amount, reference: null, description: null,
+    frequency: 'MONTHLY_RECURRING' as const, fixed_cost_template_id: templateId });
+  const base = { fixed_cost_templates: [template('t1', 's1', 'Tax instalment', 'Tax office'), template('t2', 's2', 'Office Rental', null)],
+    expenses: [expense('e1', 't1', 'Tax instalment', 300), expense('e2', 't2', 'Office Rental', 200), { ...expense('e3', '', 'One-off repair', 50), fixed_cost_template_id: null }] };
+  const before = calculateFinance(input(base));
+  assert.equal(before.corporate_opex, 550);
+  assert.equal(before.cash_flow_only, 0);
+  const report = calculateFinance(input({ ...base, fixed_cost_treatments: [{ series_id: 's1', treatment: 'CASH_FLOW_ONLY' }] }));
+  assert.equal(report.corporate_opex, 250);
+  assert.equal(report.management_profit, -250);
+  assert.equal(report.cash_flow_only, 300);
+  assert.deepEqual(report.cash_flow_only_items, [{ category: 'Tax instalment', payee: 'Tax office', amount: 300 }]);
+});
+
+test('Vehicle Master check flags plates that differ only by two swapped neighbouring characters', () => {
+  const vehicle = (plate_key: string) => ({ plate_key, display_plate: plate_key, business_unit: 'E-HAILING' as const, ownership_type: 'Car Owner', status: 'Active' });
+  const report = calculateFinance(input({ vehicles: [vehicle('XAB1001'), vehicle('XBA1001'), vehicle('XAC1001'), vehicle('XAA1011'), vehicle('XAA1101')] }));
+  const flagged = report.issues.filter((issue) => issue.code === 'SIMILAR_PLATE').map((issue) => issue.plate_key).sort();
+  // XAB1001/XBA1001 and XAA1011/XAA1101 are swaps; XAB1001/XAC1001 is a different letter, which real plates often share.
+  assert.deepEqual(flagged, ['XAA1011', 'XAA1101', 'XAB1001', 'XBA1001']);
+  assert.ok(report.issues.filter((issue) => issue.code === 'SIMILAR_PLATE').every((issue) => issue.severity === 'warning'));
+});

@@ -13,6 +13,7 @@ import type {
   FinanceInput,
   FinanceReport,
   FinanceVehicle,
+  FixedCostTreatment,
   Insurance,
   RecurringCost,
   SmartDriveRow,
@@ -26,6 +27,8 @@ import {
   deleteVehicle,
   transitionMonth,
   saveFixedCost,
+  loadFixedCostTreatments,
+  setFixedCostTreatment,
   saveWorkshopSummary,
   linkWorkshopAllocation,
   saveOtherIncome,
@@ -121,6 +124,7 @@ export default function FinanceView(props: MoneyProps = {}) {
   // Opens on the last completed month (Kuala Lumpur calendar).
   const [month, setMonth] = useState(() => previousMonth(kualaLumpurToday()));
   const [input, setInput] = useState<FinanceInput | null>(null);
+  const [treatments, setTreatments] = useState<FixedCostTreatment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -273,12 +277,15 @@ export default function FinanceView(props: MoneyProps = {}) {
       setBusy(true);
       setError(null);
       try {
-        const [loaded, meta] = await Promise.all([
+        const [loaded, meta, costTreatments] = await Promise.all([
           loadMonth(selectedMonth),
           loadWorkspaceMeta(selectedMonth),
+          // Empty until the database update that adds cash-flow-only costs has been run.
+          loadFixedCostTreatments().catch(() => [] as FixedCostTreatment[]),
         ]);
         if (current === generation.current && selectedMonth === month) {
           setInput(loaded);
+          setTreatments(costTreatments ?? []);
           setWorkspaceMeta(meta);
           setAcknowledged(false);
         }
@@ -299,8 +306,8 @@ export default function FinanceView(props: MoneyProps = {}) {
     void reload(month);
   }, [month, reload]);
   const report = useMemo(
-    () => (input ? buildFinanceReport(input) : null),
-    [input],
+    () => (input ? buildFinanceReport({ ...input, fixed_cost_treatments: treatments }) : null),
+    [input, treatments],
   );
   const revise = input?.month.revision ?? 0;
   const isDraft = input?.month.status === "DRAFT";
@@ -725,6 +732,9 @@ export default function FinanceView(props: MoneyProps = {}) {
               }
               onCancel={(kind: "recurring_cost" | "insurance", record: any, reason: string) => invoke(() => mutateRecord(kind, "CANCEL", record, month, revise, reason), "Finance record deleted with audit history retained.")}
               onSaveFixed={(action: any, record: object) => invoke(() => saveFixedCost(action, record, month, revise), "Fixed operating cost saved.")}
+              treatments={treatments}
+              onTreatment={(seriesId: string, treatment: FixedCostTreatment["treatment"]) =>
+                invoke(async () => { setTreatments(await setFixedCostTreatment(seriesId, treatment)); }, treatment === "CASH_FLOW_ONLY" ? "This cost now counts only in cash flow." : "This cost now counts in the P&L.")}
             />
           )}
         </>
@@ -1080,6 +1090,8 @@ function Expenses({
   onDeleteVehicle,
   onCancel,
   onSaveFixed,
+  treatments,
+  onTreatment,
 }: any) {
   const [tab, setTab] = useState<ExpenseWorkspaceTab>(initialSource);
   const [editor, setEditor] = useState<string | null | undefined>(undefined);
@@ -1149,6 +1161,8 @@ function Expenses({
         month={month}
         disabled={disabled}
         onSave={onSaveFixed}
+        treatments={treatments}
+        onTreatment={onTreatment}
         onExport={() => onExport("fixed_cost", (input.fixed_cost_templates ?? []).filter((row: any) => !row.cancelled_at))}
         onImport={(file) => onFile("fixed_cost", file)}
       />}

@@ -10,6 +10,14 @@ export function normalizePlate(value: string | null): string {
   return (value ?? '').toUpperCase().replace(/\s/g, '');
 }
 
+/** True when two plates differ only by two neighbouring characters swapped (e.g. a typed ABC1234 for BAC1234). */
+export function swappedNeighbours(left: string, right: string): boolean {
+  const a = normalizePlate(left); const b = normalizePlate(right);
+  if (a.length !== b.length || a === b) return false;
+  const diff = [...a].map((char, index) => index).filter((index) => a[index] !== b[index]);
+  return diff.length === 2 && diff[1] === diff[0] + 1 && a[diff[0]] === b[diff[1]] && a[diff[1]] === b[diff[0]];
+}
+
 function monthOverlaps(cost: { start_month: string; end_month: string | null }, month: string): boolean {
   const selected = monthKey(month); const start = monthKey(cost.start_month); const end = cost.end_month ? monthKey(cost.end_month) : null;
   return Boolean(selected && start && start <= selected && (!end || end >= selected));
@@ -120,8 +128,20 @@ export function calculateFinance(input: FinanceInput) {
     if (allocation !== 0 || !vehicleByPlate.get(normalizePlate(policy.plate_key))?.deleted_at) contributionFor(policy.plate_key).insurance += allocation;
   }
   let corporateOpex = 0;
+  let cashFlowOnly = 0;
+  const cashFlowOnlyItems: Array<{ category: string; payee: string | null; amount: number }> = [];
+  const cashOnlySeries = new Set((input.fixed_cost_treatments ?? []).filter((row) => row.treatment === 'CASH_FLOW_ONLY').map((row) => row.series_id));
+  const templateById = new Map((input.fixed_cost_templates ?? []).map((template) => [template.id, template]));
   for (const expense of input.expenses.filter((entry) => !entry.cancelled_at && monthKey(entry.finance_month) === month)) {
-    if (expense.payment_source === 'Corporate Opex') { corporateOpex += expense.amount; continue; }
+    if (expense.payment_source === 'Corporate Opex') {
+      const template = expense.fixed_cost_template_id ? templateById.get(expense.fixed_cost_template_id) : undefined;
+      // Tax instalments and similar payments reduce cash but are not operating costs, so they stay out of the P&L.
+      if (template && cashOnlySeries.has(template.series_id)) {
+        cashFlowOnly += expense.amount;
+        cashFlowOnlyItems.push({ category: expense.category, payee: template.payee, amount: expense.amount });
+      } else corporateOpex += expense.amount;
+      continue;
+    }
     const vehicle = contributionFor(expense.plate_key, expense.reference);
     if (expense.payment_source === 'Workshop Billing') vehicle.workshop += expense.amount;
     else vehicle.direct_costs += expense.amount;
@@ -155,8 +175,10 @@ export function calculateFinance(input: FinanceInput) {
   if (input.month.source_count !== input.ehailing.length) issues.push({ code: 'SOURCE_COUNT_MISMATCH', severity: 'error', detail: 'Finance month source count does not match loaded E-hailing rows' });
   if (cents(input.month.total_cash) !== sourceCash) issues.push({ code: 'SOURCE_CASH_MISMATCH', severity: 'error', detail: 'Finance month cash control does not match loaded E-hailing rows' });
   if (cents(input.month.total_claim) !== sourceClaims) issues.push({ code: 'SOURCE_CLAIM_MISMATCH', severity: 'error', detail: 'Finance month service-claim control does not match loaded E-hailing rows' });
+  const activePlates = input.vehicles.filter((vehicle) => !vehicle.deleted_at).map((vehicle) => normalizePlate(vehicle.plate_key));
+  for (const plate of activePlates) if (activePlates.some((other) => other !== plate && swappedNeighbours(plate, other))) issues.push({ code: 'SIMILAR_PLATE', severity: 'warning', detail: 'Plate differs from another vehicle only by two swapped characters; check for a typo', plate_key: plate });
   if (!input.smart_import) issues.push({ code: 'MISSING_SMART_IMPORT', severity: 'warning', detail: 'No approved Smart Drive import is linked to this Finance month' });
-  return { vehicles: [...contributions.values()], businesses, totals, corporate_opex: cents(corporateOpex), fleet_unallocated_workshop: cents(fleetWorkshopUnallocated), management_profit: cents(totals.contribution - corporateOpex), issues };
+  return { vehicles: [...contributions.values()], businesses, totals, corporate_opex: cents(corporateOpex), cash_flow_only: cents(cashFlowOnly), cash_flow_only_items: cashFlowOnlyItems, fleet_unallocated_workshop: cents(fleetWorkshopUnallocated), management_profit: cents(totals.contribution - corporateOpex), issues };
 }
 
 export const buildFinanceReport = calculateFinance;

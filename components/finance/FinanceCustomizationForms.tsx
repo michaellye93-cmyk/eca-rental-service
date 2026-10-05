@@ -5,6 +5,7 @@ import type {
   FinanceExpense,
   FinanceVehicle,
   FixedCostTemplate,
+  FixedCostTreatment,
   OtherIncome,
   WorkshopSummary,
 } from "../../types/finance";
@@ -85,6 +86,9 @@ export interface FixedOperatingCostsPanelProps {
   ) => Promise<boolean>;
   onExport?: () => void;
   onImport?: (file?: File) => void;
+  /** Costs that count only in cash flow (e.g. tax instalments); every other cost counts in the P&L. */
+  treatments?: FixedCostTreatment[];
+  onTreatment?: (seriesId: string, treatment: FixedCostTreatment["treatment"]) => Promise<boolean>;
 }
 
 type FixedDraft = {
@@ -115,7 +119,10 @@ export function FixedOperatingCostsPanel({
   onSave,
   onExport,
   onImport,
+  treatments = [],
+  onTreatment,
 }: FixedOperatingCostsPanelProps) {
+  const cashFlowOnly = new Set(treatments.filter((row) => row.treatment === "CASH_FLOW_ONLY").map((row) => row.series_id));
   const importRef = useRef<HTMLInputElement>(null);
   const [editor, setEditor] = useState<{
     row?: FixedCostTemplate;
@@ -191,6 +198,7 @@ export function FixedOperatingCostsPanel({
           "Category",
           "Payee",
           "Amount",
+          "Counts in",
           "Actions",
         ]}
       >
@@ -207,6 +215,17 @@ export function FixedOperatingCostsPanel({
               </td>
               <td>{payee ?? "—"}</td>
               <td>{formatCurrency(occurrence?.amount ?? row.monthly_amount)}</td>
+              <td>
+                <select
+                  aria-label={`Where ${row.category} counts`}
+                  value={cashFlowOnly.has(row.series_id) ? "CASH_FLOW_ONLY" : "PNL"}
+                  disabled={disabled || !onTreatment}
+                  onChange={(event) => void onTreatment?.(row.series_id, event.target.value as FixedCostTreatment["treatment"])}
+                >
+                  <option value="PNL">P&L and cash flow</option>
+                  <option value="CASH_FLOW_ONLY">Cash flow only</option>
+                </select>
+              </td>
               <td>
                 <div className="finance-dialog-actions">
                   <button
@@ -230,7 +249,7 @@ export function FixedOperatingCostsPanel({
             </tr>;
           })
         ) : (
-          <EmptyRow columns={4} text="No Operation Fix Cost entries have been set up." />
+          <EmptyRow columns={5} text="No Operation Fix Cost entries have been set up." />
         )}
       </Table>
 

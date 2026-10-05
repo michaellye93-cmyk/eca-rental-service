@@ -1,5 +1,5 @@
 import { supabase } from '../../supabaseClient';
-import type { FinanceInput, SmartDriveRow } from '../../types/finance';
+import type { FinanceInput, FixedCostTreatment, SmartDriveRow } from '../../types/finance';
 import type { CashBalanceEntry, CashOutlookData } from '../cashOutlook';
 
 async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -26,6 +26,9 @@ export const loadCashOutlook = (today: string) => rpc<CashOutlookData>('finance_
 export const saveCashBalance = (account: string, balance: number, asOf: string, note: string) =>
   rpc<CashBalanceEntry[]>('finance_save_cash_balance', { p_account: account, p_balance: balance, p_as_of: asOf, p_note: note || null });
 export const cancelCashBalance = (id: string, reason: string) => rpc<CashBalanceEntry[]>('finance_cancel_cash_balance', { p_id: id, p_reason: reason });
+export const loadFixedCostTreatments = () => rpc<FixedCostTreatment[]>('finance_fixed_cost_treatments');
+export const setFixedCostTreatment = (seriesId: string, treatment: FixedCostTreatment['treatment']) =>
+  rpc<FixedCostTreatment[]>('finance_set_fixed_cost_treatment', { p_series_id: seriesId, p_treatment: treatment });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });
 export const transitionMonth = (month: string, action: 'READY' | 'CLOSE' | 'REOPEN', revision: number, acknowledgement = '') =>

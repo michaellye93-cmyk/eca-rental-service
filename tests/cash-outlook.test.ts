@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cashLine, collectionRate, currentCash, monthlyOutlook, windowBills, windowOtherIncome, type CashOutlookData } from '../services/cashOutlook.ts';
+import { arrearsScenarios, cashLine, collectionRate, currentCash, monthlyOutlook, windowBills, windowOtherIncome, type CashOutlookData } from '../services/cashOutlook.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const plain = (text: string) => text.replace(/ /g, ' ');
@@ -160,4 +160,22 @@ test('with no bills recorded in Finance the line says so instead of showing Cove
   assert.equal(line.status, 'WATCH');
   assert.equal(plain(line.sentence), 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Money → Expenses.');
   assert.ok(!line.notes.some(note => note.startsWith('No bills are recorded')));
+});
+
+test('arrears scenarios show closing cash each month at different collection rates and arrears recovery', () => {
+  const data = outlook({ balances: [balance('1', 'Maybank operating', 5000, '2026-11-15')] });
+  const base = monthlyOutlook({ today: '2026-11-16', outlook: data, drivers: [weekly] });
+  const scenarios = arrearsScenarios({ today: '2026-11-16', outlook: data, drivers: [weekly], overdue: 2000 });
+  assert.deepEqual(scenarios.map((s) => s.key), ['current', 'rate85', 'all', 'allPlusArrears']);
+  // The current-pace line is the Cash page outlook as it is today.
+  assert.deepEqual(scenarios[0].closing, base.map((m) => m.closing));
+  // Collecting all rent matches the outlook's "if all rent is paid" line.
+  assert.deepEqual(scenarios[2].closing, base.map((m) => m.closingIfAllRentPaid));
+  // 85% sits between nothing extra and all rent.
+  const rate85 = scenarios[1].closing;
+  assert.ok(rate85[3] <= scenarios[2].closing[3]);
+  // Recovering 10% of the RM2,000 arrears each month adds RM200 a month (half a month first: 16–30 Nov is 15 of 30 days).
+  assert.equal(round(scenarios[3].closing[0] - scenarios[2].closing[0]), 100);
+  assert.equal(round(scenarios[3].closing[3] - scenarios[2].closing[3]), 700);
+  assert.equal(scenarios[3].months.length, 4);
 });

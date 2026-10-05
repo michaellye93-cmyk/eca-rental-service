@@ -293,9 +293,16 @@ export interface OutlookBucket {
  * The Cash page's month-by-month outlook: the rest of this month and the next three months, each starting with the
  * previous one's closing cash. The first opening is cash in bank (0 when none has been entered).
  */
-export function monthlyOutlook(input: { today: string; outlook: CashOutlookData; drivers: Driver[] }): OutlookBucket[] {
+export function monthlyOutlook(input: {
+  today: string; outlook: CashOutlookData; drivers: Driver[];
+  /** Share of rent still to come that gets collected; defaults to the recent collection rate. */
+  rate?: number;
+  /** Overdue rent recovered in each full month, on top of the rent (counted pro rata in a part month). */
+  arrearsPerMonth?: number;
+}): OutlookBucket[] {
   const cash = currentCash(input.outlook.balances, input.today);
-  const { rate } = collectionRate(input.drivers, input.today);
+  const rate = input.rate ?? collectionRate(input.drivers, input.today).rate;
+  const arrearsPerMonth = input.arrearsPerMonth ?? 0;
   const buckets: OutlookBucket[] = [];
   let opening = cash?.total ?? 0;
   let openingIfAllPaid = opening;
@@ -306,9 +313,10 @@ export function monthlyOutlook(input: { today: string; outlook: CashOutlookData;
     const rent = windowRent(input.drivers, from, to, input.today, rate);
     const otherIncome = windowOtherIncome(input.outlook, from, to);
     const bills = windowBills(input.outlook, from, to);
-    const moneyIn = cents(rent.expected + otherIncome);
+    const arrears = arrearsPerMonth * ((dayNumber(to) - dayNumber(from) + 1) / daysInMonth(month));
+    const moneyIn = cents(rent.expected + otherIncome + arrears);
     const closing = cents(opening + moneyIn - bills.total);
-    const closingIfAllRentPaid = cents(openingIfAllPaid + rent.full + otherIncome - bills.total);
+    const closingIfAllRentPaid = cents(openingIfAllPaid + rent.full + otherIncome + arrears - bills.total);
     const [year, monthNumber] = month.split('-').map(Number);
     const label = from !== month ? `Rest of ${MONTHS[monthNumber - 1]}` : `${MONTHS[monthNumber - 1]} ${year}`;
     buckets.push({ label, from, to, opening, rent, otherIncome, moneyIn, bills, closing, closingIfAllRentPaid });
@@ -317,4 +325,30 @@ export function monthlyOutlook(input: { today: string; outlook: CashOutlookData;
     from = nextMonth(month);
   }
   return buckets;
+}
+
+export interface CashScenario {
+  key: 'current' | 'rate85' | 'all' | 'allPlusArrears';
+  label: string;
+  /** Closing cash at the end of each outlook period, same periods as monthlyOutlook. */
+  closing: number[];
+  months: string[];
+}
+
+/**
+ * Closing cash under four collection scenarios: today's pace, 85% of rent, all rent, and all rent plus recovering
+ * 10% of today's overdue rent each month.
+ */
+export function arrearsScenarios(input: { today: string; outlook: CashOutlookData; drivers: Driver[]; overdue: number }): CashScenario[] {
+  const { rate } = collectionRate(input.drivers, input.today);
+  const run = (key: CashScenario['key'], label: string, scenarioRate: number, arrearsPerMonth = 0): CashScenario => {
+    const months = monthlyOutlook({ today: input.today, outlook: input.outlook, drivers: input.drivers, rate: scenarioRate, arrearsPerMonth });
+    return { key, label, closing: months.map((m) => m.closing), months: months.map((m) => m.label) };
+  };
+  return [
+    run('current', `Today's pace (${percent(rate)} of rent)`, rate),
+    run('rate85', 'Collect 85% of rent', 0.85),
+    run('all', 'Collect all rent', 1),
+    run('allPlusArrears', 'All rent + 10% of arrears a month', 1, cents(Math.max(0, input.overdue) * 0.1)),
+  ];
 }
