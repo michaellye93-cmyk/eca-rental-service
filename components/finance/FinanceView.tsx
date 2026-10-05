@@ -62,6 +62,7 @@ import {
 } from "./FinanceRecordForms";
 import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from "./FinanceCustomizationForms";
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
+import { nextContributionSort, sortByContribution, type ContributionSort } from "../../services/finance/vehicleSort";
 import CashPage from "../money/CashPage";
 import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
 import type { DriverWithMetrics } from "../../types";
@@ -991,12 +992,20 @@ function Vehicles({
   report: FinanceReport | null;
   onVehicle: (plate: string) => void;
 }) {
+  const [contributionSort, setContributionSort] = useState<ContributionSort>(null);
   if (!report)
     return (
       <section className="finance-panel">
         <Skeleton lines={8} />
       </section>
     );
+  const contributionHeader = {
+    key: "contribution",
+    ariaSort: contributionSort === "asc" ? "ascending" as const : contributionSort === "desc" ? "descending" as const : "none" as const,
+    content: <button type="button" className="finance-table-sort" onClick={() => setContributionSort(nextContributionSort)} aria-label={`Sort Contribution ${contributionSort === "desc" ? "lowest first" : "highest first"}`}>
+      Contribution <span className="finance-sort-indicator" aria-hidden="true">{contributionSort === "asc" ? "▲" : contributionSort === "desc" ? "▼" : "↕"}</span>
+    </button>,
+  };
   return (
     <div className="finance-content">
       <section className="finance-title-row">
@@ -1015,11 +1024,11 @@ function Vehicles({
             "Maintenance",
             "Insurance",
             "Other cost",
-            "Contribution",
+            contributionHeader,
             "Margin",
           ]}
         >
-          {report.vehicles.map((v) => (
+          {sortByContribution(report.vehicles, contributionSort).map((v) => (
             <tr
               key={v.plate_key}
               className="finance-click-row"
