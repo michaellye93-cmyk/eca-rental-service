@@ -28,6 +28,8 @@ export function readableIssue(issue: QualityIssue) {
       "Smart Drive Sales Report has not been uploaded for this month.",
     MISSING_COST_MASTER:
       "Vehicles with revenue need their monthly costs checked.",
+    SIMILAR_PLATE:
+      "Vehicle Master plates that differ only by two swapped characters. Check each one for a typo.",
     UNMATCHED_PLATE:
       "Vehicle plates need to be added or corrected in Settings.",
     MISSING_PLATE: "An E-Hailing payment needs a vehicle assignment.",

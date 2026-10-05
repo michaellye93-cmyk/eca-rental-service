@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { Driver } from '../../types';
 import { formatCurrency, formatDate } from '../../utils';
 import {
-  COLLECTION_WEEKS, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
+  arrearsScenarios, COLLECTION_WEEKS, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
   type CashBalanceEntry, type CashLineSummary, type CashOutlookData,
 } from '../../services/cashOutlook';
 import { cancelCashBalance, saveCashBalance } from '../../services/finance/api';
@@ -44,6 +44,7 @@ export default function CashPage({ today, drivers, outlook, outlookState, summar
       <StatusBlock summary={summary} />
       <BalanceTable today={today} outlook={outlook} onBalancesChange={onBalancesChange} />
       <OutlookTable today={today} outlook={outlook} drivers={drivers} rate={summary.rate} />
+      <ScenarioTable today={today} outlook={outlook} drivers={drivers} overdue={summary.overdue} />
       <BillsComing today={today} outlook={outlook} />
       <Method summary={summary} outlook={outlook} />
     </div>
@@ -210,6 +211,38 @@ function BalanceTable({ today, outlook, onBalancesChange }: { today: string; out
       </form>
       {error && <p role="alert" className="finance-message is-error">{error}</p>}
       {saved && <p role="status" className="finance-message is-success">{saved}</p>}
+    </section>
+  );
+}
+
+/** Closing cash each month under different collection and arrears-recovery assumptions. */
+function ScenarioTable({ today, outlook, drivers, overdue }: { today: string; outlook: CashOutlookData; drivers: Driver[]; overdue: number }) {
+  const scenarios = useMemo(() => arrearsScenarios({ today, outlook, drivers, overdue }), [today, outlook, drivers, overdue]);
+  const months = scenarios[0]?.months ?? [];
+  return (
+    <section className="finance-panel" aria-labelledby="cash-scenarios-heading">
+      <div className="finance-section-heading">
+        <div>
+          <h3 id="cash-scenarios-heading">Cash at month end: collection scenarios</h3>
+          <p>
+            The same bills as the table above, with rent collected at different rates. The last line also recovers 10% of
+            today's overdue rent ({money(overdue)}) each month.
+          </p>
+        </div>
+      </div>
+      <div className="finance-table-wrap">
+        <table className="finance-table cash-outlook-table">
+          <thead><tr><th scope="col">Cash at end</th>{months.map(m => <th scope="col" key={m}>{m}</th>)}</tr></thead>
+          <tbody>
+            {scenarios.map(s => (
+              <tr key={s.key}>
+                <th scope="row">{s.label}</th>
+                {s.closing.map((value, i) => <td key={i} className={value < 0 ? 'finance-negative' : ''}>{money(value)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

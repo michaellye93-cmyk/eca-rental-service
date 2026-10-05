@@ -67,6 +67,8 @@ import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
 import { nextVehicleSort, sortVehicles, type VehicleSort, type VehicleSortKey } from "../../services/finance/vehicleSort";
 import { directCostBreakdown } from "../../services/finance/directCost";
+import { marginTarget, monthCashFlow } from "../../services/finance/dashboard";
+import { monthCollection } from "../../services/driverLedger";
 import CashPage from "../money/CashPage";
 import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
 import type { DriverWithMetrics } from "../../types";
@@ -75,6 +77,7 @@ import "./finance-mobile.css";
 
 const AnalyticsView = React.lazy(() => import("../AnalyticsView"));
 const SegmentTrend = React.lazy(() => import("../money/SegmentTrend"));
+const DriverProfitability = React.lazy(() => import("../money/DriverProfitability"));
 const formatMoney = (value = 0) => formatCurrency(Number(value || 0));
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
@@ -581,6 +584,7 @@ export default function FinanceView(props: MoneyProps = {}) {
       {page === "collections" && (
         <React.Suspense fallback={<Skeleton lines={8} />}>
           <SegmentTrend drivers={props.drivers ?? []} />
+          <DriverProfitability drivers={props.drivers ?? []} />
           <AnalyticsView drivers={props.drivers ?? []} />
         </React.Suspense>
       )}
@@ -608,6 +612,8 @@ export default function FinanceView(props: MoneyProps = {}) {
           {page === "overview" && (
             <Overview
               report={report}
+              input={{ ...input, fixed_cost_treatments: treatments }}
+              drivers={props.drivers ?? []}
               month={month}
               onVehicle={(plate?: string) =>
                 plate ? setSelectedVehicle(plate) : setPage("vehicles")
@@ -830,19 +836,27 @@ export default function FinanceView(props: MoneyProps = {}) {
 
 function Overview({
   report,
+  input,
+  drivers,
   month,
   onVehicle,
 }: {
   report: FinanceReport | null;
+  input: FinanceInput;
+  drivers: DriverWithMetrics[];
   month: string;
   onVehicle: (plate?: string) => void;
 }) {
+  const collection = useMemo(() => monthCollection(drivers, month.slice(0, 7), new Date()), [drivers, month]);
   if (!report)
     return (
       <section className="finance-panel">
         <Skeleton lines={8} />
       </section>
     );
+  const target = marginTarget(report, 0.2);
+  const cashFlow = monthCashFlow(input, report);
+  const pct = (value: number | null) => (value === null ? "—" : `${(value * 100).toFixed(1)}%`);
   const totals = report.totals;
   const cost =
     totals.commission +
@@ -866,7 +880,12 @@ function Overview({
         </div>
         <span className="finance-readonly">Read only</span>
       </section>
-      <section className="finance-summary-grid">
+      <section className="finance-panel">
+        <SectionHeading
+          title="Profit & Loss"
+          detail="Operating results for the month. Payments marked cash flow only, such as tax instalments, are not costs here; they are in Cash flow below."
+        />
+      <div className="finance-summary-grid">
         <Total label="Revenue" value={formatMoney(totals.revenue)} />
         <Total
           label="Direct vehicle costs"
@@ -896,6 +915,46 @@ function Overview({
               : "—"
           }
         />
+      </div>
+      </section>
+      <section className="finance-panel">
+        <SectionHeading
+          title="20% net margin target"
+          detail={target.margin === null ? "No revenue is recorded for this month yet." : target.gap > 0
+            ? `${formatMoney(target.gap)} more profit this month would reach 20%. Idle cars and unpaid rent are the biggest levers.`
+            : "This month reached the 20% target."}
+        />
+        <div className="finance-summary-grid">
+          <Total label="Net margin (target 20%)" value={pct(target.margin)} emphasis />
+          <Total label="Profit needed for 20%" value={formatMoney(target.target_profit)} />
+          <Total label="Gap to 20%" value={formatMoney(target.gap)} negative={target.gap > 0} />
+          <Total label="Contribution margin (aim 40%+)" value={pct(target.contribution_margin)} />
+          <Total label={`Idle cars (${target.idle.count})`} value={formatMoney(-target.idle.cost)} negative={target.idle.cost > 0} />
+          <Total label="Rent collected this month" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
+        </div>
+        {target.idle.count > 0 && <p className="finance-dialog-copy">Idle cars: {target.idle.plates.join(", ")}.</p>}
+      </section>
+      <section className="finance-panel">
+        <SectionHeading
+          title="Cash flow"
+          detail="The month as cash: rent received in cash (claims are not cash), Smart Drive after commission, and bills paid, including tax instalments. It is built from Finance records, so it will not match the bank to the ringgit."
+        />
+        <DataTable headers={["", "RM"]}>
+          <tr><td className="finance-strong">Money in</td><td></td></tr>
+          <tr><td>Rent received in cash</td><td>{formatMoney(cashFlow.in.rent_cash)}</td></tr>
+          <tr><td>Smart Drive after commission</td><td>{formatMoney(cashFlow.in.smart_drive_net)}</td></tr>
+          <tr><td>Other income (confirmed)</td><td>{formatMoney(cashFlow.in.other_income)}</td></tr>
+          <tr><td className="finance-strong">Total in</td><td className="finance-strong">{formatMoney(cashFlow.in.total)}</td></tr>
+          <tr><td className="finance-strong">Money out</td><td></td></tr>
+          <tr><td>Monthly vehicle costs (loans, owner payouts)</td><td className="finance-negative">{formatMoney(-cashFlow.out.monthly_vehicle)}</td></tr>
+          <tr><td>Workshop</td><td className="finance-negative">{formatMoney(-cashFlow.out.workshop)}</td></tr>
+          <tr><td>Other vehicle costs</td><td className="finance-negative">{formatMoney(-cashFlow.out.other_vehicle)}</td></tr>
+          <tr><td>Insurance premiums paid this month</td><td className="finance-negative">{formatMoney(-cashFlow.out.insurance)}</td></tr>
+          <tr><td>Operation Fix Cost</td><td className="finance-negative">{formatMoney(-cashFlow.out.operation_fix)}</td></tr>
+          <tr><td>Cash flow only (e.g. tax instalments){report.cash_flow_only_items.length ? `: ${report.cash_flow_only_items.map((item) => item.payee ? `${item.category} ${item.payee}` : item.category).join(", ")}` : ""}</td><td className="finance-negative">{formatMoney(-cashFlow.out.cash_flow_only)}</td></tr>
+          <tr><td className="finance-strong">Total out</td><td className="finance-strong finance-negative">{formatMoney(-cashFlow.out.total)}</td></tr>
+          <tr><td className="finance-strong">Net cash flow</td><td className={`finance-strong ${cashFlow.net < 0 ? "finance-negative" : ""}`}>{formatMoney(cashFlow.net)}</td></tr>
+        </DataTable>
       </section>
       <section className="finance-panel">
         <SectionHeading

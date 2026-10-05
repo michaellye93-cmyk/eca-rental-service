@@ -14,6 +14,7 @@ import type {
 import {
   allocateInsurance,
   normalizePlate,
+  swappedNeighbours,
 } from "../../services/finance/calculations";
 
 const vehicleCategories = [
@@ -439,6 +440,11 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete, initialI
     if (isPlateCorrection && !plateCorrectionReason.trim()) {
       setError("Enter a reason to confirm this plate correction.");
       return;
+    }
+    // Vehicle Master check: a new or corrected plate that is an existing plate with two characters swapped is usually a typo.
+    if (!original || isPlateCorrection) {
+      const lookalike = vehicles.find((vehicle) => vehicle.plate_key !== original?.plate_key && swappedNeighbours(vehicle.plate_key, correctedPlate));
+      if (lookalike && !window.confirm(`${correctedPlate} looks like ${lookalike.display_plate} with two characters swapped. Save ${correctedPlate} as a separate car anyway?`)) return;
     }
     const current = generation.current;
     setPending(true);
