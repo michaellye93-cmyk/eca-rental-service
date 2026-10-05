@@ -1,26 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Driver } from '../types';
 import { loadPaymentChanges } from '../services/collectionsApi';
-import { paymentNotes } from '../services/paymentLog';
+import { paymentNotes, paymentRecorders, type PaymentChange } from '../services/paymentLog';
 
 /**
- * Who recorded and changed each of the driver's payments, by payment id (see paymentNotes). Reloaded whenever the
- * driver's payments change here; empty when the change log is not available yet.
+ * The driver's payment change log: each payment's history lines (see paymentNotes) and who recorded it (see
+ * paymentRecorders), by payment id. Reloaded whenever the driver's payments change here; empty when the change log is
+ * not available yet.
  */
-export function usePaymentNotes(driver: Pick<Driver, 'id' | 'paymentHistory'> | null): Map<string, string[]> {
-  const [notes, setNotes] = useState<Map<string, string[]>>(() => new Map());
+export function usePaymentLog(driver: Pick<Driver, 'id' | 'paymentHistory'> | null): { notes: Map<string, string[]>; recorders: Map<string, string> } {
+  const [changes, setChanges] = useState<PaymentChange[]>([]);
   const driverId = driver?.id;
   const payments = driver?.paymentHistory;
   useEffect(() => {
     if (!driverId) return;
     let live = true;
     loadPaymentChanges(driverId)
-      .then(changes => { if (live) setNotes(paymentNotes(changes)); })
-      .catch(() => { if (live) setNotes(new Map()); });
+      .then(loaded => { if (live) setChanges(loaded); })
+      .catch(() => { if (live) setChanges([]); });
     return () => { live = false; };
   }, [driverId, payments]);
-  return notes;
+  return useMemo(() => ({ notes: paymentNotes(changes), recorders: paymentRecorders(changes) }), [changes]);
 }
+
+/** Who recorded and changed each of the driver's payments, by payment id (see usePaymentLog). */
+export const usePaymentNotes = (driver: Pick<Driver, 'id' | 'paymentHistory'> | null): Map<string, string[]> => usePaymentLog(driver).notes;
 
 /** A payment's history lines under it, e.g. "Recorded by Staff · 29 Sept 2026, 2:05 pm". Nothing for older payments. */
 export function PaymentNoteLines({ lines }: { lines?: string[] }) {

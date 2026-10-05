@@ -73,6 +73,13 @@ export function paymentNotes(changes: PaymentChange[]): Map<string, string[]> {
   return notes;
 }
 
+/** Who recorded each payment ("Admin" or "Staff", see actorLabel), by payment id. Payments recorded before the log started are absent. */
+export function paymentRecorders(changes: PaymentChange[]): Map<string, string> {
+  const recorders = new Map<string, string>();
+  for (const change of changes) if (change.action === 'INSERT') recorders.set(change.payment_id, actorLabel(change));
+  return recorders;
+}
+
 /** What is being recorded, for the duplicate check. */
 export interface PaymentEntry {
   amount: number;
