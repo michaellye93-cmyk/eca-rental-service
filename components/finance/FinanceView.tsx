@@ -1,4 +1,4 @@
-import { formatCurrency, kualaLumpurToday, previousMonth } from "../../utils";
+import { formatCurrency, kualaLumpurNow, kualaLumpurToday, previousMonth } from "../../utils";
 import React, {
   useCallback,
   useEffect,
@@ -27,7 +27,6 @@ import {
   deleteVehicle,
   transitionMonth,
   saveFixedCost,
-  loadFixedCostTreatments,
   setFixedCostTreatment,
   saveWorkshopSummary,
   linkWorkshopAllocation,
@@ -127,7 +126,6 @@ export default function FinanceView(props: MoneyProps = {}) {
   // Opens on the last completed month (Kuala Lumpur calendar).
   const [month, setMonth] = useState(() => previousMonth(kualaLumpurToday()));
   const [input, setInput] = useState<FinanceInput | null>(null);
-  const [treatments, setTreatments] = useState<FixedCostTreatment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -280,15 +278,12 @@ export default function FinanceView(props: MoneyProps = {}) {
       setBusy(true);
       setError(null);
       try {
-        const [loaded, meta, costTreatments] = await Promise.all([
+        const [loaded, meta] = await Promise.all([
           loadMonth(selectedMonth),
           loadWorkspaceMeta(selectedMonth),
-          // Empty until the database update that adds cash-flow-only costs has been run.
-          loadFixedCostTreatments().catch(() => [] as FixedCostTreatment[]),
         ]);
         if (current === generation.current && selectedMonth === month) {
           setInput(loaded);
-          setTreatments(costTreatments ?? []);
           setWorkspaceMeta(meta);
           setAcknowledged(false);
         }
@@ -309,8 +304,8 @@ export default function FinanceView(props: MoneyProps = {}) {
     void reload(month);
   }, [month, reload]);
   const report = useMemo(
-    () => (input ? buildFinanceReport({ ...input, fixed_cost_treatments: treatments }) : null),
-    [input, treatments],
+    () => (input ? buildFinanceReport(input) : null),
+    [input],
   );
   const revise = input?.month.revision ?? 0;
   const isDraft = input?.month.status === "DRAFT";
@@ -612,7 +607,7 @@ export default function FinanceView(props: MoneyProps = {}) {
           {page === "overview" && (
             <Overview
               report={report}
-              input={{ ...input, fixed_cost_treatments: treatments }}
+              input={input}
               drivers={props.drivers ?? []}
               month={month}
               onVehicle={(plate?: string) =>
@@ -738,9 +733,9 @@ export default function FinanceView(props: MoneyProps = {}) {
               }
               onCancel={(kind: "recurring_cost" | "insurance", record: any, reason: string) => invoke(() => mutateRecord(kind, "CANCEL", record, month, revise, reason), "Finance record deleted with audit history retained.")}
               onSaveFixed={(action: any, record: object) => invoke(() => saveFixedCost(action, record, month, revise), "Fixed operating cost saved.")}
-              treatments={treatments}
+              treatments={input.fixed_cost_treatments ?? []}
               onTreatment={(seriesId: string, treatment: FixedCostTreatment["treatment"]) =>
-                invoke(async () => { setTreatments(await setFixedCostTreatment(seriesId, treatment)); }, treatment === "CASH_FLOW_ONLY" ? "This cost now counts only in cash flow." : "This cost now counts in the P&L.")}
+                invoke(async () => { await setFixedCostTreatment(seriesId, treatment); }, treatment === "CASH_FLOW_ONLY" ? "This cost now counts only in cash flow." : "This cost now counts in the P&L.")}
             />
           )}
         </>
@@ -847,7 +842,7 @@ function Overview({
   month: string;
   onVehicle: (plate?: string) => void;
 }) {
-  const collection = useMemo(() => monthCollection(drivers, month.slice(0, 7), new Date()), [drivers, month]);
+  const collection = useMemo(() => monthCollection(drivers, month.slice(0, 7), kualaLumpurNow()), [drivers, month]);
   if (!report)
     return (
       <section className="finance-panel">
@@ -930,7 +925,7 @@ function Overview({
           <Total label="Gap to 20%" value={formatMoney(target.gap)} negative={target.gap > 0} />
           <Total label="Contribution margin (aim 40%+)" value={pct(target.contribution_margin)} />
           <Total label={`Idle cars (${target.idle.count})`} value={formatMoney(-target.idle.cost)} negative={target.idle.cost > 0} />
-          <Total label="Rent collected this month" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
+          <Total label="Rent collected this month (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
         </div>
         {target.idle.count > 0 && <p className="finance-dialog-copy">Idle cars: {target.idle.plates.join(", ")}.</p>}
       </section>
@@ -949,7 +944,7 @@ function Overview({
           <tr><td>Monthly vehicle costs (loans, owner payouts)</td><td className="finance-negative">{formatMoney(-cashFlow.out.monthly_vehicle)}</td></tr>
           <tr><td>Workshop</td><td className="finance-negative">{formatMoney(-cashFlow.out.workshop)}</td></tr>
           <tr><td>Other vehicle costs</td><td className="finance-negative">{formatMoney(-cashFlow.out.other_vehicle)}</td></tr>
-          <tr><td>Insurance premiums paid this month</td><td className="finance-negative">{formatMoney(-cashFlow.out.insurance)}</td></tr>
+          <tr><td>Insurance premiums (cover starting this month)</td><td className="finance-negative">{formatMoney(-cashFlow.out.insurance)}</td></tr>
           <tr><td>Operation Fix Cost</td><td className="finance-negative">{formatMoney(-cashFlow.out.operation_fix)}</td></tr>
           <tr><td>Cash flow only (e.g. tax instalments){report.cash_flow_only_items.length ? `: ${report.cash_flow_only_items.map((item) => item.payee ? `${item.category} ${item.payee}` : item.category).join(", ")}` : ""}</td><td className="finance-negative">{formatMoney(-cashFlow.out.cash_flow_only)}</td></tr>
           <tr><td className="finance-strong">Total out</td><td className="finance-strong finance-negative">{formatMoney(-cashFlow.out.total)}</td></tr>

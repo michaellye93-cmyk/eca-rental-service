@@ -84,3 +84,9 @@ test('month collection adds every driver’s rent billed and money collected in 
   const delisted: Driver = { ...DRIVER, id: 'd2', isDelisted: true, delistDate: '2026-08-12', paymentHistory: [pay('x', '2026-08-04', 100)] };
   assert.deepEqual(monthCollection([DRIVER, delisted], '2026-08', new Date('2026-10-06T12:00:00')), { billed: 700, collected: 400, rate: 400 / 700 });
 });
+
+test('in the current month only rent already due counts as billed or owed', () => {
+  // 10 Sept: only the 7 Sept rent of September is due; the 28 Sept payment has not happened yet.
+  const [september] = driverMonthlyLedger(DRIVER, ['2026-09'], new Date('2026-09-10T12:00:00'));
+  assert.deepEqual(september, { month: '2026-09', billed: 100, collected: 0, balance: 300, rate: 0 });
+});

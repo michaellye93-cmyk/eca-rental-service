@@ -134,6 +134,9 @@ test('admins choose whether an Operation Fix Cost counts in the P&L or only in c
     assert.equal(treatments.length, 2);
     treatments = (await rows<{ value: any[] }>(db, `select public.finance_set_fixed_cost_treatment($1, 'PNL') value`, [series['Office Rental']]))[0].value;
     assert.deepEqual(treatments.map((row) => row.series_id), [series['LHDN']]);
+    // The month data carries the list, so a month frozen at close keeps it.
+    const month = (await rows<{ value: any }>(db, `select public.finance_read_month($1) value`, [august]))[0].value;
+    assert.deepEqual(month.fixed_cost_treatments, [{ series_id: series['LHDN'], treatment: 'CASH_FLOW_ONLY' }]);
 
     await assert.rejects(db.query(`select public.finance_set_fixed_cost_treatment($1, 'SOMETHING')`, [series['LHDN']]));
     await asUser(db, STAFF_ID);
@@ -149,5 +152,21 @@ test('the release file can run twice and signed-out visitors cannot read the car
     await migrate(db, RELEASE);
     assert.equal((await rows<{ n: number }>(db, `select count(*)::int n from public.driver_car_assignments`))[0].n, 1);
     assert.equal((await rows<{ open: boolean }>(db, `select has_table_privilege('anon','public.driver_car_assignments','SELECT') open`))[0].open, false);
+  } finally { await db.close(); }
+});
+
+test('after a driver changes car and the month is refreshed, the month can still go to review', async () => {
+  const db = await setup();
+  try {
+    await asUser(db);
+    await db.exec(`update public.drivers set car_plate='XAA2002' where id='${DRIVER_A}'`);
+    const call = async (name: string, args: unknown[]) =>
+      (await rows<{ value: any }>(db, `select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) value`, args))[0].value;
+    let data = await call('finance_read_month', [august]);
+    data = await call('finance_refresh_payments', [august]);
+    await call('finance_post_smart_drive', [august, 'empty-report.xlsx', '[]', false, data.month.revision, null]);
+    data = await call('finance_read_month', [august]);
+    // The payment stays on its old car; the ledger check must accept that, so the next blocker is the section reviews.
+    await assert.rejects(call('finance_transition_month', [august, 'READY', data.month.revision, '']), /Review every Finance section/);
   } finally { await db.close(); }
 });

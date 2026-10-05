@@ -9,7 +9,7 @@ const monthEnd = (month: string) => {
 
 export interface DriverMonth {
   month: string; // YYYY-MM
-  /** Rent falling due in the month, from the shared rent schedule. */
+  /** Rent falling due in the month (up to today for the current month), from the shared rent schedule. */
   billed: number;
   /** Cash and service claims dated in the month. */
   collected: number;
@@ -24,14 +24,16 @@ export function driverMonthlyLedger(driver: Driver, months: string[], today: Dat
   if (!months.length) return [];
   const last = monthEnd([...months].sort().at(-1)!);
   const invoices = generateDriverInvoices(driver, today, last);
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   return months.map((month) => {
-    const end = monthEnd(month);
-    const endKey = `${month}-31`;
-    const billed = cents(invoices.filter((invoice) => invoice.dueDate.slice(0, 7) === month).reduce((sum, invoice) => sum + invoice.amount, 0));
-    const collected = cents(driver.paymentHistory.filter((payment) => payment.date.slice(0, 7) === month)
+    // A month still in progress counts only up to today: rent not yet due is neither billed nor owed.
+    const cutoff = [`${month}-31`, todayKey].sort()[0];
+    const inMonth = (date: string) => date.slice(0, 7) === month && date <= cutoff;
+    const billed = cents(invoices.filter((invoice) => inMonth(invoice.dueDate)).reduce((sum, invoice) => sum + invoice.amount, 0));
+    const collected = cents(driver.paymentHistory.filter((payment) => inMonth(payment.date))
       .reduce((sum, payment) => sum + payment.amount + (payment.serviceClaim ?? 0), 0));
-    const billedToDate = invoices.filter((invoice) => new Date(invoice.dueDate + 'T00:00:00') <= end).reduce((sum, invoice) => sum + invoice.amount, 0);
-    const collectedToDate = driver.paymentHistory.filter((payment) => payment.date <= endKey)
+    const billedToDate = invoices.filter((invoice) => invoice.dueDate <= cutoff).reduce((sum, invoice) => sum + invoice.amount, 0);
+    const collectedToDate = driver.paymentHistory.filter((payment) => payment.date <= cutoff)
       .reduce((sum, payment) => sum + payment.amount + (payment.serviceClaim ?? 0), 0);
     return { month, billed, collected, balance: cents(billedToDate - collectedToDate), rate: billed ? collected / billed : null };
   });

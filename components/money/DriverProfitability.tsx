@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Driver } from '../../types';
-import { formatCurrency, kualaLumpurToday } from '../../utils';
+import { formatCurrency, kualaLumpurNow, kualaLumpurToday } from '../../utils';
 import { driverMonthlyLedger, type DriverMonth } from '../../services/driverLedger';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -30,7 +30,7 @@ export default function DriverProfitability({ drivers }: { drivers: Driver[] }) 
   const today = kualaLumpurToday();
   const months = useMemo(() => lastMonths(today, 6), [today]);
   const rows = useMemo<Row[]>(() => {
-    const now = new Date();
+    const now = kualaLumpurNow();
     return drivers
       .filter((driver) => showDelisted || !driver.isDelisted)
       .map((driver) => {
