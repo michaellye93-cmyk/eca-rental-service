@@ -62,6 +62,7 @@ import {
 } from "./FinanceRecordForms";
 import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from "./FinanceCustomizationForms";
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
+import { directCostBreakdown } from "../../services/finance/directCost";
 import CashPage from "../money/CashPage";
 import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
 import type { DriverWithMetrics } from "../../types";
@@ -894,24 +895,26 @@ function Overview({
           headers={[
             "Business",
             "Revenue",
+            "Monthly vehicle cost",
+            "Service & maintenance",
+            "Insurance",
+            "Other",
             "Direct cost",
             "Contribution",
             "Margin",
           ]}
         >
           {businesses.map(([business, value]) => {
-            const direct =
-              value.commission +
-              value.recurring +
-              value.service_claim +
-              value.workshop +
-              value.insurance +
-              value.direct_costs;
+            const direct = directCostBreakdown(value);
             return (
               <tr key={business}>
                 <td>{business}</td>
                 <td>{formatMoney(value.revenue)}</td>
-                <td className="finance-negative">{formatMoney(-direct)}</td>
+                <td>{formatMoney(-direct.monthly_vehicle)}</td>
+                <td>{formatMoney(-direct.service_maintenance)}</td>
+                <td>{formatMoney(-direct.insurance)}</td>
+                <td>{formatMoney(-direct.other)}</td>
+                <td className="finance-negative">{formatMoney(-direct.total)}</td>
                 <td className="finance-strong">
                   {formatMoney(value.contribution)}
                 </td>
