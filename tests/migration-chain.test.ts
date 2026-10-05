@@ -22,6 +22,7 @@ const CHAIN = [
   '20260929010000_reopen_cars_for_guardian.sql',
   '20260929090000_collections_support.sql',
   '20260929180000_fleet_close_cars.sql',
+  '20261006090000_finance_car_history_and_cash_flow.sql',
 ];
 
 test('the new files apply after the whole Finance chain, and the additive ones can safely run twice', async () => {
@@ -39,7 +40,7 @@ test('the new files apply after the whole Finance chain, and the additive ones c
     assert.equal((await db.query<{ open: boolean }>(`select has_table_privilege('anon', 'public.cars', 'SELECT') open`)).rows[0].open, false,
       'at the end of the chain signed-out visitors cannot read the car list');
     // Running the two additive files again (by mistake) changes nothing and does not fail.
-    for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql', '20260929090000_collections_support.sql']) await migrate(db, file);
+    for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql', '20260929090000_collections_support.sql', '20261006090000_finance_car_history_and_cash_flow.sql']) await migrate(db, file);
     await asUser(db);
     const outlook = (await db.query<{ value: any }>(`select public.finance_cash_outlook(current_date) value`)).rows[0].value;
     assert.deepEqual(Object.keys(outlook).sort(), ['balances', 'duplicate_recurring', 'history', 'insurance', 'months', 'today']);
