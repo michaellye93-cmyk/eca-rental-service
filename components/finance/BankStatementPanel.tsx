@@ -570,7 +570,7 @@ export default function BankStatementPanel({
         onOpen={setActive}
         onMarkCash={onMarkCash}
       />
-      {input && <ReconcileReport month={month} input={input} postedIds={postedPaymentIds} paymentLabel={paymentLabel} />}
+      {input && <ReconcileReport month={month} input={input} postedIds={postedPaymentIds} paymentLabel={paymentLabel} depositLabel={depositLabel} />}
       {reviewing && (
         <div className="mt-4 rounded border-2 border-amber-300 bg-amber-50 p-3">
           <h3 className="font-semibold">Review posted bank match</h3>
@@ -1085,7 +1085,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
 }
 
 /** The printable reconciliation report for the month's posted statements (shown only when printing). */
-function ReconcileReport({ month, input, postedIds, paymentLabel }: { month: string; input: FinanceInput; postedIds: Set<string>; paymentLabel: (id: string) => string }) {
+function ReconcileReport({ month, input, postedIds, paymentLabel, depositLabel }: { month: string; input: FinanceInput; postedIds: Set<string>; paymentLabel: (id: string) => string; depositLabel: (id: string) => string }) {
   const rows = input.bank_rows ?? [];
   const byDecision = (decision: BankReviewRow["decision"]) => rows.filter((row) => row.decision === decision);
   const amountOf = (list: BankReviewRow[]) => list.reduce((sum, row) => sum + row.credit + row.debit, 0);
@@ -1121,7 +1121,7 @@ function ReconcileReport({ month, input, postedIds, paymentLabel }: { month: str
         <thead><tr><th>Date</th><th>Bank description</th><th>Amount</th><th>Matched to</th></tr></thead>
         <tbody>
           {matched.filter((row) => row.credit > 0).map((row) => (
-            <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit)}</td><td>{rowPaymentIds(row).length || rowDepositIds(row).length ? [...rowPaymentIds(row).map(paymentLabel), ...rowDepositIds(row).map((id) => `Deposit ${id.slice(0, 8)}`)].join(" + ") : row.matched_kind}</td></tr>
+            <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit)}</td><td>{rowPaymentIds(row).length || rowDepositIds(row).length ? [...rowPaymentIds(row).map(paymentLabel), ...rowDepositIds(row).map(depositLabel)].join(" + ") : row.matched_kind}</td></tr>
           ))}
         </tbody>
       </table>

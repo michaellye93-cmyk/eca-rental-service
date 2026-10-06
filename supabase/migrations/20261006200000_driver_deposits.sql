@@ -12,7 +12,7 @@
 
 create table if not exists public.driver_deposits (
   id uuid primary key default gen_random_uuid(),
-  driver_id uuid not null references public.drivers(id),
+  driver_id uuid not null references public.drivers(id) on delete cascade,
   kind text not null check (kind in ('DEPOSIT', 'DOWNPAYMENT')),
   entry text not null check (entry in ('RECEIVED', 'REFUNDED', 'FORFEITED', 'CONTRA')),
   entry_date date not null,
