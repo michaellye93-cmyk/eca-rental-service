@@ -77,3 +77,77 @@ export function moneyInOnly(rows: BankReviewRow[]): { rows: BankReviewRow[]; ski
   const out = rows.filter((row) => !(row.credit > 0));
   return { rows: rows.filter((row) => row.credit > 0), skipped: { count: out.length, amount: Math.round(out.reduce((sum, row) => sum + row.debit, 0) * 100) / 100 } };
 }
+
+/** Lines dated in the reporting month ('YYYY-MM'); lines from another month (or with no date) are left out and counted. */
+export function withinMonth(rows: BankReviewRow[], month: string): { rows: BankReviewRow[]; outside: number } {
+  const kept = rows.filter((row) => row.transaction_date.slice(0, 7) === month.slice(0, 7));
+  return { rows: kept, outside: rows.length - kept.length };
+}
+
+/** Review problems in a few readable lines: repeated per-row problems are counted instead of listed one by one. */
+export function summarizeProblems(issues: Array<{ code: string; detail: string }>, monthLabel: string): string[] {
+  const count = (code: string) => issues.filter((issue) => issue.code === code).length;
+  const lines: string[] = [];
+  const outside = count('BANK_MONTH_MISMATCH');
+  if (outside) lines.push(`${outside} ${outside === 1 ? 'line is' : 'lines are'} dated outside ${monthLabel}`);
+  const pending = count('PENDING_BANK_REVIEW');
+  if (pending) lines.push(`${pending} ${pending === 1 ? 'line' : 'lines'} still to decide`);
+  const rest = issues.filter((issue) => issue.code !== 'BANK_MONTH_MISMATCH' && issue.code !== 'PENDING_BANK_REVIEW').map((issue) => issue.detail);
+  lines.push(...rest.slice(0, 3));
+  if (rest.length > 3) lines.push(`and ${rest.length - 3} more`);
+  return lines;
+}
+
+export type PairState = 'posted' | 'matched' | 'suggested' | 'guess' | 'missing';
+export interface ReconcilePair {
+  payment: EhailingPayment;
+  state: PairState;
+  /** The bank line on the right: statement index (null when already posted), the line and its account. */
+  bank?: { statement: number | null; row: BankReviewRow; account: string };
+  confidence?: PaymentSuggestion['confidence'];
+  /** For a guess: whether the sender's name looks like the driver, and how many other open lines share the amount. */
+  sameName?: boolean;
+  others?: number;
+}
+
+/**
+ * Every cash payment of the month beside the bank line that proves it: already posted, matched in a loaded statement,
+ * suggested by the matcher, only a same-amount guess (nearest date, with whether the name agrees), or missing.
+ */
+export function reconcilePairs(
+  payments: EhailingPayment[],
+  posted: Array<{ row: BankReviewRow; account: string }>,
+  statements: Array<{ rows: BankReviewRow[]; account: string }>,
+  suggestions: Array<Map<number, PaymentSuggestion>>,
+  looksLike: (description: string, driverName: string | null | undefined) => boolean = () => false,
+): ReconcilePair[] {
+  const postedBy = new Map(posted.filter(({ row }) => row.decision === 'MATCHED' && row.matched_kind === 'payment' && row.matched_id).map((entry) => [entry.row.matched_id as string, entry]));
+  const draftBy = new Map<string, { statement: number; row: BankReviewRow }>();
+  const suggestedBy = new Map<string, { statement: number; row: BankReviewRow; confidence: PaymentSuggestion['confidence'] }>();
+  statements.forEach((statement, index) => {
+    for (const row of statement.rows) {
+      if (row.decision === 'MATCHED' && row.matched_kind === 'payment' && row.matched_id) draftBy.set(row.matched_id, { statement: index, row });
+      const suggestion = row.decision === 'PENDING' ? suggestions[index]?.get(row.source_row) : undefined;
+      if (suggestion) suggestedBy.set(suggestion.paymentId, { statement: index, row, confidence: suggestion.confidence });
+    }
+  });
+  const rowsOf = statements.map((statement) => statement.rows);
+  return payments
+    .filter((payment) => payment.cash_amount > 0)
+    .sort((a, b) => a.payment_date.localeCompare(b.payment_date) || String(a.driver_name_snapshot ?? '').localeCompare(String(b.driver_name_snapshot ?? '')))
+    .map((payment): ReconcilePair => {
+      const id = payment.source_payment_id;
+      const done = postedBy.get(id);
+      if (done) return { payment, state: 'posted', bank: { statement: null, row: done.row, account: done.account } };
+      const draft = draftBy.get(id);
+      if (draft) return { payment, state: 'matched', bank: { ...draft, account: statements[draft.statement].account } };
+      const suggested = suggestedBy.get(id);
+      if (suggested) return { payment, state: 'suggested', confidence: suggested.confidence, bank: { statement: suggested.statement, row: suggested.row, account: statements[suggested.statement].account } };
+      // Open lines with the amount that no other payment's suggestion has claimed; a name that agrees comes first.
+      const lines = bankLinesForPayment(payment, rowsOf).filter((line) => !suggestions[line.statement]?.has(line.row.source_row));
+      if (!lines.length) return { payment, state: 'missing' };
+      const ranked = [...lines].sort((a, b) => Number(looksLike(b.row.description, payment.driver_name_snapshot)) - Number(looksLike(a.row.description, payment.driver_name_snapshot)));
+      const best = ranked[0];
+      return { payment, state: 'guess', bank: { statement: best.statement, row: best.row, account: statements[best.statement].account }, sameName: looksLike(best.row.description, payment.driver_name_snapshot), others: lines.length - 1 };
+    });
+}

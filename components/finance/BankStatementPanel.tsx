@@ -13,9 +13,9 @@ import {
   validateBankReview,
 } from "../../services/finance/bankStatements";
 import { postBankStatement, reviewBankMatch } from "../../services/finance/api";
-import { senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
+import { senderLooksLike, senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
 import { clearReconcileDraft, loadReconcileDraft, saveReconcileDraft } from "../../services/finance/reconcileDraft";
-import { applySureMatches, bankLinesForPayment, matchRow, moneyInOnly, paymentCheck, suggestAcrossStatements } from "../../services/finance/reconcileQueue";
+import { applySureMatches, matchRow, moneyInOnly, reconcilePairs, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
 
 const vehicleCategories = [
   "Road Tax",
@@ -53,6 +53,8 @@ type LoadedStatement = BankStatementPreview & {
   mapping: Record<string, string | undefined>;
   /** Money-out lines left out of the review (money in only). */
   skipped?: { count: number; amount: number };
+  /** Lines dated in another month, left out. */
+  outside?: number;
 };
 // The browser's storage, when it allows it (private windows and blocked site data do not).
 const browserStore = () => { try { return window.localStorage; } catch { return null; } };
@@ -80,6 +82,7 @@ export default function BankStatementPanel({
   const [active, setActive] = useState(0);
   // The rent check needs money in only, so money-out lines are skipped when a file is read (on by default).
   const [moneyIn, setMoneyIn] = useState(true);
+  const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   const preview = statements[active] ?? null;
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState<
@@ -129,7 +132,7 @@ export default function BankStatementPanel({
     setReviewing(null);
     const store = browserStore();
     const draft = store && input ? loadReconcileDraft(store, month, new Set((input.bank_imports ?? []).map((item) => item.source_hash))) : null;
-    setStatements(draft ? draft.statements.map((statement) => ({ ...statement, headers: [], mapping: {} })) : []);
+    setStatements(draft ? draft.statements.map((statement) => ({ ...statement, rows: withinMonth(statement.rows, month).rows, headers: [], mapping: {} })).filter((statement) => statement.rows.length) : []);
     setRestoredAt(draft ? draft.saved_at : null);
     setDraftMonth(input ? month : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +151,11 @@ export default function BankStatementPanel({
   };
   const readStatement = async (file: File, mapping: Record<string, string | undefined> = {}): Promise<LoadedStatement> => {
     const statement = await readWholeStatement(file, mapping);
-    return moneyIn ? { ...statement, ...moneyInOnly(statement.rows) } : statement;
+    // Only lines dated in the reporting month can be reconciled for it.
+    const inMonth = withinMonth(statement.rows, month);
+    if (!inMonth.rows.length && inMonth.outside) throw new Error(`${file.name} has no lines dated in ${monthLabel}. Check the Reporting month at the top of the page (or the date column).`);
+    const kept = { ...statement, rows: inMonth.rows, outside: inMonth.outside };
+    return moneyIn ? { ...kept, ...moneyInOnly(kept.rows) } : kept;
   };
   const readWholeStatement = async (file: File, mapping: Record<string, string | undefined> = {}): Promise<LoadedStatement> => {
     if (!input) throw new Error("Finance data is not loaded yet.");
@@ -224,7 +231,7 @@ export default function BankStatementPanel({
     setRows(active, (rows) => rows.map((row, i) => (i === index ? { ...row, ...values } : row)));
   const problemsOf = (statement: LoadedStatement) => {
     if (!input) return ["Finance data is not loaded yet."];
-    const issues = validateBankReview(statement.rows, month, input).map((issue) => issue.detail);
+    const issues = summarizeProblems(validateBankReview(statement.rows, month, input), monthLabel);
     if (!statement.account_label.trim()) issues.unshift("Account label is required.");
     // A payment may be matched to one bank credit only, across posted and loaded statements.
     const elsewhere = new Set([...postedPaymentIds, ...statements.filter((other) => other !== statement).flatMap((other) => matchedPaymentIds(other.rows))]);
@@ -275,8 +282,6 @@ export default function BankStatementPanel({
     setStatements((list) => list.filter((_, i) => i !== index));
     setActive(0);
   };
-  const matchFromQueue = (statement: number, sourceRow: number, paymentId: string) =>
-    setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? matchRow(row, paymentId, "Matched from the unsolved payments list") : row)));
   const saveReview = async () => {
     if (disabled || !reviewing || !input || input.month.status !== "DRAFT" || !reviewing.review_note.trim()) return;
     const current = generation.current;
@@ -381,8 +386,19 @@ export default function BankStatementPanel({
           </button>
         </details>
       )}
+      <SideBySide
+        input={input}
+        statements={statements}
+        suggestions={allSuggestions}
+        disabled={disabled || busy}
+        onMatch={(statement, sourceRow, paymentId, note) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? matchRow(row, paymentId, note) : row)))}
+        onUndo={(statement, sourceRow) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? { ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: "" } : row)))}
+        onOpen={setActive}
+      />
       {preview && (
         <>
+          <h3 className="mt-5 font-semibold">Bank lines: {preview.account_label || preview.filename}</h3>
+          <p className="text-sm text-slate-600">Every money-in line must be matched or marked Not rent before the statement can be posted.</p>
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <label>
               Account label
@@ -395,6 +411,7 @@ export default function BankStatementPanel({
               />
             </label>
             <span>Money in: <b>{money(preview.total_credits)}</b> · {preview.rows.filter((row) => row.credit > 0).length} lines</span>
+            {!!preview.outside && <span className="text-slate-500">{preview.outside} {preview.outside === 1 ? "line" : "lines"} from other months left out</span>}
             {preview.skipped && preview.skipped.count > 0
               ? <span className="text-slate-500">Money out skipped: {preview.skipped.count} {preview.skipped.count === 1 ? "line" : "lines"} ({money(preview.skipped.amount)})</span>
               : <span>Money out: <b>{money(preview.total_debits)}</b></span>}
@@ -525,15 +542,6 @@ export default function BankStatementPanel({
           </div>
         </details>
       ) : null}
-      <PaymentCheckPanel
-        input={input}
-        postedIds={postedPaymentIds}
-        draftIds={draftPaymentIds}
-        statements={statements}
-        disabled={disabled || busy}
-        onMatch={matchFromQueue}
-        onOpen={setActive}
-      />
       {input && <ReconcileReport month={month} input={input} postedIds={postedPaymentIds} paymentLabel={paymentLabel} />}
       {reviewing && (
         <div className="mt-4 rounded border-2 border-amber-300 bg-amber-50 p-3">
@@ -830,70 +838,105 @@ function ReviewRow({
  * it (posted, or in a loaded statement still to post). Unsolved payments are listed oldest first with any open bank
  * line of the same amount, so each can be matched in one click or looked up in the bank.
  */
-function PaymentCheckPanel({ input, postedIds, draftIds, statements, disabled, onMatch, onOpen }: {
+type PairFilter = "all" | "ticked" | "look" | "missing";
+/**
+ * The reconciliation itself: every cash payment recorded in the app on the left, the bank line that proves it on the
+ * right, and a tick when they are matched. Payments without a match show the matcher's suggestion or the nearest
+ * same-amount line (labelled when the name differs), or "Not found in bank".
+ */
+function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo, onOpen }: {
   input: FinanceInput | null;
-  postedIds: Set<string>;
-  draftIds: Set<string>;
   statements: Array<{ account_label: string; filename: string; rows: BankReviewRow[] }>;
+  suggestions: Array<Map<number, PaymentSuggestion>>;
   disabled: boolean;
-  onMatch: (statement: number, sourceRow: number, paymentId: string) => void;
+  onMatch: (statement: number, sourceRow: number, paymentId: string, note: string) => void;
+  onUndo: (statement: number, sourceRow: number) => void;
   onOpen: (statement: number) => void;
 }) {
-  const [view, setView] = useState<"unsolved" | "solved">("unsolved");
+  const [filter, setFilter] = useState<PairFilter>("all");
   const [cashDepositsOnly, setCashDepositsOnly] = useState(false);
   if (!input) return null;
-  const check = paymentCheck(input.ehailing, postedIds, draftIds);
+  const accountOf = new Map((input.bank_imports ?? []).map((item) => [item.id, item.account_label || item.filename]));
+  const posted = (input.bank_rows ?? []).filter((row) => row.match_valid !== false).map((row) => ({ row, account: accountOf.get(row.import_id) ?? "Posted statement" }));
+  const pairs = reconcilePairs(input.ehailing, posted, statements.map((s) => ({ rows: s.rows, account: s.account_label || s.filename })), suggestions, senderLooksLike);
   const isCashDeposit = (p: EhailingPayment) => String(p.payment_method ?? "").toUpperCase() === "CASH DEPOSIT";
-  const list = (view === "unsolved" ? check.unsolved : check.solved).filter((p) => !cashDepositsOnly || isCashDeposit(p));
-  const rowsOf = statements.map((statement) => statement.rows);
-  const percent = check.total ? Math.round((check.solved.length / check.total) * 100) : 0;
+  const groups: Record<PairFilter, (pair: (typeof pairs)[number]) => boolean> = {
+    all: () => true,
+    ticked: (pair) => pair.state === "posted" || pair.state === "matched",
+    look: (pair) => pair.state === "suggested" || pair.state === "guess",
+    missing: (pair) => pair.state === "missing",
+  };
+  const labels: Record<PairFilter, string> = { all: "All", ticked: "✓ Matched", look: "Needs a look", missing: "Not found in bank" };
+  const ticked = pairs.filter(groups.ticked);
+  const open = pairs.filter((pair) => !groups.ticked(pair));
+  const shown = pairs.filter((pair) => groups[filter](pair) && (!cashDepositsOnly || isCashDeposit(pair.payment)));
+  const percent = pairs.length ? Math.round((ticked.length / pairs.length) * 100) : 0;
+  const waiting = pairs.filter((pair) => pair.state === "matched").length;
   return (
     <section className="mt-4 rounded border p-3" aria-labelledby="payment-check-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="payment-check-heading" className="font-semibold">
-          Payment check: <span className="text-emerald-700">✓ {check.solved.length} solved</span>, <span className={check.unsolved.length ? "text-red-700" : "text-emerald-700"}>{check.unsolved.length} unsolved</span>{check.unsolved.length > 0 && ` (${money(check.unsolvedAmount)})`}
+          System vs bank: <span className="text-emerald-700">✓ {ticked.length} matched</span>, <span className={open.length ? "text-red-700" : "text-emerald-700"}>{open.length} not yet</span>
+          {open.length > 0 && ` (${money(open.reduce((sum, pair) => sum + pair.payment.cash_amount, 0))})`}
         </h3>
         <label className="text-sm">
           <input type="checkbox" checked={cashDepositsOnly} onChange={(e) => setCashDepositsOnly(e.target.checked)} className="mr-1" />
           Cash deposits only
         </label>
       </div>
-      <div className="reconcile-progress mt-2" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Payments solved">
+      <div className="reconcile-progress mt-2" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Payments matched">
         <span style={{ width: `${percent}%` }} />
       </div>
       <p className="mt-1 text-sm text-slate-600">
-        {check.total} cash payments recorded in the app this month. Solved means a bank credit is matched to it
-        {check.waitingToPost > 0 && <>; <b>{check.waitingToPost}</b> of the solved are in a statement still to post</>}.
+        {pairs.length} cash payments recorded in the app this month, each beside the bank line that proves it.
+        {waiting > 0 && <> <b>{waiting}</b> of the matches are in a statement still to post.</>}
       </p>
       <div className="reconcile-filters mt-2" role="tablist" aria-label="Show payments">
-        <button type="button" role="tab" aria-selected={view === "unsolved"} className={view === "unsolved" ? "is-active" : ""} onClick={() => setView("unsolved")}>Unsolved <span>{check.unsolved.length}</span></button>
-        <button type="button" role="tab" aria-selected={view === "solved"} className={view === "solved" ? "is-active" : ""} onClick={() => setView("solved")}>Solved <span>{check.solved.length}</span></button>
+        {(Object.keys(labels) as PairFilter[]).map((key) => (
+          <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? "is-active" : ""} onClick={() => setFilter(key)}>
+            {labels[key]} <span>{pairs.filter(groups[key]).length}</span>
+          </button>
+        ))}
       </div>
       <div className="reconcile-table-wrap">
-        <table className="reconcile-table">
-          <thead><tr><th>Date</th><th>Driver</th><th>Plate</th><th className="num">Amount</th><th>{view === "unsolved" ? "Bank line with this amount" : "Status"}</th></tr></thead>
+        <table className="reconcile-table reconcile-pairs">
+          <thead>
+            <tr className="reconcile-sides"><th colSpan={4}>In the system</th><th></th><th colSpan={4}>On the bank statement</th><th></th></tr>
+            <tr><th>Date</th><th>Driver</th><th>Plate</th><th className="num">Amount</th><th className="reconcile-mark" aria-label="Matched"></th><th>Date</th><th>From</th><th className="num">Amount</th><th>Bank</th><th aria-label="Action"></th></tr>
+          </thead>
           <tbody>
-            {list.length === 0 && <tr><td colSpan={5} className="reconcile-empty">{view === "unsolved" ? "Every payment is matched to the bank." : "No payment is matched yet."}</td></tr>}
-            {list.map((p) => {
-              const lines = view === "unsolved" && statements.length ? bankLinesForPayment(p, rowsOf).slice(0, 3) : [];
+            {shown.length === 0 && <tr><td colSpan={10} className="reconcile-empty">{filter === "missing" ? "Every payment has a bank line." : "Nothing here."}</td></tr>}
+            {shown.map((pair) => {
+              const p = pair.payment;
+              const bank = pair.bank;
+              const mark = pair.state === "posted" || pair.state === "matched" ? "✓" : pair.state === "missing" ? "✗" : "?";
               return (
-                <tr key={p.source_payment_id}>
+                <tr key={p.source_payment_id} className={`is-${pair.state}`}>
                   <td className="nowrap">{shortDate(p.payment_date)}</td>
                   <td><b>{p.driver_name_snapshot ?? "—"}</b>{isCashDeposit(p) && <span className="reconcile-tag">Cash deposit</span>}</td>
                   <td className="nowrap">{p.car_plate_snapshot ?? p.plate_key ?? "—"}</td>
                   <td className="num"><b>{money(p.cash_amount)}</b></td>
-                  <td>
-                    {view === "solved" ? <span className="reconcile-status is-matched">✓ {postedIds.has(p.source_payment_id) ? "Posted" : "To post"}</span>
-                      : !statements.length ? <span className="text-slate-500">Load the bank statements to see candidates</span>
-                      : !lines.length ? <span className="text-red-700">No bank line with this amount. Check the other account or the receipt.</span>
-                      : lines.map((line) => (
-                        <div className="reconcile-candidate" key={`${line.statement}-${line.row.source_row}`}>
-                          <button type="button" className="reconcile-candidate-open" onClick={() => onOpen(line.statement)} title={line.row.description}>
-                            {shortDate(line.row.transaction_date)} · {senderName(line.row.description) || line.row.description.slice(0, 40)} · {statements[line.statement].account_label || statements[line.statement].filename}
-                          </button>
-                          <button type="button" disabled={disabled} onClick={() => onMatch(line.statement, line.row.source_row, p.source_payment_id)}>Match</button>
-                        </div>
-                      ))}
+                  <td className={`reconcile-mark is-${pair.state}`} aria-label={pair.state}>{mark}</td>
+                  {bank ? (
+                    <>
+                      <td className="nowrap">{shortDate(bank.row.transaction_date)}</td>
+                      <td>
+                        <span title={bank.row.description}>{senderName(bank.row.description) || bank.row.description.slice(0, 40)}</span>
+                        {pair.state === "suggested" && pair.confidence && <div><span className={`reconcile-confidence is-${pair.confidence.toLowerCase()}`}>{pair.confidence === "WEAK" ? "Weak match: check the receipt" : pair.confidence === "STRONG" ? "Strong match" : "Certain match"}</span></div>}
+                        {pair.state === "guess" && <div className={pair.sameName ? "reconcile-hint" : "reconcile-hint is-warn"}>{pair.sameName ? "Same amount, name agrees" : "Same amount, different name"}{pair.others ? ` · ${pair.others} other ${pair.others === 1 ? "line" : "lines"} with this amount` : ""}</div>}
+                      </td>
+                      <td className="num">{money(bank.row.credit)}</td>
+                      <td className="nowrap">{bank.statement === null ? bank.account : <button type="button" className="reconcile-candidate-open" onClick={() => onOpen(bank.statement as number)}>{bank.account}</button>}</td>
+                    </>
+                  ) : (
+                    <td colSpan={4} className="text-red-700">{statements.length ? "Not found in bank. Check the other account, the receipt or next month's statement." : "Load the bank statements to check."}</td>
+                  )}
+                  <td className="reconcile-actions">
+                    {pair.state === "posted" && <span className="text-slate-500">Posted</span>}
+                    {pair.state === "matched" && bank && bank.statement !== null && <button type="button" disabled={disabled} onClick={() => onUndo(bank.statement as number, bank.row.source_row)}>Undo</button>}
+                    {(pair.state === "suggested" || pair.state === "guess") && bank && bank.statement !== null && (
+                      <button type="button" className={pair.state === "suggested" || pair.sameName ? "is-primary" : ""} disabled={disabled} onClick={() => onMatch(bank.statement as number, bank.row.source_row, p.source_payment_id, pair.state === "suggested" ? "Suggested match confirmed" : "Matched by hand: same amount")}>Match</button>
+                    )}
                   </td>
                 </tr>
               );

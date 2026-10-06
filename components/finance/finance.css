@@ -1224,3 +1224,41 @@
   padding: 1px 8px;
   background: #fff;
 }
+/* System vs bank, side by side. */
+.reconcile-pairs .reconcile-sides th {
+  position: static;
+  background: #fff;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.reconcile-pairs .reconcile-mark {
+  width: 36px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+}
+.reconcile-mark.is-posted,
+.reconcile-mark.is-matched {
+  color: #167c70;
+  background: #e7f4f0;
+}
+.reconcile-mark.is-suggested,
+.reconcile-mark.is-guess {
+  color: #b45309;
+  background: #fff6ec;
+}
+.reconcile-mark.is-missing {
+  color: #b91c1c;
+  background: #fdecec;
+}
+.reconcile-hint {
+  font-size: 11px;
+  color: #64748b;
+}
+.reconcile-hint.is-warn {
+  color: #b45309;
+}

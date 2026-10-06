@@ -92,6 +92,11 @@ function bigramSimilarity(a: string, b: string): number {
 }
 
 /** Same rules as Bank Recon: token overlap of 55%+, bigram similarity of 60%+, or one name contained in the other. */
+/** Whether a bank line's sender looks like the driver (same test the matcher uses), for labelling same-amount guesses. */
+export function senderLooksLike(description: string, driverName: string | null | undefined): boolean {
+  return !!driverName && nameMatch(driverName, senderName(description)).isMatch;
+}
+
 function nameMatch(driverName: string, sender: string) {
   const honorifics = /\b(BIN|BINTI|BTE|BT|B\.|B|A\/L|A\/P|MR|MRS|MS|KOP)\b/g;
   const driverClean = String(driverName || '').toUpperCase().replace(honorifics, '');
