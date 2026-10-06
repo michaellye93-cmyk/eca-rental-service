@@ -1,4 +1,5 @@
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import { newWorkbook } from './excel.ts';
 import { normalizePlate } from './calculations.ts';
 import { parseInsuranceSheet, insuranceAliases, type InsuranceSummary } from './insuranceImport.ts';
 import { corporateAliases } from './corporateImport.ts';
@@ -44,7 +45,7 @@ const canonicalMonth = (value: string) => /^\d{4}-\d{2}/.test(value) ? `${value.
 const canonicalMonthValue = (value: unknown) => canonicalMonth(date(value) ?? String(value ?? ''));
 function issue(code: string, detail: string, severity: 'error' | 'warning' = 'error', plate_key: string | null = null, source_id: string | null = null): QualityIssue { return { code, severity, detail, plate_key, source_id }; }
 
-async function load(buffer: ArrayBuffer): Promise<ExcelJS.Workbook> { const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(buffer); return workbook; }
+async function load(buffer: ArrayBuffer): Promise<ExcelJS.Workbook> { const workbook = await newWorkbook(); await workbook.xlsx.load(buffer); return workbook; }
 function sheetRows(sheet: ExcelJS.Worksheet): WorkbookSheet {
   let headerRow = 1; let bestScore = -1;
   for (let candidate = 1; candidate <= Math.min(sheet.rowCount, 20); candidate++) {

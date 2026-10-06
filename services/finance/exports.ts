@@ -1,4 +1,5 @@
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import { newWorkbook } from './excel.ts';
 
 export type FinanceEditableExportKind =
   | 'vehicle_master'
@@ -285,7 +286,7 @@ export async function exportFinanceEditableWorkbook(
   rows: readonly Record<string, unknown>[],
 ): Promise<ArrayBuffer> {
   const definition = definitions[kind];
-  const workbook = new ExcelJS.Workbook();
+  const workbook = await newWorkbook();
   workbook.creator = 'ECA Finance';
   workbook.created = new Date();
   const worksheet = workbook.addWorksheet(definition.sheetName);
