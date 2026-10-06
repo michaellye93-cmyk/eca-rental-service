@@ -95,7 +95,7 @@ function Evidence({ evidence: r }: { evidence: TerminationEvidence }) {
   </div>;
 }
 
-const DriverCard: React.FC<{ evidence: TerminationEvidence }> = ({ evidence }) => {
+const DriverCard: React.FC<{ evidence: TerminationEvidence; deposit?: { held: number; kind: string } }> = ({ evidence, deposit }) => {
   const [expanded, setExpanded] = useState(false);
   const r = evidence, monthly = r.driver.rentalCycle === 'MONTHLY';
   const evidenceId = `termination-evidence-${r.driver.id}`;
@@ -107,6 +107,7 @@ const DriverCard: React.FC<{ evidence: TerminationEvidence }> = ({ evidence }) =
         <Metric label="Latest 8 Weeks"><span className="block">{formatCurrency(r.cashReceived)} Paid</span><span className="text-gray-500 font-normal">/ {formatCurrency(r.rentalDue)} Due</span></Metric>
         <Metric label={monthly ? 'Underpaid Billing Cycles' : 'Payment Failure'}>{monthly ? `${r.underpaidCycles} of ${r.billingCycles.length} cycles` : `${r.failureWeeks} of ${r.rentalWeeks} weeks`}<span className="block text-xs text-gray-500 font-normal">{monthly ? 'Monthly contract' : `${r.zeroWeeks} zero · ${r.partialWeeks} partial`}</span></Metric>
         <Metric label="Outstanding Movement"><span className="tabular-nums">{movementLabel(r.outstandingMovement)}</span><span className="block text-xs text-gray-500 font-normal">vs 8 weeks ago</span></Metric>
+        {deposit && deposit.held > 0 && <Metric label={`${deposit.kind} held`}><span className="tabular-nums">{formatCurrency(deposit.held)}</span><span className="block text-xs text-gray-500 font-normal">Outstanding after {deposit.kind.toLowerCase()}: {formatCurrency(Math.max(0, r.currentOutstanding - deposit.held))}</span></Metric>}
       </dl>
       <button type="button" className="termination-no-print mt-4 flex items-center gap-2 text-sm font-semibold text-gray-800 rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" aria-expanded={expanded} aria-controls={evidenceId} onClick={() => setExpanded(value => !value)}>
         {expanded ? 'Hide Evidence' : 'View Evidence'}<ChevronDown aria-hidden="true" className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -121,19 +122,19 @@ const DriverCard: React.FC<{ evidence: TerminationEvidence }> = ({ evidence }) =
   </article>;
 };
 
-export function TerminationReportContent({ drivers, reportDate }: { drivers: Driver[]; reportDate: string }) {
+export function TerminationReportContent({ drivers, reportDate, deposits }: { drivers: Driver[]; reportDate: string; deposits?: Map<string, { held: number; kind: string }> }) {
   const report = useMemo(() => buildTerminationReport(drivers, reportDate), [drivers, reportDate]);
   const exceptions = report.analyses.filter(r => r.exclusion === 'DATA_EXCEPTION').length;
   return <>
     <dl className="flex flex-wrap gap-x-8 gap-y-3 py-4"><Metric label="Report Date">{formatDate(reportDate)}</Metric><Metric label="Observation Period">{formatDate(report.windowStart)} – {formatDate(reportDate)}</Metric><Metric label="Drivers Recommended"><span className="text-lg font-bold">{report.recommendations.length}</span></Metric></dl>
     {exceptions > 0 && <p className="mb-4 text-xs text-gray-500" role="note">{exceptions} active {exceptions === 1 ? 'account has' : 'accounts have'} a contract or ledger exception and cannot be recommended automatically. No recommendation has been inferred from incomplete evidence.</p>}
-    <div className="space-y-4">{report.recommendations.length ? report.recommendations.map(r => <DriverCard key={r.driver.id} evidence={r} />)
+    <div className="space-y-4">{report.recommendations.length ? report.recommendations.map(r => <DriverCard key={r.driver.id} evidence={r} deposit={deposits?.get(r.driver.id)} />)
       : <p className="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600">No driver currently demonstrates sufficiently strong payment non-performance for termination recommendation based on the latest 8-week observation period.</p>}</div>
   </>;
 }
 
 export default function TerminationReport() {
-  const [snapshot, setSnapshot] = useState<{ drivers: Driver[]; reportDate: string; loadedAt: string } | null>(null);
+  const [snapshot, setSnapshot] = useState<{ drivers: Driver[]; reportDate: string; loadedAt: string; deposits?: Map<string, { held: number; kind: string }> } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -156,7 +157,19 @@ export default function TerminationReport() {
       });
       if (request.current !== controller) return;
       if (controller.signal.aborted) throw new Error('Report read timed out');
-      setSnapshot({ drivers, reportDate: getReportDate(), loadedAt: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date()) });
+      // Deposit or downpayment still held per driver (received less refunded, forfeited and used for rent). The report
+      // still loads when the deposits table is not available.
+      let deposits: Map<string, { held: number; kind: string }> | undefined;
+      try {
+        const { data } = await supabase.from('driver_deposits').select('driver_id,kind,entry,amount').in('driver_id', drivers.map((d) => d.id)).abortSignal(controller.signal);
+        deposits = new Map();
+        for (const row of (data ?? []) as Array<{ driver_id: string; kind: string; entry: string; amount: number }>) {
+          const current = deposits.get(row.driver_id) ?? { held: 0, kind: row.kind === 'DOWNPAYMENT' ? 'Downpayment' : 'Deposit' };
+          current.held = Math.round((current.held + (row.entry === 'RECEIVED' ? 1 : -1) * Number(row.amount)) * 100) / 100;
+          deposits.set(row.driver_id, current);
+        }
+      } catch { deposits = undefined; }
+      setSnapshot({ drivers, deposits, reportDate: getReportDate(), loadedAt: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date()) });
     } catch {
       if (request.current === controller) setError(true);
     } finally {
@@ -179,7 +192,7 @@ export default function TerminationReport() {
     </div>
     {loading ? <p className="py-6 text-sm text-gray-500" role="status">Reading the complete active-driver payment ledger…</p>
       : error || !snapshot ? <p className="my-4 p-4 rounded-lg border border-rose-200 bg-rose-50 text-sm text-rose-800" role="alert">The report could not be refreshed. Recommendations are hidden until the complete ledger loads. Please try Refresh Report again.</p>
-      : <><TerminationReportContent drivers={snapshot.drivers} reportDate={snapshot.reportDate} /><p className="mt-3 text-[11px] text-gray-500">Live records read at {snapshot.loadedAt} MYT. Figures include entries recorded for the report date; today is still in progress. Refresh to include new receipts.</p></>}
+      : <><TerminationReportContent drivers={snapshot.drivers} reportDate={snapshot.reportDate} deposits={snapshot.deposits} /><p className="mt-3 text-[11px] text-gray-500">Live records read at {snapshot.loadedAt} MYT. Figures include entries recorded for the report date; today is still in progress. Refresh to include new receipts.</p></>}
     <details className="termination-no-print mt-4 text-xs text-gray-500"><summary className="cursor-pointer font-medium w-fit">How recommendations are selected</summary><p className="mt-2 max-w-4xl leading-5">The report requires repeated failures in completed weekly periods (or at least two underpaid monthly cycles with sufficient elapsed time), low cash coverage and materially increasing or persistent arrears, corroborated by payment gaps, invoice age or late cash. High outstanding alone never qualifies. Coverage near 100% and sustained recent recovery are excluded, as are insufficient history and unresolved contract/ledger exceptions. New weekly accounts need at least four completed rental periods. The open period cannot establish repetition on its own. Order follows failure frequency, cash shortfall, balance increase, payment gap and arrears age/size; no numerical score is used.</p></details>
   </section>;
 }
