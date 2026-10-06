@@ -1092,7 +1092,10 @@ function ReconcileReport({ month, input, postedIds, paymentLabel, depositLabel }
   const matched = byDecision("MATCHED");
   const expenses = byDecision("EXPENSE");
   const excluded = byDecision("EXCLUDED");
-  const unsolved = unsolvedPayments(input.ehailing, postedIds);
+  // Cash in hand and deposit forfeits expect no bank line, so they are listed apart from the unsolved payments.
+  const open = unsolvedPayments(input.ehailing, postedIds);
+  const cashInHand = open.filter(isCashInHand);
+  const unsolved = open.filter((p) => !isCashInHand(p));
   const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   return (
     <div className="reconcile-report" aria-hidden="true">
@@ -1113,6 +1116,7 @@ function ReconcileReport({ month, input, postedIds, paymentLabel, depositLabel }
           <tr><td>Matched to Finance records</td><td className="num">{matched.length}</td><td className="num">{money(amountOf(matched))}</td></tr>
           <tr><td>Posted as expenses</td><td className="num">{expenses.length}</td><td className="num">{money(amountOf(expenses))}</td></tr>
           <tr><td>Excluded, with reasons</td><td className="num">{excluded.length}</td><td className="num">{money(amountOf(excluded))}</td></tr>
+          <tr><td>Cash in hand or deposit forfeit (no bank line expected)</td><td className="num">{cashInHand.length}</td><td className="num">{money(cashInHand.reduce((sum, p) => sum + p.cash_amount, 0))}</td></tr>
           <tr><td>System unsolved (recorded, not matched to the bank)</td><td className="num">{unsolved.length}</td><td className="num">{money(unsolved.reduce((sum, p) => sum + p.cash_amount, 0))}</td></tr>
         </tbody>
       </table>
@@ -1131,6 +1135,15 @@ function ReconcileReport({ month, input, postedIds, paymentLabel, depositLabel }
         <tbody>
           {excluded.map((row) => (
             <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit || row.debit)}</td><td>{row.review_note}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <h3>Cash in hand or deposit forfeit</h3>
+      <table>
+        <thead><tr><th>Date</th><th>Driver</th><th>Plate</th><th>Method</th><th>Cash</th></tr></thead>
+        <tbody>
+          {cashInHand.map((p) => (
+            <tr key={p.source_payment_id}><td>{p.payment_date}</td><td>{p.driver_name_snapshot ?? "—"}</td><td>{p.car_plate_snapshot ?? p.plate_key ?? "—"}</td><td>{p.payment_method === "DEPOSIT CONTRA" ? "DEPOSIT FORFEIT" : p.payment_method}</td><td className="num">{money(p.cash_amount)}</td></tr>
           ))}
         </tbody>
       </table>
