@@ -388,16 +388,6 @@ export default function BankStatementPanel({
           </button>
         </details>
       )}
-      <SideBySide
-        input={input}
-        statements={statements}
-        suggestions={allSuggestions}
-        disabled={disabled || busy}
-        onMatch={(statement, sourceRow, paymentId, note) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? matchRow(row, paymentId, note) : row)))}
-        onUndo={(statement, sourceRow) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? { ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: "" } : row)))}
-        onOpen={setActive}
-        onMarkCash={onMarkCash}
-      />
       {preview && (
         <>
           <h3 className="mt-5 font-semibold">Bank lines: {preview.account_label || preview.filename}</h3>
@@ -547,6 +537,16 @@ export default function BankStatementPanel({
           </div>
         </details>
       ) : null}
+      <SideBySide
+        input={input}
+        statements={statements}
+        suggestions={allSuggestions}
+        disabled={disabled || busy}
+        onMatch={(statement, sourceRow, paymentId, note) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? matchRow(row, paymentId, note) : row)))}
+        onUndo={(statement, sourceRow) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? { ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: "" } : row)))}
+        onOpen={setActive}
+        onMarkCash={onMarkCash}
+      />
       {input && <ReconcileReport month={month} input={input} postedIds={postedPaymentIds} paymentLabel={paymentLabel} />}
       {reviewing && (
         <div className="mt-4 rounded border-2 border-amber-300 bg-amber-50 p-3">
