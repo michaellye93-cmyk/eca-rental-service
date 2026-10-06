@@ -78,16 +78,19 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
           </div>
         </div>
 
-        {/* Late-payment penalty, for every driver while rent is owed */}
+        {/* Late-payment penalty, for every driver while rent is owed: the total so far, what today adds, and the rate */}
         {penalty && (
-          <section aria-labelledby="penalty-title" className={`bg-white p-4 rounded-xl shadow-sm border border-red-300 flex items-start gap-3 ${enter(2).className}`} style={enter(2).style}>
-            <TrendingUp className="w-5 h-5 text-red-700 mt-0.5 shrink-0" aria-hidden="true" />
-            <div>
-              <h2 id="penalty-title" className="text-gray-600 text-xs uppercase font-semibold">Total accrued penalty</h2>
-              <p className="text-xl font-bold text-red-700">{formatCurrency(penalty.total)}</p>
-              <p className="text-sm text-gray-800 mt-0.5"><strong className="text-red-700">+{formatCurrency(penalty.addedToday)}</strong> added today</p>
-              <p className="text-xs text-gray-600 mt-0.5">Interest compounding daily at 18% p.a.</p>
+          <section aria-labelledby="penalty-title" className={`bg-rose-50 p-4 rounded-xl shadow-sm border border-rose-200 ${enter(2).className}`} style={enter(2).style}>
+            <div className="flex items-center justify-between gap-3">
+              <h2 id="penalty-title" className="text-sm font-bold text-rose-900 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-rose-700" aria-hidden="true" /> Late penalty so far
+              </h2>
+              <span className="text-xs font-semibold text-rose-800 bg-white border border-rose-200 rounded-full px-2 py-0.5 whitespace-nowrap">
+                +{formatCurrency(penalty.addedToday)} today
+              </span>
             </div>
+            <p className="text-2xl font-bold text-rose-800 mt-1">{formatCurrency(penalty.total)}</p>
+            <p className="text-xs text-rose-900/80 mt-1">18% a year on unpaid rent, added daily. Paying sooner stops it growing.</p>
           </section>
         )}
 
