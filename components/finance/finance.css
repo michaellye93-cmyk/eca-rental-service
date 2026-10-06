@@ -1032,3 +1032,60 @@
   background: #fff6ec;
   color: #b45309;
 }
+/* Loaded bank statements (one per account) and the payment check. */
+.reconcile-statements {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.reconcile-statement {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  overflow: hidden;
+}
+.reconcile-statement button {
+  padding: 6px 10px;
+  background: transparent;
+}
+.reconcile-statement button + button {
+  border-left: 1px solid #cbd5e1;
+  color: #64748b;
+}
+.reconcile-statement.is-active {
+  border-color: #167c70;
+  background: #e7f4f0;
+}
+.reconcile-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: #fde2e2;
+  overflow: hidden;
+}
+.reconcile-progress span {
+  display: block;
+  height: 100%;
+  background: #167c70;
+}
+.reconcile-candidate {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.reconcile-candidate-open {
+  text-align: left;
+  color: #334155;
+  text-decoration: underline dotted;
+}
+.reconcile-candidate button:last-child {
+  flex: none;
+  border: 1px solid #167c70;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: #167c70;
+  font-weight: 600;
+}
