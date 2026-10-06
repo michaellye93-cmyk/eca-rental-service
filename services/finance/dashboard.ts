@@ -74,3 +74,28 @@ export function marginTarget(report: FinanceReport, target = 0.2): MarginTarget 
     },
   };
 }
+
+/** Finance is kept from August 2026; the trend shows at most the last 12 months up to the chosen one, oldest first. */
+export const FINANCE_START = '2026-08';
+export function trendMonths(month: string, start = FINANCE_START): string[] {
+  const months: string[] = [];
+  let [year, number] = month.slice(0, 7).split('-').map(Number);
+  while (months.length < 12) {
+    const key = `${year}-${String(number).padStart(2, '0')}`;
+    if (key < start) break;
+    months.unshift(key);
+    number -= 1;
+    if (number === 0) { number = 12; year -= 1; }
+  }
+  return months;
+}
+
+export interface TrendRow { month: string; status: string; revenue: number; contribution: number; profit: number; margin: number | null }
+export const trendRow = (month: string, status: string, report: FinanceReport): TrendRow => ({
+  month,
+  status,
+  revenue: report.totals.revenue,
+  contribution: report.totals.contribution,
+  profit: report.management_profit,
+  margin: report.totals.revenue ? report.management_profit / report.totals.revenue : null,
+});

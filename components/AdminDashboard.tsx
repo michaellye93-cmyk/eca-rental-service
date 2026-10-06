@@ -134,7 +134,7 @@ const sectionFromStored = (stored: string | null): Section | null =>
 const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'DRIVERS', label: 'Drivers', Icon: Users },
   { id: 'FLEET', label: 'Fleet', Icon: CarFront },
-  { id: 'MONEY', label: 'Money', Icon: DollarSign },
+  { id: 'MONEY', label: 'Finance', Icon: DollarSign },
 ];
 
 /** The fleet overview's risk tiles; each one filters the driver list. */
@@ -1413,7 +1413,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[500px] print:shadow-none print:border-none print:bg-transparent">
             <ScreenLoadBoundary>
-              <React.Suspense fallback={<div className="p-6">Loading Money…</div>}>
+              <React.Suspense fallback={<div className="p-6">Loading Finance…</div>}>
                 <FinanceView
                   page={moneyPage}
                   onPageChange={setMoneyPage}

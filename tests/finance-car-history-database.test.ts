@@ -25,6 +25,7 @@ const CHAIN = [
   '20260929180000_fleet_close_cars.sql',
 ];
 const RELEASE = '20261006090000_finance_car_history_and_cash_flow.sql';
+const BANK_REQUIRED = '20261006120000_finance_bank_reconciliation_required.sql';
 const DRIVER_A = '10000000-0000-4000-8000-00000000000a';
 const OLD_PAYMENT = '20000000-0000-4000-8000-000000000001';
 const NEW_PAYMENT = '20000000-0000-4000-8000-000000000002';
@@ -48,9 +49,14 @@ async function setup() {
     insert into finance_private.vehicles(plate_key,display_plate,business_unit,ownership_type,status) values
       ('XAA1001','XAA1001','E-HAILING','Car Owner','Active'),('XAA2002','XAA2002','E-HAILING','Car Owner','Active');`);
   await migrate(db, RELEASE);
+  await migrate(db, BANK_REQUIRED);
   return db;
 }
 const rows = async <T,>(db: PGlite, sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows;
+const BANK_ROW = { source_row: 1, transaction_date: '2026-08-05', description: 'Transfer between company accounts', reference: 'T001', debit: 0, credit: 500,
+  decision: 'EXCLUDED', payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: 'Own transfer' };
+const postBankStatement = (db: PGlite, revision: number) => db.query(`select public.finance_post_bank_statement($1,'statement.csv','Operating',$2::jsonb,$3,$4)`,
+  [august, JSON.stringify([BANK_ROW]), revision, 'a'.repeat(64)]);
 const asSqlEditor = (db: PGlite) => db.exec(`reset role; select set_config('request.jwt.claims','',false)`);
 
 test('existing payments take their driver’s current car, without adding entries to the payment change log', async () => {
@@ -166,7 +172,25 @@ test('after a driver changes car and the month is refreshed, the month can still
     data = await call('finance_refresh_payments', [august]);
     await call('finance_post_smart_drive', [august, 'empty-report.xlsx', '[]', false, data.month.revision, null]);
     data = await call('finance_read_month', [august]);
+    await postBankStatement(db, data.month.revision);
+    data = await call('finance_read_month', [august]);
     // The payment stays on its old car; the ledger check must accept that, so the next blocker is the section reviews.
+    await assert.rejects(call('finance_transition_month', [august, 'READY', data.month.revision, '']), /Review every Finance section/);
+  } finally { await db.close(); }
+});
+
+test('a month cannot go to review or close until a bank statement for it is reconciled', async () => {
+  const db = await setup();
+  try {
+    await asUser(db);
+    const call = async (name: string, args: unknown[]) =>
+      (await rows<{ value: any }>(db, `select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) value`, args))[0].value;
+    let data = await call('finance_refresh_payments', [august]);
+    await call('finance_post_smart_drive', [august, 'empty-report.xlsx', '[]', false, data.month.revision, null]);
+    data = await call('finance_read_month', [august]);
+    await assert.rejects(call('finance_transition_month', [august, 'READY', data.month.revision, '']), /bank statement/i);
+    await postBankStatement(db, data.month.revision);
+    data = await call('finance_read_month', [august]);
     await assert.rejects(call('finance_transition_month', [august, 'READY', data.month.revision, '']), /Review every Finance section/);
   } finally { await db.close(); }
 });

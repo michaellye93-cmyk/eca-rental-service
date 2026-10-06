@@ -50,3 +50,30 @@ export function monthCollection(drivers: Driver[], month: string, today: Date): 
   }
   return { billed: cents(billed), collected: cents(collected), rate: billed ? collected / billed : null };
 }
+
+export interface AgeingBucket { label: string; amount: number; drivers: number }
+
+/**
+ * Unpaid rent grouped by how many days it is past its due date (rent due today is not yet overdue), across the given
+ * drivers. Payments settle the oldest rent first, as everywhere else, so what is left unpaid is the newest rent.
+ */
+export function arrearsAgeing(drivers: Driver[], today: Date): AgeingBucket[] {
+  const buckets: Array<AgeingBucket & { max: number; ids: Set<string> }> = [
+    { label: '0–30 days', max: 30, amount: 0, drivers: 0, ids: new Set() },
+    { label: '31–60 days', max: 60, amount: 0, drivers: 0, ids: new Set() },
+    { label: '61–90 days', max: 90, amount: 0, drivers: 0, ids: new Set() },
+    { label: 'Over 90 days', max: Infinity, amount: 0, drivers: 0, ids: new Set() },
+  ];
+  const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  for (const driver of drivers) {
+    for (const invoice of generateDriverInvoices(driver, today)) {
+      const due = new Date(invoice.dueDate + 'T00:00:00');
+      if (due >= dayStart || invoice.remainingBalance <= 0.005) continue;
+      const days = Math.round((dayStart.getTime() - due.getTime()) / 86_400_000);
+      const bucket = buckets.find((candidate) => days <= candidate.max)!;
+      bucket.amount += invoice.remainingBalance;
+      bucket.ids.add(driver.id);
+    }
+  }
+  return buckets.map(({ label, amount, ids }) => ({ label, amount: cents(amount), drivers: ids.size }));
+}

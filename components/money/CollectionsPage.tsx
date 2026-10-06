@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import type { DriverWithMetrics } from '../../types';
 import { formatCurrency, kualaLumpurNow, kualaLumpurToday, overdueRent } from '../../utils';
 import { balanceTrend } from '../../services/collections';
-import { driverMonthlyLedger, monthCollection, type DriverMonth } from '../../services/driverLedger';
+import { arrearsAgeing, driverMonthlyLedger, monthCollection, type DriverMonth } from '../../services/driverLedger';
 import SegmentTrend from './SegmentTrend';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -46,7 +46,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
   const today = kualaLumpurToday();
   const months = useMemo(() => lastMonths(today, 6), [today]);
 
-  const { rows, strip, arrears } = useMemo(() => {
+  const { rows, strip, arrears, ageing } = useMemo(() => {
     const now = kualaLumpurNow();
     const all: Row[] = drivers.map((driver) => {
       const trend = balanceTrend(driver, now);
@@ -58,6 +58,8 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
     const active = all.filter((row) => !row.driver.isDelisted);
     const thisMonth = monthCollection(drivers, months[months.length - 1], now);
     return {
+      // Active drivers only, so the total matches "Overdue rent" above.
+      ageing: arrearsAgeing(active.map((row) => row.driver), now),
       rows: all,
       strip: {
         billed: thisMonth.billed,
@@ -109,6 +111,31 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
             <strong>{strip.notImproving}</strong>
             <small>Owe rent and the balance is not falling</small>
           </div>
+        </div>
+      </section>
+
+      <section className="finance-panel" aria-labelledby="collections-ageing-heading">
+        <div className="finance-section-heading">
+          <div>
+            <h3 id="collections-ageing-heading">Overdue rent by age</h3>
+            <p>Active drivers' unpaid rent, by days past its due date. Payments clear the oldest rent first, so older buckets mean long-running arrears.</p>
+          </div>
+        </div>
+        <div className="finance-table-wrap">
+          <table className="finance-table">
+            <thead><tr><th scope="col">Days overdue</th><th scope="col">Amount</th><th scope="col">Share</th><th scope="col">Drivers</th></tr></thead>
+            <tbody>
+              {ageing.map((bucket) => (
+                <tr key={bucket.label}>
+                  <td className="finance-strong">{bucket.label}</td>
+                  <td className={bucket.amount > 0 ? 'finance-negative' : ''}>{money(bucket.amount)}</td>
+                  <td>{percent(strip.overdue ? bucket.amount / strip.overdue : null)}</td>
+                  <td>{bucket.drivers}</td>
+                </tr>
+              ))}
+              <tr><td className="finance-strong">Total</td><td className="finance-strong">{money(strip.overdue)}</td><td></td><td></td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

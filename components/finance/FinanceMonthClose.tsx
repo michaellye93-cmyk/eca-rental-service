@@ -94,6 +94,7 @@ type Props = {
   onShowAudit: () => void;
   onShowIssues: () => void;
   onOverview: () => void;
+  onReconcile?: () => void;
   onExpenses: (source: FinanceExpense["payment_source"] | "other_income") => void;
   onViewImport: () => void;
   onReviewSelected?: () => void;
@@ -140,10 +141,13 @@ export default function FinanceMonthClose(p: Props) {
   const noBlockingIssues = !p.report?.issues.some(
     (issue) => issue.severity === "error",
   );
+  // Reconcile is a required step: every line of a posted bank statement is already matched, posted or excluded.
+  const bankReconciled = (input.bank_imports ?? []).length > 0;
   const prepared = Boolean(
     input.month.refreshed_at &&
     input.smart_import &&
     allReviewed &&
+    bankReconciled &&
     noBlockingIssues,
   );
   const activeCosts = input.recurring_costs.some(
@@ -167,6 +171,7 @@ export default function FinanceMonthClose(p: Props) {
     ...optional.map(
       (s) => [isReviewed(s.key), `${s.title} reviewed`] as [boolean, string],
     ),
+    [bankReconciled, "Bank statement reconciled (Reconcile tab)"],
     [noBlockingIssues, "Blocking data exceptions cleared"],
   ];
   return (
@@ -438,8 +443,13 @@ export default function FinanceMonthClose(p: Props) {
           </p>
         )}
         <div className="finance-dialog-actions">
+          {!bankReconciled && p.onReconcile && (
+            <button className="finance-secondary" onClick={p.onReconcile}>
+              Reconcile the bank statement
+            </button>
+          )}
           <button className="finance-secondary" onClick={p.onOverview}>
-            Review P&amp;L
+            Review the Overview
           </button>
           {input.month.status === "READY FOR REVIEW" && (
             <>

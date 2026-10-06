@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import type { FinanceInput } from '../types/finance.ts';
 import { calculateFinance } from '../services/finance/calculations.ts';
-import { marginTarget, monthCashFlow } from '../services/finance/dashboard.ts';
-import { driverMonthlyLedger, monthCollection } from '../services/driverLedger.ts';
+import { marginTarget, monthCashFlow, trendMonths, trendRow } from '../services/finance/dashboard.ts';
+import { arrearsAgeing, driverMonthlyLedger, monthCollection } from '../services/driverLedger.ts';
 
 const month = { finance_month: '2026-08', status: 'DRAFT' as const, revision: 1, refreshed_at: '2026-09-01', frozen_at: null,
   source_count: 1, total_cash: 900, total_claim: 100, earliest_date: '2026-08-03', latest_date: '2026-08-03' };
@@ -89,4 +89,31 @@ test('in the current month only rent already due counts as billed or owed', () =
   // 10 Sept: only the 7 Sept rent of September is due; the 28 Sept payment has not happened yet.
   const [september] = driverMonthlyLedger(DRIVER, ['2026-09'], new Date('2026-09-10T12:00:00'));
   assert.deepEqual(september, { month: '2026-09', billed: 100, collected: 0, balance: 300, rate: 0 });
+});
+
+test('the trend covers every month from August 2026 to the chosen month, oldest first', () => {
+  assert.deepEqual(trendMonths('2026-08'), ['2026-08']);
+  assert.deepEqual(trendMonths('2026-11'), ['2026-08', '2026-09', '2026-10', '2026-11']);
+  assert.deepEqual(trendMonths('2027-02').at(-1), '2027-02');
+  assert.deepEqual(trendMonths('2026-07'), []);
+  assert.equal(trendMonths('2028-12').length, 12); // at most the last 12 months
+});
+
+test('a trend row carries revenue, contribution, operating profit and margin for one month', () => {
+  const report = calculateFinance(input);
+  const row = trendRow('2026-08', 'DRAFT', report);
+  assert.deepEqual({ ...row, margin: Math.round((row.margin ?? 0) * 1000) },
+    { month: '2026-08', status: 'DRAFT', revenue: report.totals.revenue, contribution: report.totals.contribution, profit: report.management_profit, margin: Math.round(report.management_profit / report.totals.revenue * 1000) });
+});
+
+test('arrears by age: unpaid rent grouped by days past its due date', () => {
+  // Weekly RM100 from Mon 3 Aug; RM400 collected (cash and claim) settles 3, 10, 17 and 24 Aug, oldest first.
+  // On 10 Oct the unpaid weeks are 31 Aug (40 days), 7 Sep (33), 14 Sep (26), 21 Sep (19), 28 Sep (12) and 5 Oct (5).
+  const ageing = arrearsAgeing([DRIVER], new Date('2026-10-10T12:00:00'));
+  assert.deepEqual(ageing, [
+    { label: '0–30 days', amount: 400, drivers: 1 },
+    { label: '31–60 days', amount: 200, drivers: 1 },
+    { label: '61–90 days', amount: 0, drivers: 0 },
+    { label: 'Over 90 days', amount: 0, drivers: 0 },
+  ]);
 });

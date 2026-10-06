@@ -66,7 +66,7 @@ import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
 import { nextVehicleSort, sortVehicles, type VehicleSort, type VehicleSortKey } from "../../services/finance/vehicleSort";
 import { directCostBreakdown } from "../../services/finance/directCost";
-import { marginTarget, monthCashFlow } from "../../services/finance/dashboard";
+import { marginTarget, monthCashFlow, trendMonths, trendRow, type TrendRow } from "../../services/finance/dashboard";
 import { monthCollection } from "../../services/driverLedger";
 import CashPage from "../money/CashPage";
 import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
@@ -316,6 +316,30 @@ export default function FinanceView(props: MoneyProps = {}) {
     () => (input ? buildFinanceReport(input) : null),
     [input],
   );
+  // Month-by-month trend for the Overview: earlier months are read once per chosen month, the chosen one is live.
+  const [earlierTrend, setEarlierTrend] = useState<{ month: string; rows: TrendRow[] } | null>(null);
+  useEffect(() => {
+    if (sessionState !== "ready" || page !== "overview") return;
+    if (earlierTrend?.month === month) return;
+    let cancelled = false;
+    (async () => {
+      const rows: TrendRow[] = [];
+      for (const earlier of trendMonths(month).slice(0, -1)) {
+        try {
+          const data = await loadMonth(earlier);
+          rows.push(trendRow(earlier, data.month.status, buildFinanceReport(data)));
+        } catch {
+          // A month that cannot be read is left out of the trend.
+        }
+      }
+      if (!cancelled) setEarlierTrend({ month, rows });
+    })();
+    return () => { cancelled = true; };
+  }, [sessionState, page, month, earlierTrend?.month]);
+  const trend = useMemo(
+    () => (report && input && earlierTrend?.month === month ? [...earlierTrend.rows, trendRow(month, input.month.status, report)] : null),
+    [report, input, earlierTrend, month],
+  );
   const revise = input?.month.revision ?? 0;
   const isDraft = input?.month.status === "DRAFT";
   const isOpen = Boolean(input && input.month.status !== "CLOSED");
@@ -519,7 +543,7 @@ export default function FinanceView(props: MoneyProps = {}) {
     <main className="finance-workspace">
       <header className="finance-topbar">
         <div>
-          <p className="finance-eyebrow">Money</p>
+          <p className="finance-eyebrow">Finance</p>
           <h1>{PAGE_HEADINGS[page][0]}</h1>
           <p className="finance-subtitle">{PAGE_HEADINGS[page][1]}</p>
         </div>
@@ -543,7 +567,7 @@ export default function FinanceView(props: MoneyProps = {}) {
           <StatusBadge status={input?.month.status} />
         </div>}
       </header>
-      <nav aria-label="Money sections" className="finance-nav">
+      <nav aria-label="Finance sections" className="finance-nav">
         {MONEY_PAGES.map(([id, label]) => (
           <button
             key={id}
@@ -603,6 +627,7 @@ export default function FinanceView(props: MoneyProps = {}) {
               input={input}
               drivers={props.drivers ?? []}
               month={month}
+              trend={trend}
               onGo={setPage}
             />
           )}
@@ -656,6 +681,7 @@ export default function FinanceView(props: MoneyProps = {}) {
               onShowAudit={() => setAuditOpen(true)}
               onShowIssues={() => setIssuesOpen(true)}
               onOverview={() => setPage("overview")}
+              onReconcile={() => setPage("reconcile")}
               onExpenses={(source) => {
                 setExpenseSource(source);
                 setPage("expenses");
@@ -821,12 +847,14 @@ function Overview({
   input,
   drivers,
   month,
+  trend,
   onGo,
 }: {
   report: FinanceReport | null;
   input: FinanceInput;
   drivers: DriverWithMetrics[];
   month: string;
+  trend: TrendRow[] | null;
   onGo: (page: Page) => void;
 }) {
   const collection = useMemo(() => monthCollection(drivers, month.slice(0, 7), kualaLumpurNow()), [drivers, month]);
@@ -913,6 +941,23 @@ function Overview({
           </div>
         </section>
       </div>
+      <section className="finance-panel">
+        <SectionHeading title="Month by month" detail="Each month since August 2026, against the 20% target. Draft months can still change; closed months are final." />
+        {!trend ? <Skeleton lines={3} /> : (
+          <DataTable headers={["Month", "Status", "Revenue", "Contribution", "Operating profit", "Net margin"]}>
+            {[...trend].reverse().map((row) => (
+              <tr key={row.month}>
+                <td className="finance-strong">{monthLabel(row.month)}</td>
+                <td><span className={`finance-tag ${row.status === "CLOSED" ? "is-good" : ""}`}>{row.status === "READY FOR REVIEW" ? "Ready" : row.status === "CLOSED" ? "Closed" : "Draft"}</span></td>
+                <td>{formatMoney(row.revenue)}</td>
+                <td>{formatMoney(row.contribution)}</td>
+                <td className={row.profit < 0 ? "finance-negative finance-strong" : "finance-strong"}>{formatMoney(row.profit)}</td>
+                <td>{row.margin === null ? "—" : <>{pct(row.margin)} {row.margin >= 0.2 ? <span className="finance-tag is-good">On target</span> : <span className="finance-tag is-warn">{((0.2 - row.margin) * 100).toFixed(1)} pts short</span>}</>}</td>
+              </tr>
+            ))}
+          </DataTable>
+        )}
+      </section>
     </div>
   );
 }
