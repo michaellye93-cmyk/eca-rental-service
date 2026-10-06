@@ -84,6 +84,12 @@ export default function BankStatementPanel({
   const applySuggestion = (suggestion: PaymentSuggestion) =>
     setPreview((current) => current ? { ...current, rows: current.rows.map((row) => row.source_row === suggestion.sourceRow ? { ...row, decision: "MATCHED", payment_source: null, category: null, plate_key: null, matched_kind: "payment", matched_id: suggestion.paymentId, review_note: `Suggested match: ${suggestion.reason}` } : row) } : current);
   const applyAllSuggestions = () => suggestions.forEach((suggestion) => applySuggestion(suggestion));
+  // After matching, the lines still waiting are usually money out (loans, payouts, bills already in Records) and money in
+  // that is not a recorded driver payment (daily rental, transfers between own accounts). Exclude them in one step,
+  // with a reason, so the statement can be posted; nothing becomes revenue or a new expense.
+  const pendingRows = (side: "debit" | "credit") => (preview?.rows ?? []).filter((row) => row.decision === "PENDING" && (side === "debit" ? row.debit > 0 : row.credit > 0));
+  const excludePending = (side: "debit" | "credit", note: string) =>
+    setPreview((current) => current ? { ...current, rows: current.rows.map((row) => row.decision === "PENDING" && (side === "debit" ? row.debit > 0 : row.credit > 0) ? { ...row, decision: "EXCLUDED", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: note } : row) } : current);
   // Prints only the reconciliation report (same approach as the termination report)
   const printReport = () => {
     document.body.classList.add("printing-reconcile-report");
@@ -318,6 +324,21 @@ export default function BankStatementPanel({
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-emerald-900">
               {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"} from payment reference, name, plate, amount and date. Check each one before posting.
               <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {suggestions.size}</button>
+            </p>
+          )}
+          {(pendingRows("credit").length > 0 || pendingRows("debit").length > 0) && (
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+              Still to decide: {pendingRows("credit").length} money in, {pendingRows("debit").length} money out.
+              {pendingRows("debit").length > 0 && (
+                <button type="button" disabled={disabled || busy} onClick={() => excludePending("debit", "Money out: payouts, loans and bills are recorded in Records, so not part of the rent check")} className="rounded border px-2 py-1 text-xs font-semibold">
+                  Exclude all {pendingRows("debit").length} money-out lines
+                </button>
+              )}
+              {pendingRows("credit").length > 0 && (
+                <button type="button" disabled={disabled || busy} onClick={() => excludePending("credit", "Money in that is not a recorded driver payment (daily rental, transfer between own accounts or other income)")} className="rounded border px-2 py-1 text-xs font-semibold">
+                  Exclude the other {pendingRows("credit").length} money-in lines
+                </button>
+              )}
             </p>
           )}
           {preview.issues.length > 0 && (

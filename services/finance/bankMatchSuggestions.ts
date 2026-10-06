@@ -40,6 +40,8 @@ const BANKING_WORDS = new Set([
   'DUITNOW', 'TRANSFER', 'TRANSFERS', 'TRF', 'TRSF', 'IBG', 'IBFT', 'GIRO', 'FUND', 'FUNDS', 'FPX', 'INSTANT', 'FROM',
   'CR', 'CREDIT', 'ADVICE', 'PAYMENT', 'PYMT', 'PMT', 'ONLINE', 'INTERBANK', 'QR', 'REF', 'M2U', 'MAE', 'JOMPAY',
   'CASH', 'DEPOSIT', 'CDM',
+  // RHB statement codes
+  'RPP', 'INWARD', 'INST', 'POS', 'RFLX', 'DR', 'MCHT', 'DUITQR', 'CASAOFFUS', 'CDT', 'ATM', 'MEPS', 'SEWA', 'BELI', 'RENTAL', 'RENT',
 ]);
 
 const DAY = 86_400_000;
@@ -51,7 +53,8 @@ function senderName(description: string): string {
   return description
     .toUpperCase()
     .split(/[^A-Z0-9/.]+/)
-    .filter(token => token && !BANKING_WORDS.has(token) && !/^\d+$/.test(token))
+    // Tokens with digits are references, plates or bank codes, never part of a name.
+    .filter(token => token && !BANKING_WORDS.has(token) && !/\d/.test(token) && !/^\/+$/.test(token))
     .join(' ');
 }
 
