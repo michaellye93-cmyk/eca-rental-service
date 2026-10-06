@@ -945,7 +945,8 @@ function Overview({
                 {line("Rent received in cash", cashFlow.in.rent_cash, "is-indent")}
                 {line("Smart Drive after commission", cashFlow.in.smart_drive_net, "is-indent")}
                 {line("Other income (confirmed)", cashFlow.in.other_income, "is-indent")}
-                {cashFlow.in.deposits !== 0 && line("Deposits & downpayments received (held, not revenue)", cashFlow.in.deposits, "is-indent")}
+                {cashFlow.in.deposits !== 0 && line("Deposits received (held for the driver)", cashFlow.in.deposits, "is-indent")}
+                {cashFlow.in.downpayments !== 0 && line("Sewa Beli downpayments (extra income)", cashFlow.in.downpayments, "is-indent")}
                 {line("Total in", cashFlow.in.total, "is-subtotal")}
                 <tr className="is-group"><td colSpan={2}>Money out</td></tr>
                 {line("Monthly vehicle costs", -cashFlow.out.monthly_vehicle, "is-indent")}
@@ -957,8 +958,8 @@ function Overview({
                 {cashFlow.out.deposits_refunded !== 0 && line("Deposits refunded", -cashFlow.out.deposits_refunded, "is-indent")}
                 {line("Total out", -cashFlow.out.total, "is-subtotal")}
                 <tr className="is-total"><td>Net cash flow</td><td className={cashFlow.net < 0 ? "finance-negative" : ""}>{formatMoney(cashFlow.net)}</td></tr>
-                {input.deposits_held && (Number(input.deposits_held.DEPOSIT) !== 0 || Number(input.deposits_held.DOWNPAYMENT) !== 0) && (
-                  <tr><td colSpan={2} className="text-xs text-slate-500">Held at month end: deposits {formatMoney(Number(input.deposits_held.DEPOSIT))} · downpayments {formatMoney(Number(input.deposits_held.DOWNPAYMENT))}</td></tr>
+                {input.deposits_held && Number(input.deposits_held.DEPOSIT) !== 0 && (
+                  <tr><td colSpan={2} className="text-xs text-slate-500">Deposits held at month end: {formatMoney(Number(input.deposits_held.DEPOSIT))}</td></tr>
                 )}
               </tbody>
             </table>

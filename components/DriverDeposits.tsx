@@ -67,7 +67,7 @@ export default function DriverDeposits({ driver, onContraPayment }: { driver: Pi
     <section className="rounded-xl border border-gray-200 bg-white p-3 text-xs" aria-label={label}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h5 className="text-sm font-bold text-gray-900">{label}</h5>
-        <span className="text-gray-600">Held: <b className="font-mono text-gray-900">{formatCurrency(held)}</b></span>
+        <span className="text-gray-600">{kind === 'DOWNPAYMENT' ? 'Received' : 'Held'}: <b className="font-mono text-gray-900">{formatCurrency(kind === 'DOWNPAYMENT' ? (rows ?? []).filter((r) => r.entry === 'RECEIVED').reduce((sum, r) => sum + Number(r.amount), 0) : held)}</b></span>
         {!adding && <button type="button" onClick={() => setAdding(true)} className="rounded border border-gray-300 px-2 py-1 font-semibold hover:bg-gray-50">Record {label.toLowerCase()}</button>}
       </div>
       {rows === null ? <p className="mt-2 text-gray-500">Loading…</p> : rows.length === 0 && !adding ? (
@@ -90,9 +90,9 @@ export default function DriverDeposits({ driver, onContraPayment }: { driver: Pi
           <label className="block">Type
             <select value={entry} onChange={(e) => setEntry(e.target.value as DepositEntry)} className="mt-0.5 w-full rounded border border-gray-300 p-1">
               <option value="RECEIVED">Received</option>
-              <option value="REFUNDED">Refunded</option>
-              <option value="FORFEITED">Forfeited (no rent owed)</option>
-              {onContraPayment && <option value="CONTRA">Deposit forfeit (set against rent owed)</option>}
+              {kind === 'DEPOSIT' && <option value="REFUNDED">Refunded</option>}
+              {kind === 'DEPOSIT' && <option value="FORFEITED">Forfeited (no rent owed)</option>}
+              {kind === 'DEPOSIT' && onContraPayment && <option value="CONTRA">Deposit forfeit (set against rent owed)</option>}
             </select>
           </label>
           <label className="block">Date

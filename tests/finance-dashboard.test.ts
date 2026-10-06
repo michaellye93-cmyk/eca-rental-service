@@ -39,7 +39,7 @@ const input: FinanceInput = {
 test('the month’s cash flow counts cash only: claims and accrued insurance are left out, tax instalments are in', () => {
   const report = calculateFinance(input);
   const flow = monthCashFlow(input, report);
-  assert.deepEqual(flow.in, { rent_cash: 900, smart_drive_net: 350, other_income: 70, deposits: 0, total: 1320 });
+  assert.deepEqual(flow.in, { rent_cash: 900, smart_drive_net: 350, other_income: 70, deposits: 0, downpayments: 0, total: 1320 });
   // Insurance is the premium paid this month (cover starts 15 Aug), not the monthly share the P&L uses.
   assert.deepEqual(flow.out, { monthly_vehicle: 500, workshop: 80, other_vehicle: 0, insurance: 1200, operation_fix: 40, cash_flow_only: 60, deposits_refunded: 0, total: 1880 });
   assert.equal(flow.net, -560);
@@ -51,7 +51,7 @@ test('deposits and downpayments received are cash in and refunds cash out, outsi
   const report = calculateFinance(withDeposits);
   assert.equal(report.totals.revenue, calculateFinance(input).totals.revenue);
   const flow = monthCashFlow(withDeposits, report);
-  assert.equal(flow.in.deposits, 1250);
+  assert.deepEqual([flow.in.deposits, flow.in.downpayments], [250, 1000]);
   assert.equal(flow.out.deposits_refunded, 100); // a forfeit moves no cash
   assert.equal(flow.net, -560 + 1250 - 100);
   // Rent settled from the deposit on delisting is revenue but not cash.
