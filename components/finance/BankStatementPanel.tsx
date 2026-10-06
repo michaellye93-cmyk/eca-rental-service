@@ -695,9 +695,9 @@ function PaymentPicker({ row, input, usedPaymentIds, onPick, onCancel }: {
   const target = toCents(row.credit);
   const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
   const pool = (input?.ehailing ?? [])
-    .filter((p) => p.cash_amount > 0 && toCents(p.cash_amount) <= target && !usedPaymentIds.has(p.source_payment_id))
-    .map((p) => ({ p, same: senderLooksLike(row.description, p.driver_name_snapshot), gap: Math.abs(day(p.payment_date) - day(row.transaction_date)) }))
-    .sort((a, b) => Number(b.same) - Number(a.same) || a.gap - b.gap);
+    .filter((p) => p.cash_amount > 0 && !usedPaymentIds.has(p.source_payment_id))
+    .map((p) => ({ p, same: senderLooksLike(row.description, p.driver_name_snapshot), fits: toCents(p.cash_amount) <= target, gap: Math.abs(day(p.payment_date) - day(row.transaction_date)) }))
+    .sort((a, b) => Number(b.fits) - Number(a.fits) || Number(b.same) - Number(a.same) || a.gap - b.gap);
   const term = search.trim().toUpperCase();
   const ticked = pool.filter(({ p }) => selected.includes(p.source_payment_id));
   const shown = [...ticked, ...pool.filter(({ p }) => !selected.includes(p.source_payment_id) && (!term || `${p.driver_name_snapshot ?? ""} ${p.car_plate_snapshot ?? p.plate_key ?? ""}`.toUpperCase().includes(term))).slice(0, 40)];
@@ -708,9 +708,9 @@ function PaymentPicker({ row, input, usedPaymentIds, onPick, onCancel }: {
     <div className="reconcile-picker">
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search driver or plate" className="rounded border p-1 text-xs" aria-label="Search payments" />
       <div className="reconcile-picker-list">
-        {shown.length === 0 && <p className="text-xs text-slate-500">No unmatched payment up to {money(row.credit)}.</p>}
+        {shown.length === 0 && <p className="text-xs text-slate-500">{term ? "No unmatched payment for that search." : "Every payment this month is already matched."}</p>}
         {shown.map(({ p, same }) => (
-          <label key={p.source_payment_id} className={same ? "is-same" : ""}>
+          <label key={p.source_payment_id} className={`${same ? "is-same" : ""}${toCents(p.cash_amount) > target ? " is-over" : ""}`} title={toCents(p.cash_amount) > target ? "More than the bank amount" : undefined}>
             <input type="checkbox" checked={selected.includes(p.source_payment_id)} onChange={() => toggle(p.source_payment_id)} />
             <span>{shortDate(p.payment_date)}</span>
             <b>{p.driver_name_snapshot ?? "Driver"}</b>

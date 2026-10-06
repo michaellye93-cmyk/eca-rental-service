@@ -1316,3 +1316,6 @@
   color: #475569;
   background: #f1f5f9;
 }
+.reconcile-picker-list label.is-over {
+  color: #94a3b8;
+}
