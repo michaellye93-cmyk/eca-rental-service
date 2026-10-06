@@ -19,6 +19,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
   const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
   const [isDriverLoggingIn, setIsDriverLoggingIn] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  // Drivers (on phones) see only their own sign-in; staff open theirs from a small link at the bottom.
+  const [showStaff, setShowStaff] = useState(false);
 
   const handleDriverLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +98,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
                   id="nric"
                   name="nric"
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
                   placeholder="XXXXXX-XX-XXXX"
                   maxLength={14}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:tracking-widest"
@@ -106,47 +110,9 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
               <button
                 type="submit"
                 disabled={isDriverLoggingIn}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg transition-all active:scale-[0.98] shadow-lg shadow-blue-600/20"
               >
                 {isDriverLoggingIn ? 'Checking…' : 'Check My Dashboard'}
-              </button>
-            </div>
-          </form>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">or Admin Access</span>
-            </div>
-          </div>
-
-          {/* Admin Login */}
-          <form onSubmit={handleAdminLogin} className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-gray-500" />
-              Staff / Admin Access
-            </h2>
-            <div className="flex gap-2">
-              <input
-                id="adminId"
-                name="adminId"
-                type="text"
-                placeholder="Access ID"
-                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-500 focus:outline-none text-sm"
-                value={adminId}
-                onChange={(e) => {
-                  setAdminId(e.target.value);
-                  setError('');
-                }}
-              />
-              <button
-                type="submit"
-                disabled={isAdminLoggingIn}
-                className="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-              >
-                {isAdminLoggingIn ? 'Logging in…' : 'Login'}
               </button>
             </div>
           </form>
@@ -157,15 +123,57 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
             </div>
           )}
           
-          <div className="text-center mt-8">
-            <button 
+          {showStaff ? (
+            <div className="space-y-4 portal-reveal">
+              {/* Admin Login */}
+              <form onSubmit={handleAdminLogin} className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-gray-500" />
+                  Staff / Admin Access
+                </h2>
+                <div className="flex gap-2">
+                  <input
+                    id="adminId"
+                    name="adminId"
+                    type="text"
+                    placeholder="Access ID"
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-500 focus:outline-none text-sm"
+                    value={adminId}
+                    onChange={(e) => {
+                      setAdminId(e.target.value);
+                      setError('');
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isAdminLoggingIn}
+                    className="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    {isAdminLoggingIn ? 'Logging in…' : 'Login'}
+                  </button>
+                </div>
+              </form>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(true)}
+                  className="text-xs text-gray-500 hover:text-red-500 underline transition-colors"
+                >
+                  Reset App
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center">
+              <button
                 type="button"
-                onClick={() => setConfirmReset(true)}
-                className="text-xs text-gray-500 hover:text-red-500 underline transition-colors"
-            >
-                Reset App
-            </button>
-          </div>
+                onClick={() => setShowStaff(true)}
+                className="text-xs text-gray-500 hover:text-gray-700 underline transition-colors"
+              >
+                Staff sign-in
+              </button>
+            </div>
+          )}
           {confirmReset && (
             // Emergency reset: clears this browser's saved session and settings, then reloads
             <ConfirmDialog

@@ -19,7 +19,44 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+    /* Staggered entrances would otherwise sit invisible for their delay */
+    .portal-enter,
+    .portal-pop,
+    .portal-fill,
+    .portal-reveal {
+      animation: none !important;
+    }
   }
+}
+
+/* Driver page motion: cards rise in one after another, the status icon settles, the progress bar fills, and the
+   contract details fade in when opened. Short and once only; switched off for people who ask for reduced motion. */
+@keyframes portal-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes portal-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { opacity: 1; transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+@keyframes portal-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.portal-enter {
+  animation: portal-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.portal-pop {
+  display: inline-flex;
+  animation: portal-pop 520ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+.portal-fill {
+  transform-origin: left center;
+  animation: portal-fill 900ms cubic-bezier(0.22, 1, 0.36, 1) 350ms both;
+}
+.portal-reveal {
+  animation: portal-rise 280ms ease-out both;
 }
 
 @layer utilities {
