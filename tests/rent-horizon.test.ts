@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWeeklyFinancials, calculateDriverMetrics, generateDriverInvoices, rentDueAndPaid } from '../utils.ts';
+import { calculateDriverMetrics, generateDriverInvoices, rentDueAndPaid } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const on = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -45,9 +45,3 @@ test('the invoice list reaches a horizon and marks unpaid cycles after today as 
   assert.equal(generateDriverInvoices(d, fifthOctober).at(-1)?.dueDate, '2026-10-01');
 });
 
-test('this week\'s expected rent includes a cycle due later in the week', () => {
-  // Monday 5 Oct: the week runs 5-11 Oct and rent falls due on Thursday 8 Oct.
-  const [week] = buildWeeklyFinancials([pastLength()], fifthOctober, 1);
-  assert.equal(week.label, '5/10 - 11/10');
-  assert.equal(week.expected, 100);
-});

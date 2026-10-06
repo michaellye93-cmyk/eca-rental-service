@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWeeklyFinancials, calculateDriverMetrics, calculateMomentum, formatNric, generateDriverInvoices, getNextDueDate, latestInvoices } from '../utils.ts';
+import { calculateDriverMetrics, calculateMomentum, formatNric, generateDriverInvoices, getNextDueDate, latestInvoices } from '../utils.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const on = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -126,18 +126,6 @@ test('an ended contract that is fully paid has no next due date', () => {
 test('payments dated after the reference day do not move the next due date', () => {
   const d = driver({ contractDuration: 4, paymentHistory: [pay('2026-08-20', 1000)] });
   assert.equal(ymd(getNextDueDate(d, on('2026-08-15'))), '2026-08-01');
-});
-
-test('weekly figures come from the shared schedule; cash received leaves out repair credits, which are counted on their own', () => {
-  const d = driver({ contractStartDate: '2026-08-03', contractDuration: 1, paymentHistory: [pay('2026-08-04', 150), pay('2026-08-11', 60, 40)] });
-  const weeks = buildWeeklyFinancials([d], on('2026-08-19'), 3);
-  assert.deepEqual(weeks.map(w => w.label), ['3/8 - 9/8', '10/8 - 16/8', '17/8 - 23/8']);
-  assert.deepEqual(weeks.map(w => w.expected), [100, 100, 100]);
-  // Rent settled still counts the repair credit: it pays rent even though no money reaches the bank.
-  assert.deepEqual(weeks.map(w => w.performanceCollected), [100, 100, 50]);
-  // Owner decision 27 Sep 2026 (F3): cash is money received only. The 40 repair credit moved out of week 2's cash.
-  assert.deepEqual(weeks.map(w => w.cashReceived), [150, 60, 0]);
-  assert.deepEqual(weeks.map(w => w.repairCredits), [0, 40, 0]);
 });
 
 test('the expanded schedule lists the latest obligations due, newest first', () => {

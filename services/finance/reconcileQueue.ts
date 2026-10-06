@@ -1,6 +1,6 @@
 import type { BankReviewRow } from '../../types/finance-bank.ts';
 import type { EhailingPayment } from '../../types/finance.ts';
-import { suggestPaymentMatches, unsolvedPayments, type PaymentSuggestion } from './bankMatchSuggestions.ts';
+import { suggestPaymentMatches, type PaymentSuggestion } from './bankMatchSuggestions.ts';
 
 /**
  * Reconciling several bank statements for one month together (ECA banks with two accounts): matches are suggested
@@ -58,29 +58,6 @@ export function applySureMatches(rows: BankReviewRow[], suggestions: Map<number,
     const suggestion = suggestions.get(row.source_row);
     return suggestion && suggestion.confidence !== 'WEAK' && row.decision === 'PENDING' ? matchRow(row, suggestion.paymentId, `Auto-matched: ${suggestion.reason}`) : row;
   });
-}
-
-export interface PaymentCheck {
-  total: number;
-  solved: EhailingPayment[];
-  /** Solved in a statement that is loaded but not posted yet. */
-  waitingToPost: number;
-  unsolved: EhailingPayment[];
-  unsolvedAmount: number;
-}
-
-/** Cash payments of the month: solved when a posted or loaded bank credit is matched to them. Claim-only payments are not checked. */
-export function paymentCheck(payments: EhailingPayment[], postedIds: Set<string>, draftIds: Set<string>): PaymentCheck {
-  const cash = payments.filter((payment) => payment.cash_amount > 0);
-  const solved = cash.filter((payment) => postedIds.has(payment.source_payment_id) || draftIds.has(payment.source_payment_id));
-  const unsolved = unsolvedPayments(cash, new Set([...postedIds, ...draftIds]));
-  return {
-    total: cash.length,
-    solved,
-    waitingToPost: solved.filter((payment) => !postedIds.has(payment.source_payment_id)).length,
-    unsolved,
-    unsolvedAmount: Math.round(unsolved.reduce((sum, payment) => sum + payment.cash_amount, 0) * 100) / 100,
-  };
 }
 
 const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applySureMatches, bankLinesForPayment, paymentCheck, suggestAcrossStatements } from '../services/finance/reconcileQueue.ts';
+import { applySureMatches, bankLinesForPayment, suggestAcrossStatements } from '../services/finance/reconcileQueue.ts';
 import type { BankReviewRow } from '../types/finance-bank.ts';
 import type { EhailingPayment } from '../types/finance.ts';
 
@@ -35,19 +35,6 @@ test('certain and strong matches are applied straight away; weak ones are left f
   assert.match(applied[0].review_note, /^Auto-matched/);
   assert.equal(applied[1].decision, 'PENDING');
   assert.equal(rows[0].decision, 'PENDING'); // the input is not changed
-});
-
-test('the payment check counts solved payments (posted or waiting to post) and lists the unsolved ones oldest first', () => {
-  const payments = [
-    payment('p1', '2026-08-01', 400, 'A', 'XAA1001'), payment('p2', '2026-08-02', 250, 'B', 'XAB2002'),
-    payment('p3', '2026-08-03', 300, 'C', 'XAC3003'), payment('p4', '2026-08-04', 0, 'D', 'XAD4004'), // claim only: not checked
-  ];
-  const check = paymentCheck(payments, new Set(['p1']), new Set(['p2']));
-  assert.equal(check.total, 3);
-  assert.equal(check.solved.length, 2);
-  assert.equal(check.waitingToPost, 1);
-  assert.deepEqual(check.unsolved.map((p) => p.source_payment_id), ['p3']);
-  assert.equal(check.unsolvedAmount, 300);
 });
 
 test('for an unsolved payment, open bank lines with the same amount are listed nearest date first', () => {
