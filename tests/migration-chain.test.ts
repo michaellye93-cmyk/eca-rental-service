@@ -27,6 +27,7 @@ const CHAIN = [
   '20261006150000_finance_payment_bank_status.sql',
   '20261006180000_finance_bank_split_match.sql',
   '20261006200000_driver_deposits.sql',
+  '20261007090000_finance_bank_match_once.sql',
 ];
 
 test('the new files apply after the whole Finance chain, and the additive ones can safely run twice', async () => {
