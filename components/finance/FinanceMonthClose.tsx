@@ -113,28 +113,24 @@ export default function FinanceMonthClose(p: Props) {
       key: "workshop" as const,
       title: "Workshop billing",
       source: "Workshop Billing" as const,
-      kind: "WORKSHOP",
       hint: "Workshop bills paid directly by ECA.",
     },
     {
       key: "vehicle_expense" as const,
       title: "Other vehicle costs",
       source: "Vehicle Direct Cost" as const,
-      kind: "vehicle_expense",
       hint: "Road tax, permits, tyres and other vehicle-specific costs.",
     },
     {
       key: "corporate_expense" as const,
       title: "Operation Fix Cost",
       source: "Corporate Opex" as const,
-      kind: "corporate_expense",
       hint: "Company running costs such as salaries, rent and utilities. Tax instalments count in cash flow only.",
     },
     {
       key: "other_income" as const,
       title: "Other Income",
       source: null,
-      kind: "other_income",
       hint: "Confirmed manual income, attributed to a vehicle or business unit.",
     },
   ];

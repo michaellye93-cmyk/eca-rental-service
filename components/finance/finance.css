@@ -865,10 +865,6 @@
 .cash-outlook-table .cash-lowest {
   background: #fff9ed;
 }
-.cash-outlook-table .cash-if-paid th,
-.cash-outlook-table .cash-if-paid td {
-  color: var(--f-accent);
-}
 .cash-method summary {
   cursor: pointer;
   font-size: 14px;
@@ -1010,4 +1006,12 @@
   .finance-summary-grid.is-four {
     grid-template-columns: 1fr;
   }
+}
+/* Sub-tabs scroll sideways instead of wrapping their labels when there are many of them. */
+.finance-tabs {
+  overflow-x: auto;
+}
+.finance-tabs button {
+  white-space: nowrap;
+  flex: none;
 }

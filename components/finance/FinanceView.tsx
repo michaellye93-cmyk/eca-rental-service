@@ -874,7 +874,7 @@ function Overview({
             <table className="finance-table finance-statement">
               <tbody>
                 <tr className="is-group"><td colSpan={2}>Revenue</td></tr>
-                {businesses.map(([name, row]) => line(name === "UNMATCHED" ? "Unmatched" : name.charAt(0) + name.slice(1).toLowerCase(), row.revenue, "is-indent"))}
+                {businesses.map(([name, row]) => line(name === "UNMATCHED" ? "Unmatched vehicles" : name, row.revenue, "is-indent"))}
                 {line("Total revenue", totals.revenue, "is-subtotal")}
                 <tr className="is-group"><td colSpan={2}>Direct vehicle costs</td></tr>
                 {line("Monthly vehicle cost", -direct.monthly_vehicle, "is-indent")}
@@ -1063,6 +1063,7 @@ function Expenses({
     ["vehicle_master", "Vehicle Master", "Vehicle identity and Finance classification."],
   ];
   const isSettingsTab = tab === "monthly_vehicle_costs" || tab === "insurance" || tab === "vehicle_master";
+  const linkedExpenseIds = new Set((input.workshop_allocations ?? []).map((allocation: { expense_id: string }) => allocation.expense_id));
   const isExpenseTab = tab === "Workshop Billing" || tab === "Vehicle Direct Cost" || tab === "Corporate Opex";
   const visible = input.expenses.filter(
     (x: FinanceExpense) => isExpenseTab && x.payment_source === tab && !x.cancelled_at && x.finance_month.slice(0, 7) === month.slice(0, 7),
@@ -1112,16 +1113,16 @@ function Expenses({
         onExport={() => onExport("fixed_cost", (input.fixed_cost_templates ?? []).filter((row: any) => !row.cancelled_at))}
         onImport={(file) => onFile("fixed_cost", file)}
       />}
-      {isExpenseTab && tab !== "Corporate Opex" && <section className="finance-panel">
+      {isExpenseTab && <section className="finance-panel">
         <SectionHeading
-          title={groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
-          detail={groups.find((x) => x[0] === tab)?.[2]}
-          summary={<p><strong>{formatMoney(visible.reduce((sum: number, row: FinanceExpense) => sum + row.amount, 0))}</strong> this month</p>}
-          action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : "vehicle_expenses", visible)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
+          title={tab === "Corporate Opex" ? "One-off company costs" : groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
+          detail={tab === "Corporate Opex" ? "Company costs that happen once. Monthly ones are in the list above. Excel columns: Frequency, Start Month, End Month, Expense Date, Category, Amount (RM)." : groups.find((x) => x[0] === tab)?.[2]}
+          summary={<p><strong>{formatMoney(displayedExpenses.reduce((sum: number, row: FinanceExpense) => sum + row.amount, 0))}</strong> this month</p>}
+          action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : tab === "Corporate Opex" ? "company_expenses" : "vehicle_expenses", displayedExpenses)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
               disabled={disabled}
               label="Upload Excel"
               onFile={(file) =>
-                onFile(tab === "Workshop Billing" ? "WORKSHOP" : "vehicle_expense", file)
+                onFile(tab === "Workshop Billing" ? "WORKSHOP" : tab === "Corporate Opex" ? "corporate_expense" : "vehicle_expense", file)
               }
             /></div>}
         />
@@ -1141,7 +1142,7 @@ function Expenses({
                 </td>
                 <td>{row.category}</td>
                 <td>{row.supplier ?? "—"}</td>
-                <td className="finance-strong">{formatMoney(row.amount)}</td>
+                <td className="finance-strong">{formatMoney(row.amount)}{tab === "Workshop Billing" && (input.workshop_summaries ?? []).some((summary: any) => !summary.cancelled_at && summary.finance_month.slice(0, 7) === month.slice(0, 7)) && <> {linkedExpenseIds.has(row.id ?? "") ? <span className="finance-tag is-good">Linked</span> : <span className="finance-tag">Not linked</span>}</>}</td>
                 <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={() => { if (!window.confirm(`Delete ${row.category} for ${formatMoney(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
               </tr>
             ))
