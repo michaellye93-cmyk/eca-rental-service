@@ -3,12 +3,12 @@ import type { Driver } from '../types';
 import { formatCurrency, kualaLumpurToday } from '../utils';
 import { addDeposit, deleteDeposit, depositHeld, depositKindFor, depositKindLabel, loadDeposits, type DepositEntry, type DriverDeposit } from '../services/depositsApi';
 
-const ENTRY_LABEL: Record<DepositEntry, string> = { RECEIVED: 'Received', REFUNDED: 'Refunded', FORFEITED: 'Forfeited', CONTRA: 'Used for rent' };
+const ENTRY_LABEL: Record<DepositEntry, string> = { RECEIVED: 'Received', REFUNDED: 'Refunded', FORFEITED: 'Forfeited (no rent owed)', CONTRA: 'Deposit forfeit (against rent)' };
 
 /**
  * The driver's deposit (Sewa Biasa) or downpayment (Sewa Beli): what was received, refunded or forfeited, and what is
- * still held. Kept apart from rent; every change is logged with who made it. "Used for rent (contra)" is for delisting:
- * the deposit settles rent owed, so a matching rent payment (method Deposit contra) is recorded with it.
+ * still held. Kept apart from rent; every change is logged with who made it. "Deposit forfeit" is for termination:
+ * the deposit is set against rent owed, so a matching rent payment (method Deposit contra) is recorded with it.
  */
 export default function DriverDeposits({ driver, onContraPayment }: { driver: Pick<Driver, 'id' | 'category'>; onContraPayment?: (amount: number, date: string) => unknown }) {
   const kind = depositKindFor(driver.category);
@@ -91,8 +91,8 @@ export default function DriverDeposits({ driver, onContraPayment }: { driver: Pi
             <select value={entry} onChange={(e) => setEntry(e.target.value as DepositEntry)} className="mt-0.5 w-full rounded border border-gray-300 p-1">
               <option value="RECEIVED">Received</option>
               <option value="REFUNDED">Refunded</option>
-              <option value="FORFEITED">Forfeited</option>
-              {onContraPayment && <option value="CONTRA">Used for rent (contra)</option>}
+              <option value="FORFEITED">Forfeited (no rent owed)</option>
+              {onContraPayment && <option value="CONTRA">Deposit forfeit (set against rent owed)</option>}
             </select>
           </label>
           <label className="block">Date
@@ -104,7 +104,7 @@ export default function DriverDeposits({ driver, onContraPayment }: { driver: Pi
           <label className="block">Note
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className="mt-0.5 w-full rounded border border-gray-300 p-1" />
           </label>
-          {entry === 'CONTRA' && <p className="text-gray-600 sm:col-span-4">This also records a rent payment of the same amount (method: Deposit contra), so the driver's balance goes down.</p>}
+          {entry === 'CONTRA' && <p className="text-gray-600 sm:col-span-4">Used on termination: this also records a rent payment of the same amount (Deposit forfeit), so the driver's outstanding goes down.</p>}
           <div className="flex gap-2 sm:col-span-4">
             <button type="button" onClick={() => void save()} disabled={busy} className="rounded bg-blue-700 px-3 py-1 font-semibold text-white disabled:opacity-50">Save</button>
             <button type="button" onClick={() => { setAdding(false); setError(''); }} className="rounded border border-gray-300 px-3 py-1">Cancel</button>

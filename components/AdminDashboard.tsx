@@ -1700,7 +1700,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <option value="BANK TRANSFER">Bank Transfer</option>
                                   <option value="CASH DEPOSIT">Cash Deposit</option>
                                   <option value="CASH">Cash (in hand)</option>
-                                  <option value="DEPOSIT CONTRA">Deposit contra</option>
+                                  <option value="DEPOSIT CONTRA">Deposit forfeit</option>
                                 </select>
                               )}
                             </div>

@@ -1061,7 +1061,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
                     </>
                   ) : (
                     pair.state === "cash"
-                      ? <td colSpan={4} className="text-slate-600">{String(p.payment_method ?? "").toUpperCase() === "DEPOSIT CONTRA" ? "Settled from the driver's deposit (contra), so no bank line is expected." : "Paid in cash (in hand), so no bank line is expected."}</td>
+                      ? <td colSpan={4} className="text-slate-600">{String(p.payment_method ?? "").toUpperCase() === "DEPOSIT CONTRA" ? "Deposit forfeited against rent, so no bank line is expected." : "Paid in cash (in hand), so no bank line is expected."}</td>
                       : <td colSpan={4} className="text-red-700">{statements.length ? "Not found in bank. Check the other account, the receipt or next month's statement." : "Load the bank statements to check."}</td>
                   )}
                   <td className="reconcile-actions">
