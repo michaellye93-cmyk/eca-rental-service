@@ -140,11 +140,12 @@ export default function BankStatementPanel({
     return { ...next, account_label: next.account_label || fallbackLabel, source_hash, file, headers: read.headers, mapping };
   };
   // Sure matches are applied across every loaded statement at once; weak ones stay as suggestions.
-  const withSureMatches = (list: LoadedStatement[]) => {
+  // Only the statements just loaded are auto-matched, so a line set back to PENDING by hand stays that way.
+  const withSureMatches = (list: LoadedStatement[], only: Set<string>) => {
     if (!input) return list;
     const taken = new Set([...postedPaymentIds, ...list.flatMap((statement) => matchedPaymentIds(statement.rows))]);
     const found = suggestAcrossStatements(list.map((statement) => statement.rows), input.ehailing, taken, paymentReferences);
-    return list.map((statement, i) => ({ ...statement, rows: applySureMatches(statement.rows, found[i]) }));
+    return list.map((statement, i) => (only.has(statement.source_hash) ? { ...statement, rows: applySureMatches(statement.rows, found[i]) } : statement));
   };
   const upload = async (files: File[]) => {
     if (!files.length || !input) return;
@@ -155,11 +156,15 @@ export default function BankStatementPanel({
       for (const file of files) loaded.push(await readStatement(file));
       if (current !== generation.current) return;
       const known = new Set([...statements.map((s) => s.source_hash), ...(input.bank_imports ?? []).map((item) => item.source_hash)]);
-      const fresh = loaded.filter((statement) => !known.has(statement.source_hash));
+      const fresh = loaded.filter((statement, i) => !known.has(statement.source_hash) && loaded.findIndex((other) => other.source_hash === statement.source_hash) === i);
       if (fresh.length < loaded.length) onError(`${loaded.length - fresh.length} file(s) skipped: already loaded or already posted.`);
       if (!fresh.length) return;
-      setActive(statements.length);
-      setStatements(withSureMatches([...statements, ...fresh]));
+      const freshHashes = new Set(fresh.map((statement) => statement.source_hash));
+      setStatements((list) => {
+        const next = [...list, ...fresh.filter((statement) => !list.some((other) => other.source_hash === statement.source_hash))];
+        setActive(list.length);
+        return withSureMatches(next, freshHashes);
+      });
     } catch (e) {
       if (current === generation.current)
         onError(e instanceof Error ? e.message : "Could not extract bank statement.");
@@ -174,7 +179,7 @@ export default function BankStatementPanel({
     try {
       const next = await readStatement(preview.file, preview.mapping);
       if (current !== generation.current) return;
-      setStatements(withSureMatches(statements.map((statement, i) => (i === active ? { ...next, account_label: statement.account_label } : statement))));
+      setStatements((list) => withSureMatches(list.map((statement) => (statement.source_hash === next.source_hash ? { ...next, account_label: statement.account_label } : statement)), new Set([next.source_hash])));
     } catch (e) {
       if (current === generation.current) onError(e instanceof Error ? e.message : "Could not read the bank statement.");
     } finally {
@@ -187,6 +192,13 @@ export default function BankStatementPanel({
     if (!input) return ["Finance data is not loaded yet."];
     const issues = validateBankReview(statement.rows, month, input).map((issue) => issue.detail);
     if (!statement.account_label.trim()) issues.unshift("Account label is required.");
+    // A payment may be matched to one bank credit only, across posted and loaded statements.
+    const elsewhere = new Set([...postedPaymentIds, ...statements.filter((other) => other !== statement).flatMap((other) => matchedPaymentIds(other.rows))]);
+    const seen = new Set<string>();
+    for (const id of matchedPaymentIds(statement.rows)) {
+      if (elsewhere.has(id) || seen.has(id)) issues.push(`${paymentLabel(id)} is matched to more than one bank line`);
+      seen.add(id);
+    }
     return issues;
   };
   // Posts the chosen statements one after another; each post moves the month to a new revision.
@@ -196,6 +208,7 @@ export default function BankStatementPanel({
     setBusy(true);
     const posted: number[] = [];
     let latest: FinanceInput | null = null;
+    let failure = "";
     try {
       for (const index of indexes) {
         const problems = problemsOf(statements[index]);
@@ -209,12 +222,14 @@ export default function BankStatementPanel({
         posted.push(index);
       }
     } catch (e) {
-      if (current === generation.current)
-        onError(e instanceof Error ? e.message : "Bank statement could not be posted.");
+      failure = e instanceof Error ? e.message : "Bank statement could not be posted.";
+      if (current === generation.current && !latest) onError(failure);
     } finally {
       if (current === generation.current) {
         if (latest) {
-          onPosted(latest, posted.length === 1 ? "Reviewed bank statement posted." : `${posted.length} bank statements posted.`);
+          const done = posted.length === 1 ? "1 bank statement posted." : `${posted.length} bank statements posted.`;
+          // After a partial "Post all", the failure goes in the same notice so it is not hidden by the success message.
+          onPosted(latest, failure ? `${done} Not posted (still loaded below): ${failure}` : done);
           setStatements((list) => list.filter((_, i) => !posted.includes(i)));
           setActive(0);
         }
@@ -657,6 +672,7 @@ function ReviewRow({
                 onChange({
                   matched_kind: (matched_kind || null) as BankMatchKind | null,
                   matched_id: id.join(":") || null,
+                  review_note: /^(Auto-matched|Suggested match|Matched from the unsolved)/.test(row.review_note) ? "" : row.review_note,
                 });
               }}
               className="rounded border p-1"
