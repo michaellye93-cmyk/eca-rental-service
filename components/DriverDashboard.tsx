@@ -1,12 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Driver } from '../types';
-import { calculateDriverMetrics, formatCurrency, formatDate, generateDriverInvoices, getNextDueDate, isSewaBiasa, kualaLumpurNow, parseDate, portalPenalty } from '../utils';
+import { calculateDriverMetrics, formatCurrency, generateDriverInvoices, getNextDueDate, isSewaBiasa, kualaLumpurNow, parseDate, portalPenalty } from '../utils';
 import { driverPortalView, type PortalTone } from '../services/driverPortal';
-import { Calendar, CheckCircle2, ChevronDown, FileText, Info, LogOut, Receipt, TrendingUp, WalletCards } from 'lucide-react';
+import { portalDate, portalText, portalTime, type PortalLang } from '../services/portalText';
+import { Calendar, CheckCircle2, ChevronDown, FileText, Info, LogOut, Receipt, RefreshCw, TrendingUp, WalletCards } from 'lucide-react';
 import { PaymentAmount, PaymentMethodBadge } from './RentDisplay';
+import LanguageSwitch from './LanguageSwitch';
+import InstallTip from './InstallTip';
 
 interface DriverDashboardProps {
   driver: Driver;
+  lang: PortalLang;
+  onLangChange: (lang: PortalLang) => void;
+  /** When the figures on screen were loaded. */
+  loadedAt: Date;
+  /** Reloads the driver's record; rejects when it cannot. */
+  onRefresh: () => Promise<void>;
   onLogout: () => void;
 }
 
@@ -23,37 +32,69 @@ const TONE: Record<PortalTone, { card: string; icon: React.ReactNode }> = {
 };
 
 /**
- * The driver's own page, built for phones: one status in the office's friendly WhatsApp tone (same figures as the
- * office), what is owed with one manageable next step, the late-payment penalty while rent is owed, where to pay,
- * contract progress and recent payments with thanks for the latest.
+ * The driver's own page, built for phones and shown in English, Bahasa Malaysia or Chinese: one status in the office's
+ * friendly WhatsApp tone (same figures as the office), what is owed with one manageable next step, the late-payment
+ * penalty while rent is owed, when and where to pay, contract progress and details, and recent payments with thanks
+ * for the latest.
  */
-const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) => {
+const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, lang, onLangChange, loadedAt, onRefresh, onLogout }) => {
+  const t = portalText(lang);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+
   const now = kualaLumpurNow();
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
   const metrics = calculateDriverMetrics(driver, now);
   const owed = Math.max(0, metrics.principalOutstanding);
   const cycle = driver.rentalCycle === 'MONTHLY' ? 'month' : 'week';
-  const view = driverPortalView(driver, now);
+  const view = driverPortalView(driver, now, lang);
   const oldestUnpaid = generateDriverInvoices(driver, now).find(inv => inv.remainingBalance > 0.01 && parseDate(inv.dueDate) <= endOfToday);
   const nextDue = driver.isDelisted ? null : getNextDueDate(driver, now);
   const ownsAtEnd = !isSewaBiasa(driver);
   const penalty = portalPenalty(metrics);
   const recent = driver.paymentHistory.slice(0, 5);
-
   const tone = TONE[view.tone];
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setRefreshFailed(false);
+    try {
+      await onRefresh();
+    } catch {
+      setRefreshFailed(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-10 font-sans">
       <div className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-md mx-auto px-4 py-4 flex justify-between items-center gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className={`${driver.name.length > 25 ? 'text-lg' : 'text-xl'} font-bold text-gray-800 uppercase leading-snug break-words`}>Hello, {driver.name}</h1>
-            <p className="text-sm text-gray-600 font-mono truncate">{driver.carPlate}</p>
+        <div className="max-w-md mx-auto px-4 pt-4 pb-3">
+          <div className="flex justify-between items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className={`${driver.name.length > 25 ? 'text-lg' : 'text-xl'} font-bold text-gray-800 uppercase leading-snug break-words`}>{t.hello}, {driver.name}</h1>
+              <p className="text-sm text-gray-600 font-mono truncate">{driver.carPlate}</p>
+            </div>
+            <button type="button" onClick={onLogout} aria-label={t.logOut} title={t.logOut} className="text-gray-600 hover:text-gray-800 shrink-0 p-2 rounded-full transition-transform active:scale-90">
+              <LogOut className="w-6 h-6" aria-hidden="true" />
+            </button>
           </div>
-          <button type="button" onClick={onLogout} aria-label="Log out" title="Log out" className="text-gray-600 hover:text-gray-800 shrink-0 p-2 rounded-full transition-transform active:scale-90">
-            <LogOut className="w-6 h-6" aria-hidden="true" />
-          </button>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <LanguageSwitch lang={lang} onChange={onLangChange} label={t.language} />
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-lg transition-transform active:scale-95 disabled:opacity-70"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+              {refreshing ? t.refreshing : t.updated(portalTime(loadedAt))}
+              <span className="sr-only">. {t.refresh}</span>
+            </button>
+          </div>
+          {refreshFailed && <p role="alert" className="mt-1 text-xs text-red-700 text-right">{t.refreshFailed}</p>}
         </div>
       </div>
 
@@ -69,11 +110,11 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
 
         <div className={`grid grid-cols-2 gap-3 ${enter(1).className}`} style={enter(1).style}>
           <div className={`bg-white p-4 rounded-xl shadow-sm border ${owed > 0 ? 'border-amber-300' : 'border-gray-200'}`}>
-            <p className="text-gray-600 text-xs uppercase font-semibold mb-1">You owe</p>
+            <p className="text-gray-600 text-xs uppercase font-semibold mb-1">{t.youOwe}</p>
             <p className={`text-xl font-bold ${owed > 0 ? 'text-amber-800' : 'text-gray-900'}`}>{formatCurrency(owed)}</p>
           </div>
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-            <p className="text-gray-600 text-xs uppercase font-semibold mb-1">Rent per {cycle}</p>
+            <p className="text-gray-600 text-xs uppercase font-semibold mb-1">{t.rentPer(cycle)}</p>
             <p className="text-xl font-bold text-gray-900">{formatCurrency(driver.rentalRate)}</p>
           </div>
         </div>
@@ -83,34 +124,34 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
           <section aria-labelledby="penalty-title" className={`bg-rose-50 p-4 rounded-xl shadow-sm border border-rose-200 ${enter(2).className}`} style={enter(2).style}>
             <div className="flex items-center justify-between gap-3">
               <h2 id="penalty-title" className="text-sm font-bold text-rose-900 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-rose-700" aria-hidden="true" /> Late penalty so far
+                <TrendingUp className="w-4 h-4 text-rose-700" aria-hidden="true" /> {t.penaltyTitle}
               </h2>
               <span className="text-xs font-semibold text-rose-800 bg-white border border-rose-200 rounded-full px-2 py-0.5 whitespace-nowrap">
-                +{formatCurrency(penalty.addedToday)} today
+                {t.penaltyToday(formatCurrency(penalty.addedToday))}
               </span>
             </div>
             <p className="text-2xl font-bold text-rose-800 mt-1">{formatCurrency(penalty.total)}</p>
-            <p className="text-xs text-rose-900/80 mt-1">18% a year on unpaid rent, added daily. Paying sooner stops it growing.</p>
+            <p className="text-xs text-rose-900/80 mt-1">{t.penaltyNote}</p>
           </section>
         )}
 
-        {/* What to pay next: one manageable step while rent is owed, and where to pay */}
+        {/* What to pay next: one manageable step while rent is owed, the next due dates, and where to pay */}
         {(owed > 0 || nextDue) && (
           <section aria-labelledby="next-payment-title" className={`bg-white p-4 rounded-xl shadow-sm border ${owed > 0 ? 'border-amber-300' : 'border-gray-200'} flex items-start gap-3 ${enter(3).className}`} style={enter(3).style}>
             <Calendar className="w-5 h-5 text-blue-700 mt-0.5 shrink-0" aria-hidden="true" />
-            <div>
-              <h2 id="next-payment-title" className="text-sm font-bold text-gray-900">Next payment</h2>
+            <div className="min-w-0 flex-1">
+              <h2 id="next-payment-title" className="text-sm font-bold text-gray-900">{t.nextPayment}</h2>
               {owed > 0 ? (
                 <>
                   <p className="text-sm font-semibold text-gray-900 mt-0.5">{view.milestone}</p>
-                  {oldestUnpaid && <p className="text-xs text-gray-600 mt-0.5">Unpaid since {formatDate(oldestUnpaid.dueDate)}.</p>}
+                  {oldestUnpaid && <p className="text-xs text-gray-600 mt-0.5">{t.unpaidSince(portalDate(oldestUnpaid.dueDate, lang))}</p>}
                 </>
               ) : nextDue && view.upcoming.length === 0 ? (
-                <p className="text-sm text-gray-800 mt-0.5"><strong>{formatCurrency(driver.rentalRate)}</strong> on {formatDate(nextDue)}.</p>
+                <p className="text-sm text-gray-800 mt-0.5">{t.amountOn(formatCurrency(driver.rentalRate), portalDate(nextDue, lang))}</p>
               ) : null}
               {view.upcoming.length > 0 && (
                 <div className={owed > 0 ? 'mt-3' : 'mt-1'}>
-                  {owed > 0 && <h3 className="text-xs uppercase font-semibold text-gray-600">Coming up</h3>}
+                  {owed > 0 && <h3 className="text-xs uppercase font-semibold text-gray-600">{t.comingUp}</h3>}
                   <ul className="mt-1 divide-y divide-gray-100">
                     {view.upcoming.map(row => (
                       <li key={row.date} className="py-1.5 flex justify-between gap-3 text-sm">
@@ -121,7 +162,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
                   </ul>
                 </div>
               )}
-              <p className="text-xs text-gray-600 mt-2">Pay to the account on your WhatsApp group statement, then send the receipt in the same group.</p>
+              <p className="text-xs text-gray-600 mt-2">{t.whereToPay}</p>
             </div>
           </section>
         )}
@@ -129,14 +170,14 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
         {/* Contract progress, never counting past the contract length */}
         {view.progress && (
           <section aria-labelledby="progress-title" className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 ${enter(4).className}`} style={enter(4).style}>
-            <div className="flex justify-between text-sm text-gray-700 mb-2">
-              <h2 id="progress-title" className="font-semibold">{ownsAtEnd ? 'On the way to owning this car' : 'Rental progress'}</h2>
-              <span className="font-semibold">{view.progress.label}</span>
+            <div className="flex justify-between gap-3 text-sm text-gray-700 mb-2">
+              <h2 id="progress-title" className="font-semibold">{ownsAtEnd ? t.ownTitle : t.rentalTitle}</h2>
+              <span className="font-semibold text-right">{view.progress.label}</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5" aria-hidden="true">
               <div className="h-2.5 rounded-full bg-blue-700 portal-fill" style={{ width: `${view.progress.percent}%` }} />
             </div>
-            <p className="text-xs text-gray-600 mt-2">{view.progress.note ?? `${view.progress.percent}% of the contract`}</p>
+            <p className="text-xs text-gray-600 mt-2">{view.progress.note ?? t.percent(view.progress.percent)}</p>
           </section>
         )}
 
@@ -144,14 +185,14 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
         <details className={`group bg-white rounded-xl shadow-sm border border-gray-200 ${enter(5).className}`} style={enter(5).style}>
           <summary className="p-4 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
             <span className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-gray-600" aria-hidden="true" /> My contract
+              <FileText className="w-4 h-4 text-gray-600" aria-hidden="true" /> {t.myContract}
             </span>
             <ChevronDown className="w-5 h-5 text-gray-500 transition-transform duration-300 group-open:rotate-180" aria-hidden="true" />
           </summary>
           <dl className="px-4 pb-4 divide-y divide-gray-100 portal-reveal">
             {view.contract.map(row => (
-              <div key={row.label} className="py-2 flex justify-between gap-4 text-sm">
-                <dt className="text-gray-600">{row.label}</dt>
+              <div key={row.key} className="py-2 flex justify-between gap-4 text-sm">
+                <dt className="text-gray-600 shrink-0">{row.label}</dt>
                 <dd className="font-semibold text-gray-900 text-right">{row.value}</dd>
               </div>
             ))}
@@ -161,16 +202,16 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
         {/* Recent payments */}
         <section aria-labelledby="recent-title" className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 ${enter(6).className}`} style={enter(6).style}>
           <h2 id="recent-title" className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-2">
-            <Receipt className="w-4 h-4 text-gray-600" aria-hidden="true" /> Recent payments
+            <Receipt className="w-4 h-4 text-gray-600" aria-hidden="true" /> {t.recent}
           </h2>
           {view.thanks && <p className="text-sm font-semibold text-emerald-800 mb-2">{view.thanks}</p>}
           {recent.length === 0 ? (
-            <p className="text-sm text-gray-600">No payments recorded yet.</p>
+            <p className="text-sm text-gray-600">{t.noPayments}</p>
           ) : (
             <ul className="divide-y divide-gray-100">
               {recent.map(payment => (
                 <li key={payment.id} className="py-2 flex items-center justify-between gap-3 text-sm">
-                  <span className="text-gray-700">{formatDate(payment.date)}</span>
+                  <span className="text-gray-700">{portalDate(payment.date, lang)}</span>
                   <span className="flex items-center gap-2">
                     <PaymentAmount payment={payment} className="font-semibold text-gray-900" />
                     <PaymentMethodBadge method={payment.paymentMethod} />
@@ -180,6 +221,8 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, onLogout }) =
             </ul>
           )}
         </section>
+
+        <InstallTip lang={lang} />
       </main>
     </div>
   );

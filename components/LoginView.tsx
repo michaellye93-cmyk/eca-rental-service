@@ -3,15 +3,29 @@ import React, { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { formatNric } from '../utils';
 import { ConfirmDialog } from './Dialog';
+import LanguageSwitch from './LanguageSwitch';
+import { portalText, type PortalLang } from '../services/portalText';
 
 interface LoginViewProps {
-  /** Resolves false when no driver has this NRIC; rejects with a message when sign-in is unavailable. */
-  onLoginDriver: (nric: string) => Promise<boolean>;
+  /**
+   * Resolves false when no driver has this NRIC; rejects with Error('rate_limited') or Error('unavailable').
+   * `remember` keeps the driver signed in on this phone for 30 days.
+   */
+  onLoginDriver: (nric: string, remember: boolean) => Promise<boolean>;
   onLoginAdmin: (accessId: string) => Promise<void>;
+  lang: PortalLang;
+  onLangChange: (lang: PortalLang) => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) => {
+type DriverError = 'enterNric' | 'notFound' | 'rateLimited' | 'unavailable';
+
+const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin, lang, onLangChange }) => {
+  const t = portalText(lang);
   const [nric, setNric] = useState('');
+  // Ticked by default: drivers use their own phones. Untick on a shared phone.
+  const [remember, setRemember] = useState(true);
+  // Kept as a code so it follows the language switch
+  const [driverError, setDriverError] = useState<DriverError | null>(null);
   
   // Admin Credentials State
   const [adminId, setAdminId] = useState('');
@@ -24,16 +38,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
 
   const handleDriverLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     if (!nric.trim()) {
-      setError('Please enter your NRIC');
+      setDriverError('enterNric');
       return;
     }
-    setError('');
+    setDriverError(null);
     setIsDriverLoggingIn(true);
     try {
-      if (!(await onLoginDriver(nric.trim()))) setError('Driver not found. Please check your NRIC.');
+      if (!(await onLoginDriver(nric.trim(), remember))) setDriverError('notFound');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Driver sign-in is not available right now. Please try again later.');
+      setDriverError(cause instanceof Error && cause.message === 'rate_limited' ? 'rateLimited' : 'unavailable');
     } finally {
       setIsDriverLoggingIn(false);
     }
@@ -48,6 +63,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
     }
 
     setError('');
+    setDriverError(null);
     setIsAdminLoggingIn(true);
     try {
       await onLoginAdmin(accessId);
@@ -66,6 +82,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
     }
     setNric(formatNric(val));
     setError('');
+    setDriverError(null);
   };
 
   return (
@@ -87,13 +104,16 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
         <div className="p-8 space-y-8">
           {/* Driver Login */}
           <form onSubmit={handleDriverLogin}>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-blue-600 rounded-full"></span>
-              Driver Login
-            </h2>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <span className="w-1 h-6 bg-blue-600 rounded-full"></span>
+                {t.driverLogin}
+              </h2>
+              <LanguageSwitch lang={lang} onChange={onLangChange} label={t.language} />
+            </div>
             <div className="space-y-4">
               <div>
-                <label htmlFor="nric" className="block text-sm font-medium text-gray-600 mb-1">NRIC Number</label>
+                <label htmlFor="nric" className="block text-sm font-medium text-gray-600 mb-1">{t.nricLabel}</label>
                 <input
                   id="nric"
                   name="nric"
@@ -107,19 +127,23 @@ const LoginView: React.FC<LoginViewProps> = ({ onLoginDriver, onLoginAdmin }) =>
                   onChange={handleNricChange}
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                {t.remember}
+              </label>
               <button
                 type="submit"
                 disabled={isDriverLoggingIn}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 rounded-lg transition-all active:scale-[0.98] shadow-lg shadow-blue-600/20"
               >
-                {isDriverLoggingIn ? 'Checking…' : 'Check My Dashboard'}
+                {isDriverLoggingIn ? t.checking : t.checkDashboard}
               </button>
             </div>
           </form>
 
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center">
-              {error}
+          {(error || driverError) && (
+            <div role="alert" className="bg-red-50 text-red-600 text-sm p-3 rounded-lg text-center">
+              {error || (driverError && t[driverError])}
             </div>
           )}
           

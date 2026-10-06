@@ -116,3 +116,24 @@ test('a payment dated after today (a typing slip) is not thanked yet', () => {
   const view = driverPortalView(driver({ paymentHistory: [paid('2026-08-01', 100), paid('2027-01-01', 100)] }), on('2026-08-10'));
   assert.match(view.thanks ?? '', /01 Aug 2026/);
 });
+
+test('Bahasa Malaysia and Chinese use the same figures with translated words and dates', () => {
+  const d = driver({ paymentHistory: [paid('2026-08-01', 100), paid('2026-08-08', 40)] });
+  const en = driverPortalView(d, on('2026-08-10'));
+  const ms = driverPortalView(d, on('2026-08-10'), 'ms');
+  const zh = driverPortalView(d, on('2026-08-10'), 'zh');
+  assert.equal(ms.title, 'Baki sewa untuk dijelaskan');
+  assert.equal(zh.title, '待补交租金');
+  for (const view of [ms, zh]) {
+    assert.equal(view.tone, en.tone);
+    assert.match(view.milestone ?? '', /RM\s?60\.00/);
+    assert.deepEqual(view.upcoming.map(row => row.amount), en.upcoming.map(row => row.amount));
+    assert.deepEqual(view.contract.map(row => row.key), en.contract.map(row => row.key));
+  }
+  assert.equal(ms.upcoming[0].date, '15 Ogo 2026');
+  assert.equal(zh.upcoming[0].date, '2026年8月15日');
+  assert.equal(ms.thanks, en.thanks?.replace('Last payment', 'Bayaran terakhir').replace(' on 08 Aug 2026. Thank you!', ' pada 08 Ogo 2026. Terima kasih!'));
+  assert.match(ms.contract.find(row => row.key === 'rent')?.value ?? '', /setiap Sabtu$/);
+  assert.match(zh.contract.find(row => row.key === 'rent')?.value ?? '', /，每周六$/);
+  assert.equal(zh.progress?.label, '第 2 周，共 10 周');
+});

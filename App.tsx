@@ -1,16 +1,23 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import CollectionsDataPage from './components/CollectionsDataPage';
 import type { Driver, PaymentTransaction } from './types';
 import { kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
+import { driverPortalSession } from './services/driverPortalSession';
+import { loadPortalLang, savePortalLang, type PortalLang } from './services/portalText';
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
 import { readAllRows } from './services/pagedRead';
 import Notice, { type NoticeMessage } from './components/Notice';
+
+/** This browser's storage, or null when the browser blocks it. */
+const browserStorage = (): Storage | null => {
+  try { return window.localStorage; } catch { return null; }
+};
 
 /** The read-only collections data view (admins, after the normal sign-in). */
 const isCollectionsDataPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin/collections';
@@ -23,8 +30,15 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [currentView, setCurrentView] = useState<'LOGIN' | 'DRIVER' | 'ADMIN'>('LOGIN');
-  // A signed-in driver's own record, from driver_portal_login (never the driver list)
-  const [portal, setPortal] = useState<{ driver: Driver } | null>(null);
+  // A signed-in driver's own record, from the driver sign-in (never the driver list). The NRIC typed this visit is kept
+  // in memory only, for Refresh; a remembered phone holds a 30-day token instead.
+  const [portal, setPortal] = useState<{ driver: Driver; nric: string; loadedAt: Date } | null>(null);
+  const portalSession = useMemo(() => driverPortalSession((name, args) => supabase.rpc(name, args), browserStorage()), []);
+  const [portalLang, setPortalLang] = useState<PortalLang>(() => loadPortalLang(browserStorage()));
+  const changePortalLang = useCallback((lang: PortalLang) => {
+    setPortalLang(lang);
+    savePortalLang(browserStorage(), lang);
+  }, []);
 
   // Auth State
   const [, setSession] = useState<Session | null>(null);
@@ -158,6 +172,13 @@ const App: React.FC = () => {
       if (restoredSession) {
         refreshRoleAfterAuthEvent(restoredSession);
       } else {
+        // No staff sign-in: reopen a driver's page if this phone was remembered
+        const resumed = await portalSession.resume();
+        if (!isActive || generation !== authGeneration.current) return;
+        if (resumed) {
+          setPortal({ driver: resumed.driver, nric: '', loadedAt: new Date() });
+          setCurrentView('DRIVER');
+        }
         setIsAuthChecking(false);
       }
     };
@@ -216,19 +237,24 @@ const App: React.FC = () => {
   // --- Login Handlers ---
 
   /**
-   * Signs a driver in on the server (driver_portal_login) and opens their own dashboard. Returns false when no driver
-   * has this NRIC; throws with a message when sign-in is unavailable or tried too often.
+   * Signs a driver in on the server and opens their own dashboard. Returns false when no driver has this NRIC; throws
+   * Error('rate_limited') or Error('unavailable'). With `remember`, this phone stays signed in for 30 days.
    */
-  const handleDriverLogin = async (nric: string): Promise<boolean> => {
-    const { data, error: loginError } = await supabase.rpc('driver_portal_login', { p_nric: nric });
-    if (loginError) {
-      throw new Error(/too many attempts/i.test(loginError.message) ? 'Too many attempts. Please wait a minute and try again.' : 'Driver sign-in is not available right now. Please try again later.');
-    }
-    if (!data?.driver) return false;
-    const profile = fromDriverRow({ ...data.driver, nric, email: null, address: null, tags: [] });
-    setPortal({ driver: withPayments(profile, (data.payments ?? []).map(paymentFromRow)) });
+  const handleDriverLogin = async (nric: string, remember: boolean): Promise<boolean> => {
+    const signedIn = await portalSession.signIn(nric, remember);
+    if (!signedIn) return false;
+    setPortal({ driver: signedIn.driver, nric, loadedAt: new Date() });
     setCurrentView('DRIVER');
     return true;
+  };
+
+  /** Reloads the signed-in driver's record (remembered token first, else the NRIC typed this visit). */
+  const handleDriverRefresh = async () => {
+    let reloaded = portalSession.isRemembered() ? await portalSession.resume() : null;
+    if (!reloaded && portal?.nric) reloaded = await portalSession.signIn(portal.nric, false);
+    if (!reloaded) throw new Error('unavailable');
+    const { driver } = reloaded;
+    setPortal(current => ({ driver, nric: current?.nric ?? '', loadedAt: new Date() }));
   };
 
   const handleAdminLogin = async (accessId: string) => {
@@ -238,6 +264,9 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     if (currentView === 'ADMIN') {
       await supabase.auth.signOut();
+    }
+    if (currentView === 'DRIVER') {
+      await portalSession.signOut();
     }
     setCurrentView('LOGIN');
     setPortal(null);
@@ -416,11 +445,20 @@ const App: React.FC = () => {
   }
 
   if (currentView === 'LOGIN') {
-    return <LoginView onLoginDriver={handleDriverLogin} onLoginAdmin={handleAdminLogin} />;
+    return <LoginView onLoginDriver={handleDriverLogin} onLoginAdmin={handleAdminLogin} lang={portalLang} onLangChange={changePortalLang} />;
   }
 
   if (currentView === 'DRIVER' && portal) {
-    return <DriverDashboard driver={portal.driver} onLogout={handleLogout} />;
+    return (
+      <DriverDashboard
+        driver={portal.driver}
+        lang={portalLang}
+        onLangChange={changePortalLang}
+        loadedAt={portal.loadedAt}
+        onRefresh={handleDriverRefresh}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   if (currentView === 'ADMIN' && isCollectionsDataPath()) {
