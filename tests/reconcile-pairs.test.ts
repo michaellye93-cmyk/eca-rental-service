@@ -82,3 +82,21 @@ test('a payment recorded as cash in hand is not expected in the bank, unless a b
   const pairs = reconcilePairs([cash, deposited], [], statements, [new Map()]);
   assert.deepEqual(pairs.map((p) => [p.payment.source_payment_id, p.state]), [['p1', 'cash'], ['p2', 'matched']]);
 });
+
+test('a bank line can pay rent and a deposit together, or a deposit alone; the review checks the total', async () => {
+  const { matchItems, rowPaymentIds, rowDepositIds } = await import('../services/finance/reconcileQueue.ts');
+  const { validateBankReview } = await import('../services/finance/bankStatements.ts');
+  const rent = payment('p1', '2026-08-03', 450, 'Fixture Driver Alpha');
+  const deposit = { id: 'dep1', driver_id: 'd-p1', driver_name: 'Fixture Driver Alpha', car_plate: 'XAA1001', kind: 'DEPOSIT', entry: 'RECEIVED', entry_date: '2026-08-03', amount: 250, method: null, reference: null, note: null };
+  const refund = { ...deposit, id: 'dep2', entry: 'REFUNDED' };
+  const mixed = matchItems(credit(1, '2026-08-03', 700, 'IBG FIXTURE DRIVER ALPHA'), ['p1'], ['dep1'], 'Rent and deposit');
+  assert.deepEqual([mixed.matched_kind, mixed.matched_id, mixed.matched_ids, mixed.matched_deposit_ids], ['payment', 'p1', ['p1'], ['dep1']]);
+  assert.deepEqual([rowPaymentIds(mixed), rowDepositIds(mixed)], [['p1'], ['dep1']]);
+  const alone = matchItems(credit(2, '2026-08-03', 250, 'IBG FIXTURE DRIVER ALPHA'), [], ['dep1'], 'Deposit');
+  assert.deepEqual([alone.matched_kind, alone.matched_id, alone.matched_ids, rowPaymentIds(alone)], ['deposit', 'dep1', null, []]);
+  const input = { month: { finance_month: '2026-08-01' }, ehailing: [rent], deposits: [deposit, refund], smart_import: null, recurring_costs: [], insurance: [], expenses: [] } as any;
+  assert.deepEqual(validateBankReview([mixed], '2026-08', input), []);
+  assert.deepEqual(validateBankReview([alone], '2026-08', input), []);
+  assert.ok(validateBankReview([matchItems(credit(1, '2026-08-03', 700, 'X'), ['p1'], ['dep2'], 'x')], '2026-08', input).length > 0); // a refund is not money in
+  assert.ok(validateBankReview([matchItems(credit(1, '2026-08-03', 699, 'X'), ['p1'], ['dep1'], 'x')], '2026-08', input).length > 0);
+});

@@ -32,6 +32,7 @@ import {
   linkWorkshopAllocation,
   saveOtherIncome,
 } from "../../services/finance/api";
+import { addDeposit, depositKindFor, depositKindLabel } from "../../services/depositsApi";
 import { buildFinanceReport } from "../../services/finance/calculations";
 import { insuranceCashOutflow, insuranceProblems } from "../../services/finance/insurance";
 import {
@@ -715,6 +716,17 @@ export default function FinanceView(props: MoneyProps = {}) {
               }}
               onError={setError}
               onMarkCash={props.onMarkPaymentCash ? (paymentId) => invoke(async () => { await props.onMarkPaymentCash!(paymentId); return refreshPayments(month); }, "Payment marked as paid in cash.") : undefined}
+              depositKindOf={(driverId) => depositKindFor(props.drivers?.find((d) => d.id === driverId)?.category)}
+              onRecordDeposit={async (driverId, amount, date) => {
+                let id: string | undefined;
+                const kind = depositKindFor(props.drivers?.find((d) => d.id === driverId)?.category);
+                await invoke(async () => {
+                  const saved = await addDeposit({ driver_id: driverId, kind, entry: "RECEIVED", entry_date: date, amount, note: "Recorded from Reconcile" });
+                  id = saved.id;
+                  return loadMonth(month);
+                }, `${depositKindLabel(kind)} recorded.`);
+                return id;
+              }}
             />
           )}
           {page === "expenses" && (
@@ -929,6 +941,7 @@ function Overview({
                 {line("Rent received in cash", cashFlow.in.rent_cash, "is-indent")}
                 {line("Smart Drive after commission", cashFlow.in.smart_drive_net, "is-indent")}
                 {line("Other income (confirmed)", cashFlow.in.other_income, "is-indent")}
+                {cashFlow.in.deposits !== 0 && line("Deposits & downpayments received (held, not revenue)", cashFlow.in.deposits, "is-indent")}
                 {line("Total in", cashFlow.in.total, "is-subtotal")}
                 <tr className="is-group"><td colSpan={2}>Money out</td></tr>
                 {line("Monthly vehicle costs", -cashFlow.out.monthly_vehicle, "is-indent")}
@@ -937,8 +950,12 @@ function Overview({
                 {line("Insurance (cover starting this month)", -cashFlow.out.insurance, "is-indent")}
                 {line("Operation Fix Cost", -cashFlow.out.operation_fix, "is-indent")}
                 {line(`Cash flow only${report.cash_flow_only_items.length ? ` (${report.cash_flow_only_items.map((item) => item.payee ? `${item.category} ${item.payee}` : item.category).join(", ")})` : ""}`, -cashFlow.out.cash_flow_only, "is-indent")}
+                {cashFlow.out.deposits_refunded !== 0 && line("Deposits refunded", -cashFlow.out.deposits_refunded, "is-indent")}
                 {line("Total out", -cashFlow.out.total, "is-subtotal")}
                 <tr className="is-total"><td>Net cash flow</td><td className={cashFlow.net < 0 ? "finance-negative" : ""}>{formatMoney(cashFlow.net)}</td></tr>
+                {input.deposits_held && (Number(input.deposits_held.DEPOSIT) !== 0 || Number(input.deposits_held.DOWNPAYMENT) !== 0) && (
+                  <tr><td colSpan={2} className="text-xs text-slate-500">Held at month end: deposits {formatMoney(Number(input.deposits_held.DEPOSIT))} · downpayments {formatMoney(Number(input.deposits_held.DOWNPAYMENT))}</td></tr>
+                )}
               </tbody>
             </table>
           </div>

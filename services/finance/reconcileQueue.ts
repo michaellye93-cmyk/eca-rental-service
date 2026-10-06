@@ -23,7 +23,7 @@ export function suggestAcrossStatements(statements: BankReviewRow[][], payments:
 }
 
 export function matchRow(row: BankReviewRow, paymentId: string, note: string): BankReviewRow {
-  return { ...row, decision: 'MATCHED', payment_source: null, category: null, plate_key: null, matched_kind: 'payment', matched_id: paymentId, matched_ids: null, review_note: note };
+  return { ...row, decision: 'MATCHED', payment_source: null, category: null, plate_key: null, matched_kind: 'payment', matched_id: paymentId, matched_ids: null, matched_deposit_ids: null, review_note: note };
 }
 
 /** Matches a bank credit to one payment, or to several whose cash adds up to it (kept in matched_ids). */
@@ -31,10 +31,25 @@ export function matchRows(row: BankReviewRow, paymentIds: string[], note: string
   return { ...matchRow(row, paymentIds[0], note), matched_ids: paymentIds.length >= 2 ? [...paymentIds] : null };
 }
 
+/**
+ * Matches a bank credit to rent payments and deposit/downpayment receipts together; with no payments it is matched to
+ * the deposits alone (matched_kind 'deposit'). Without deposits it is matchRows.
+ */
+export function matchItems(row: BankReviewRow, paymentIds: string[], depositIds: string[], note: string): BankReviewRow {
+  if (!depositIds.length) return matchRows(row, paymentIds, note);
+  if (!paymentIds.length) return { ...matchRow(row, depositIds[0], note), matched_kind: 'deposit', matched_deposit_ids: [...depositIds] };
+  return { ...matchRow(row, paymentIds[0], note), matched_ids: [...paymentIds], matched_deposit_ids: [...depositIds] };
+}
+
 /** The payments a bank line is matched to: none, one, or several for a split match. */
 export function rowPaymentIds(row: BankReviewRow): string[] {
   if (row.decision !== 'MATCHED' || row.matched_kind !== 'payment' || !row.matched_id) return [];
-  return row.matched_ids && row.matched_ids.length >= 2 ? [...row.matched_ids] : [row.matched_id];
+  return row.matched_ids && row.matched_ids.length >= 1 ? [...row.matched_ids] : [row.matched_id];
+}
+
+/** The deposit or downpayment receipts a bank line is matched to. */
+export function rowDepositIds(row: BankReviewRow): string[] {
+  return row.decision === 'MATCHED' && row.matched_deposit_ids ? [...row.matched_deposit_ids] : [];
 }
 
 /** Certain and strong matches are taken without a click; weak ones (looser name, wide date gap, cash deposit) wait. */

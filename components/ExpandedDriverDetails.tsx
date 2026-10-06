@@ -3,6 +3,7 @@ import { Driver } from '../types';
 import { formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { BankBadge, DeletedPayments, PaymentNoteLines, useBankStatus, usePaymentNotes } from './PaymentNotes';
+import DriverDeposits from './DriverDeposits';
 import { 
   Phone, 
   User, 
@@ -225,6 +226,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
         
         {/* Live Payments Feed */}
         <div className="lg:col-span-2 space-y-4">
+          <DriverDeposits driver={driver} />
           <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-500" />
             Live Payment Transactions & Timelines

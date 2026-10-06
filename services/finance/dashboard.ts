@@ -5,8 +5,9 @@ const cents = (value: number) => Math.round(value * 100) / 100;
 const monthKey = (value: string) => value.slice(0, 7);
 
 export interface MonthCashFlow {
-  in: { rent_cash: number; smart_drive_net: number; other_income: number; total: number };
-  out: { monthly_vehicle: number; workshop: number; other_vehicle: number; insurance: number; operation_fix: number; cash_flow_only: number; total: number };
+  /** deposits: Deposits and downpayments received (held for the driver, not revenue). */
+  in: { rent_cash: number; smart_drive_net: number; other_income: number; deposits: number; total: number };
+  out: { monthly_vehicle: number; workshop: number; other_vehicle: number; insurance: number; operation_fix: number; cash_flow_only: number; deposits_refunded: number; total: number };
   net: number;
 }
 
@@ -26,7 +27,9 @@ export function monthCashFlow(input: FinanceInput, report: FinanceReport): Month
     const outflow = insuranceCashOutflow(policy, input.calculation_version ?? 1);
     return outflow.date && monthKey(outflow.date) === month ? sum + outflow.amount : sum;
   }, 0));
-  const cashIn = { rent_cash, smart_drive_net, other_income, total: cents(rent_cash + smart_drive_net + other_income) };
+  const depositsOf = (entry: string) => cents((input.deposits ?? []).filter((row) => row.entry === entry && monthKey(row.entry_date) === month).reduce((sum, row) => sum + Number(row.amount), 0));
+  const deposits = depositsOf('RECEIVED');
+  const cashIn = { rent_cash, smart_drive_net, other_income, deposits, total: cents(rent_cash + smart_drive_net + other_income + deposits) };
   const out = {
     monthly_vehicle: cents(report.totals.recurring),
     workshop: cents(report.totals.workshop),
@@ -34,9 +37,10 @@ export function monthCashFlow(input: FinanceInput, report: FinanceReport): Month
     insurance,
     operation_fix: cents(report.corporate_opex),
     cash_flow_only: cents(report.cash_flow_only ?? 0),
+    deposits_refunded: depositsOf('REFUNDED'),
     total: 0,
   };
-  out.total = cents(out.monthly_vehicle + out.workshop + out.other_vehicle + out.insurance + out.operation_fix + out.cash_flow_only);
+  out.total = cents(out.monthly_vehicle + out.workshop + out.other_vehicle + out.insurance + out.operation_fix + out.cash_flow_only + out.deposits_refunded);
   return { in: cashIn, out, net: cents(cashIn.total - out.total) };
 }
 

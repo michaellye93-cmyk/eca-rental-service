@@ -39,10 +39,21 @@ const input: FinanceInput = {
 test('the month’s cash flow counts cash only: claims and accrued insurance are left out, tax instalments are in', () => {
   const report = calculateFinance(input);
   const flow = monthCashFlow(input, report);
-  assert.deepEqual(flow.in, { rent_cash: 900, smart_drive_net: 350, other_income: 70, total: 1320 });
+  assert.deepEqual(flow.in, { rent_cash: 900, smart_drive_net: 350, other_income: 70, deposits: 0, total: 1320 });
   // Insurance is the premium paid this month (cover starts 15 Aug), not the monthly share the P&L uses.
-  assert.deepEqual(flow.out, { monthly_vehicle: 500, workshop: 80, other_vehicle: 0, insurance: 1200, operation_fix: 40, cash_flow_only: 60, total: 1880 });
+  assert.deepEqual(flow.out, { monthly_vehicle: 500, workshop: 80, other_vehicle: 0, insurance: 1200, operation_fix: 40, cash_flow_only: 60, deposits_refunded: 0, total: 1880 });
   assert.equal(flow.net, -560);
+});
+
+test('deposits and downpayments received are cash in and refunds cash out, outside the P&L', () => {
+  const deposit = (entry: string, kind: string, amount: number) => ({ id: entry + kind, driver_id: 'd1', driver_name: null, car_plate: null, kind, entry, entry_date: '2026-08-10', amount, method: null, reference: null, note: null });
+  const withDeposits = { ...input, deposits: [deposit('RECEIVED', 'DEPOSIT', 250), deposit('RECEIVED', 'DOWNPAYMENT', 1000), deposit('REFUNDED', 'DEPOSIT', 100), deposit('FORFEITED', 'DEPOSIT', 50)] } as FinanceInput;
+  const report = calculateFinance(withDeposits);
+  assert.equal(report.totals.revenue, calculateFinance(input).totals.revenue);
+  const flow = monthCashFlow(withDeposits, report);
+  assert.equal(flow.in.deposits, 1250);
+  assert.equal(flow.out.deposits_refunded, 100); // a forfeit moves no cash
+  assert.equal(flow.net, -560 + 1250 - 100);
 });
 
 test('the 20% target shows the margin, the profit needed, the gap in RM and the idle cars', () => {

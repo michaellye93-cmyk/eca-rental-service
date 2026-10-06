@@ -46,7 +46,19 @@ export function validateBankReview(rows: BankReviewRow[], financeMonth: string, 
     let exists = false;
     let compatible = false;
     const selectedMonth = month(financeMonth);
-    if (row.matched_kind === 'payment' && row.matched_ids && row.matched_ids.length >= 2) {
+    if (row.matched_deposit_ids && row.matched_deposit_ids.length) {
+      // Rent payments (maybe none) plus deposit or downpayment receipts of the month, each once, adding up to the credit.
+      const paymentIds = row.matched_kind === 'payment' ? row.matched_ids ?? [] : [];
+      const payments = paymentIds.map(id => input.ehailing.find(x => x.source_payment_id === id));
+      const deposits = row.matched_deposit_ids.map(id => (input.deposits ?? []).find(x => x.id === id));
+      exists = payments.every(Boolean) && deposits.every(Boolean);
+      const ids = [...paymentIds, ...row.matched_deposit_ids];
+      compatible = exists && row.debit === 0 && new Set(ids).size === ids.length && ids.includes(row.matched_id ?? '')
+        && (row.matched_kind === 'deposit' ? !row.matched_ids : paymentIds.length >= 1)
+        && payments.every(record => record!.cash_amount > 0 && month(record!.finance_month) === selectedMonth)
+        && deposits.every(record => record!.entry === 'RECEIVED' && month(record!.entry_date) === selectedMonth)
+        && cents(payments.reduce((sum, record) => sum + record!.cash_amount, 0) + deposits.reduce((sum, record) => sum + Number(record!.amount), 0)) === cents(row.credit);
+    } else if (row.matched_kind === 'payment' && row.matched_ids && row.matched_ids.length >= 2) {
       // One transfer paying several payments: each exists once in the month and their cash adds up to the credit.
       const records = row.matched_ids.map(id => input.ehailing.find(x => x.source_payment_id === id));
       exists = records.every(Boolean);

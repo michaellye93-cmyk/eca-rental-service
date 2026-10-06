@@ -1,0 +1,112 @@
+import { useEffect, useState } from 'react';
+import type { Driver } from '../types';
+import { formatCurrency, kualaLumpurToday } from '../utils';
+import { addDeposit, deleteDeposit, depositHeld, depositKindFor, depositKindLabel, loadDeposits, type DepositEntry, type DriverDeposit } from '../services/depositsApi';
+
+const ENTRY_LABEL: Record<DepositEntry, string> = { RECEIVED: 'Received', REFUNDED: 'Refunded', FORFEITED: 'Forfeited' };
+
+/**
+ * The driver's deposit (Sewa Biasa) or downpayment (Sewa Beli): what was received, refunded or forfeited, and what is
+ * still held. Kept apart from rent; every change is logged with who made it.
+ */
+export default function DriverDeposits({ driver }: { driver: Pick<Driver, 'id' | 'category'> }) {
+  const kind = depositKindFor(driver.category);
+  const label = depositKindLabel(kind);
+  const [rows, setRows] = useState<DriverDeposit[] | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [entry, setEntry] = useState<DepositEntry>('RECEIVED');
+  const [date, setDate] = useState(() => kualaLumpurToday());
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    loadDeposits(driver.id).then((list) => { if (live) setRows(list); }).catch(() => { if (live) setUnavailable(true); });
+    return () => { live = false; };
+  }, [driver.id]);
+
+  if (unavailable) return null;
+  const held = depositHeld(rows ?? []);
+  const save = async () => {
+    const value = Math.round(parseFloat(amount) * 100) / 100;
+    if (!(value > 0) || !date) { setError('Enter a date and an amount above zero.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await addDeposit({ driver_id: driver.id, kind, entry, entry_date: date, amount: value, note: note.trim() || null });
+      setRows((list) => [saved, ...(list ?? [])].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
+      setAdding(false);
+      setAmount('');
+      setNote('');
+      setEntry('RECEIVED');
+    } catch (e: any) {
+      setError(`Not saved: ${e?.message ?? 'please try again'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (row: DriverDeposit) => {
+    if (!window.confirm(`Delete the ${ENTRY_LABEL[row.entry].toLowerCase()} ${label.toLowerCase()} of ${formatCurrency(row.amount)} on ${row.entry_date}? The change is logged.`)) return;
+    setBusy(true);
+    try {
+      await deleteDeposit(row.id);
+      setRows((list) => (list ?? []).filter((r) => r.id !== row.id));
+    } catch (e: any) {
+      setError(`Not deleted: ${e?.message ?? 'please try again'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-3 text-xs" aria-label={label}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h5 className="text-sm font-bold text-gray-900">{label}</h5>
+        <span className="text-gray-600">Held: <b className="font-mono text-gray-900">{formatCurrency(held)}</b></span>
+        {!adding && <button type="button" onClick={() => setAdding(true)} className="rounded border border-gray-300 px-2 py-1 font-semibold hover:bg-gray-50">Record {label.toLowerCase()}</button>}
+      </div>
+      {rows === null ? <p className="mt-2 text-gray-500">Loading…</p> : rows.length === 0 && !adding ? (
+        <p className="mt-2 text-gray-500">No {label.toLowerCase()} recorded yet.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-gray-100">
+          {rows.map((row) => (
+            <li key={row.id} className="flex flex-wrap items-center gap-2 py-1.5">
+              <span className="font-mono text-gray-600">{row.entry_date}</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${row.entry === 'RECEIVED' ? 'bg-emerald-50 text-emerald-800' : row.entry === 'REFUNDED' ? 'bg-blue-50 text-blue-800' : 'bg-amber-50 text-amber-800'}`}>{ENTRY_LABEL[row.entry]}</span>
+              <b className="font-mono">{formatCurrency(row.amount)}</b>
+              {row.note && <span className="text-gray-500">{row.note}</span>}
+              <button type="button" onClick={() => void remove(row)} disabled={busy} className="ml-auto text-red-600 hover:underline">Delete</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <div className="mt-2 grid gap-2 sm:grid-cols-4">
+          <label className="block">Type
+            <select value={entry} onChange={(e) => setEntry(e.target.value as DepositEntry)} className="mt-0.5 w-full rounded border border-gray-300 p-1">
+              <option value="RECEIVED">Received</option>
+              <option value="REFUNDED">Refunded</option>
+              <option value="FORFEITED">Forfeited</option>
+            </select>
+          </label>
+          <label className="block">Date
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 p-1" />
+          </label>
+          <label className="block">Amount (RM)
+            <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-0.5 w-full rounded border border-gray-300 p-1" />
+          </label>
+          <label className="block">Note
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className="mt-0.5 w-full rounded border border-gray-300 p-1" />
+          </label>
+          <div className="flex gap-2 sm:col-span-4">
+            <button type="button" onClick={() => void save()} disabled={busy} className="rounded bg-blue-700 px-3 py-1 font-semibold text-white disabled:opacity-50">Save</button>
+            <button type="button" onClick={() => { setAdding(false); setError(''); }} className="rounded border border-gray-300 px-3 py-1">Cancel</button>
+          </div>
+        </div>
+      )}
+      {error && <p className="mt-2 text-red-700">{error}</p>}
+    </section>
+  );
+}
