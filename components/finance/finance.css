@@ -1089,3 +1089,138 @@
   color: #167c70;
   font-weight: 600;
 }
+/* Reconcile tables: one plain row per line, readable at a glance. */
+.reconcile-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.reconcile-filters button {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 13px;
+  background: #fff;
+}
+.reconcile-filters button span {
+  margin-left: 4px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+.reconcile-filters button.is-active {
+  border-color: #167c70;
+  background: #167c70;
+  color: #fff;
+}
+.reconcile-filters button.is-active span {
+  color: #d1fae5;
+}
+.reconcile-table-wrap {
+  max-height: 32rem;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.reconcile-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.reconcile-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.reconcile-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+.reconcile-table tbody tr:hover {
+  background: #f8fafc;
+}
+.reconcile-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.reconcile-table .nowrap {
+  white-space: nowrap;
+}
+.reconcile-table tr.is-matched td:first-child {
+  box-shadow: inset 3px 0 0 #167c70;
+}
+.reconcile-table tr.is-excluded {
+  color: #64748b;
+}
+.reconcile-sub {
+  max-width: 34rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.reconcile-status.is-matched {
+  color: #167c70;
+  font-weight: 600;
+}
+.reconcile-status.is-excluded {
+  color: #64748b;
+}
+.reconcile-tag {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fff6ec;
+  color: #b45309;
+  font-size: 11px;
+}
+.reconcile-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+.reconcile-actions button {
+  margin-left: 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: #fff;
+}
+.reconcile-actions button.is-primary {
+  border-color: #167c70;
+  background: #167c70;
+  color: #fff;
+}
+.reconcile-empty {
+  padding: 16px;
+  text-align: center;
+  color: #64748b;
+}
+.reconcile-restored {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: #eef6ff;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #1e3a8a;
+}
+.reconcile-restored button {
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  padding: 1px 8px;
+  background: #fff;
+}

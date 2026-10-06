@@ -57,7 +57,7 @@ const daysApart = (a: string, b: string) => Math.abs(Date.parse(`${a.slice(0, 10
 const squash = (text: string | null | undefined) => String(text ?? '').toUpperCase().replace(/-/g, '').replace(/\s+/g, '');
 
 /** The part of a bank description that can be a person's name. */
-function senderName(description: string): string {
+export function senderName(description: string): string {
   return description
     .toUpperCase()
     .split(/[^A-Z0-9.]+/)
