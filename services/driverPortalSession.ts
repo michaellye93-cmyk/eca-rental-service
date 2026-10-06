@@ -49,6 +49,12 @@ export function driverPortalSession(rpc: PortalRpc, storage: PortalStorage | nul
   return {
     /** Signs in with the NRIC. Null when no driver has it; throws `rate_limited` or `unavailable` otherwise. */
     async signIn(nric: string, remember: boolean): Promise<PortalSignIn | null> {
+      // Whoever signs in now replaces any driver this phone remembered before (a shared or borrowed phone).
+      const previous = read();
+      if (previous) {
+        forget();
+        try { await rpc('driver_portal_forget', { p_token: previous.token }); } catch { /* it expires anyway */ }
+      }
       if (remember) {
         const { data, error } = await rpc('driver_portal_login_remember', { p_nric: nric });
         if (!error) {
@@ -64,7 +70,10 @@ export function driverPortalSession(rpc: PortalRpc, storage: PortalStorage | nul
       return (data as any)?.driver ? { driver: toDriver(data, nric) } : null;
     },
 
-    /** Reopens a remembered phone. Null when nothing is remembered, the token expired, or the server cannot be reached. */
+    /**
+     * Reopens a remembered phone. Null when nothing is remembered or the token expired (it is then forgotten); throws
+     * `unavailable` when the server cannot be reached (the token is kept for next time).
+     */
     async resume(): Promise<PortalSignIn | null> {
       const saved = read();
       if (!saved) return null;
@@ -74,9 +83,13 @@ export function driverPortalSession(rpc: PortalRpc, storage: PortalStorage | nul
       }
       const { data, error } = await rpc('driver_portal_resume', { p_token: saved.token });
       if (error) {
-        // Not reachable right now: keep the token for next time, unless the server has no such function at all.
-        if (isMissingFunction(error)) forget();
-        return null;
+        // The server has no such function (SQL not run): nothing can be remembered.
+        if (isMissingFunction(error)) {
+          forget();
+          return null;
+        }
+        // Not reachable right now: keep the token for next time.
+        throw new Error('unavailable' satisfies PortalSignInError);
       }
       if (!(data as any)?.driver) {
         forget();

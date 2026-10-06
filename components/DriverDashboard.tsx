@@ -14,7 +14,7 @@ interface DriverDashboardProps {
   onLangChange: (lang: PortalLang) => void;
   /** When the figures on screen were loaded. */
   loadedAt: Date;
-  /** Reloads the driver's record; rejects when it cannot. */
+  /** Reloads the driver's record; rejects with Error('rate_limited') or Error('unavailable') when it cannot. */
   onRefresh: () => Promise<void>;
   onLogout: () => void;
 }
@@ -40,7 +40,7 @@ const TONE: Record<PortalTone, { card: string; icon: React.ReactNode }> = {
 const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, lang, onLangChange, loadedAt, onRefresh, onLogout }) => {
   const t = portalText(lang);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const now = kualaLumpurNow();
   const endOfToday = new Date(now);
@@ -58,11 +58,11 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, lang, onLangC
 
   const refresh = async () => {
     setRefreshing(true);
-    setRefreshFailed(false);
+    setRefreshError(null);
     try {
       await onRefresh();
-    } catch {
-      setRefreshFailed(true);
+    } catch (cause) {
+      setRefreshError(cause instanceof Error && cause.message === 'rate_limited' ? t.rateLimited : t.refreshFailed);
     } finally {
       setRefreshing(false);
     }
@@ -94,7 +94,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, lang, onLangC
               <span className="sr-only">. {t.refresh}</span>
             </button>
           </div>
-          {refreshFailed && <p role="alert" className="mt-1 text-xs text-red-700 text-right">{t.refreshFailed}</p>}
+          {refreshError && <p role="alert" className="mt-1 text-xs text-red-700 text-right">{refreshError}</p>}
         </div>
       </div>
 

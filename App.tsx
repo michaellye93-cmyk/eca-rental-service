@@ -173,7 +173,7 @@ const App: React.FC = () => {
         refreshRoleAfterAuthEvent(restoredSession);
       } else {
         // No staff sign-in: reopen a driver's page if this phone was remembered
-        const resumed = await portalSession.resume();
+        const resumed = await portalSession.resume().catch(() => null);
         if (!isActive || generation !== authGeneration.current) return;
         if (resumed) {
           setPortal({ driver: resumed.driver, nric: '', loadedAt: new Date() });
@@ -248,11 +248,20 @@ const App: React.FC = () => {
     return true;
   };
 
-  /** Reloads the signed-in driver's record (remembered token first, else the NRIC typed this visit). */
+  /**
+   * Reloads the signed-in driver's record: with this phone's remembered sign-in when there is one, else the NRIC typed
+   * this visit. When the sign-in has expired or the driver is gone, returns to the login page. Rejects with
+   * `rate_limited` or `unavailable` when it cannot reload now.
+   */
   const handleDriverRefresh = async () => {
-    let reloaded = portalSession.isRemembered() ? await portalSession.resume() : null;
-    if (!reloaded && portal?.nric) reloaded = await portalSession.signIn(portal.nric, false);
-    if (!reloaded) throw new Error('unavailable');
+    const reloaded = portalSession.isRemembered()
+      ? await portalSession.resume()
+      : portal?.nric ? await portalSession.signIn(portal.nric, false) : null;
+    if (!reloaded) {
+      setPortal(null);
+      setCurrentView('LOGIN');
+      return;
+    }
     const { driver } = reloaded;
     setPortal(current => ({ driver, nric: current?.nric ?? '', loadedAt: new Date() }));
   };

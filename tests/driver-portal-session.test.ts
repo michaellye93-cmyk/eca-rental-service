@@ -84,7 +84,7 @@ test('no stored token or a past expiry means no call; a network failure keeps th
   const kept = memoryStorage();
   kept.setItem('eca.driverSession', JSON.stringify({ token: TOKEN, expiresAt: '2999-01-01T00:00:00Z' }));
   const down = fakeRpc({ driver_portal_resume: () => ({ error: { message: 'Failed to fetch' } }) });
-  assert.equal(await driverPortalSession(down.rpc, kept).resume(), null);
+  await assert.rejects(driverPortalSession(down.rpc, kept).resume(), /unavailable/);
   assert.equal(kept.data.size, 1);
 });
 
@@ -104,4 +104,16 @@ test('a browser that blocks storage still signs in, just without remembering', a
   assert.ok(await session.signIn('900101011234', true));
   assert.equal(await session.resume(), null);
   await session.signOut();
+});
+
+test('a new sign-in replaces any phone memory left by someone else, ticked or not', async () => {
+  const OLD = 'b'.repeat(64);
+  const storage = memoryStorage();
+  storage.setItem('eca.driverSession', JSON.stringify({ token: OLD, expiresAt: '2999-01-01T00:00:00Z' }));
+  const { rpc, calls } = fakeRpc({ driver_portal_login: () => ({ data: RECORD }), driver_portal_forget: () => ({}) });
+  const session = driverPortalSession(rpc, storage);
+  assert.ok(await session.signIn('900202022345', false));
+  assert.equal(storage.data.size, 0, 'the earlier driver is no longer remembered');
+  assert.equal(session.isRemembered(), false);
+  assert.deepEqual(calls.find(c => c[0] === 'driver_portal_forget'), ['driver_portal_forget', { p_token: OLD }]);
 });

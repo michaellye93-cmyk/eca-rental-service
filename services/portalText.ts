@@ -179,7 +179,7 @@ const en: Text = {
 };
 
 const ms: Text = {
-  upToDateTitle: 'Bayaran anda terkini',
+  upToDateTitle: 'Tiada tunggakan',
   upToDate: (amount, date) => `Sewa seterusnya ${amount} perlu dibayar pada ${date}.`,
   nothingOwed: 'Tiada baki tertunggak. Terima kasih.',
   catchUpTitle: 'Baki sewa untuk dijelaskan',
@@ -190,7 +190,7 @@ const ms: Text = {
   final: amount => `Baki ${amount} perlu dijelaskan untuk menutup akaun anda. Hubungi pejabat untuk mengaturnya.`,
   closedTitle: 'Akaun ditutup',
   closed: 'Sewaan anda telah tamat tanpa sebarang baki. Terima kasih.',
-  clearAll: amount => `Bayar ${amount} dan bayaran anda terkini sepenuhnya.`,
+  clearAll: amount => `Bayar ${amount} dan anda tiada lagi tunggakan.`,
   nextStep: (step, level) => `Langkah seterusnya: bayar ${step} untuk kurangkan baki kepada ${level}.`,
   thanks: (amount, date) => `Bayaran terakhir ${amount} pada ${date}. Terima kasih!`,
   progress: (unit, shown, of) => `${unit === 'month' ? 'Bulan' : 'Minggu'} ${shown} daripada ${of}`,

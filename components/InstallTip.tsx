@@ -1,14 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Smartphone, X } from 'lucide-react';
 import { portalText, type PortalLang } from '../services/portalText';
+import { installPrompt, onInstallPrompt, runInstallPrompt, type InstallPromptEvent } from '../services/installPrompt';
 
 const DISMISSED_KEY = 'eca.installTipDismissed';
-
-/** Chrome's install prompt event (not in the standard DOM types). */
-interface InstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
 
 const isInstalled = () =>
   window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -25,21 +20,13 @@ const wasDismissed = () => {
 const InstallTip: React.FC<{ lang: PortalLang }> = ({ lang }) => {
   const t = portalText(lang);
   const [hidden, setHidden] = useState(() => isInstalled() || wasDismissed());
-  const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null);
+  // Caught at page load (services/installPrompt), since Chrome offers it only once
+  const [prompt, setPrompt] = useState<InstallPromptEvent | null>(installPrompt);
 
-  useEffect(() => {
-    const capture = (event: Event) => {
-      event.preventDefault();
-      setPrompt(event as InstallPromptEvent);
-    };
-    const installed = () => setHidden(true);
-    window.addEventListener('beforeinstallprompt', capture);
-    window.addEventListener('appinstalled', installed);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', capture);
-      window.removeEventListener('appinstalled', installed);
-    };
-  }, []);
+  useEffect(() => onInstallPrompt(event => {
+    setPrompt(event);
+    if (!event) setHidden(true); // installed
+  }), []);
 
   if (hidden) return null;
 
@@ -48,11 +35,9 @@ const InstallTip: React.FC<{ lang: PortalLang }> = ({ lang }) => {
     setHidden(true);
   };
   const install = async () => {
-    if (!prompt) return;
-    await prompt.prompt();
-    const { outcome } = await prompt.userChoice;
+    const accepted = await runInstallPrompt();
     setPrompt(null);
-    if (outcome === 'accepted') setHidden(true);
+    if (accepted) setHidden(true);
   };
 
   return (

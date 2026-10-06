@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
+import { createHash } from 'node:crypto';
 import { database, migrate } from './finance-db-fixture.ts';
 
 const FINANCE = ['20260915084108_secure_profile_roles.sql', '20260915084110_finance_foundation.sql'];
@@ -49,7 +50,7 @@ test('signing in with "keep me signed in" returns the usual record plus a 30-day
     await db.exec('reset role');
     const stored = (await db.query<{ hex: string }>(`select encode(token_hash,'hex') hex from finance_private.driver_portal_sessions`)).rows;
     assert.equal(stored.length, 1);
-    assert.notEqual(stored[0].hex, session.token, 'the token itself is never stored');
+    assert.equal(stored[0].hex, createHash('sha256').update(session.token).digest('hex'), 'only the SHA-256 of the token is stored');
   } finally { await db.close(); }
 });
 

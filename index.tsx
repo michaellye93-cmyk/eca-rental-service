@@ -3,6 +3,7 @@ import '@fontsource/geist/500.css';
 import '@fontsource/geist/600.css';
 import '@fontsource/geist/700.css';
 import './index.css';
+import './services/installPrompt';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
