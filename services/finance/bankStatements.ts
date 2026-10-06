@@ -46,7 +46,14 @@ export function validateBankReview(rows: BankReviewRow[], financeMonth: string, 
     let exists = false;
     let compatible = false;
     const selectedMonth = month(financeMonth);
-    if (row.matched_kind === 'payment') {
+    if (row.matched_kind === 'payment' && row.matched_ids && row.matched_ids.length >= 2) {
+      // One transfer paying several payments: each exists once in the month and their cash adds up to the credit.
+      const records = row.matched_ids.map(id => input.ehailing.find(x => x.source_payment_id === id));
+      exists = records.every(Boolean);
+      compatible = exists && row.debit === 0 && new Set(row.matched_ids).size === row.matched_ids.length && row.matched_ids.includes(row.matched_id ?? '')
+        && records.every(record => record!.cash_amount > 0 && month(record!.finance_month) === selectedMonth)
+        && cents(records.reduce((sum, record) => sum + record!.cash_amount, 0)) === cents(row.credit);
+    } else if (row.matched_kind === 'payment') {
       const record = input.ehailing.find(x => x.source_payment_id === row.matched_id);
       exists = !!record;
       compatible = !!record && row.debit === 0 && record.cash_amount === row.credit && month(record.finance_month) === selectedMonth;

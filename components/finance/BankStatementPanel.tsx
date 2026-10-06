@@ -15,7 +15,7 @@ import {
 import { postBankStatement, reviewBankMatch } from "../../services/finance/api";
 import { senderLooksLike, senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
 import { clearReconcileDraft, loadReconcileDraft, saveReconcileDraft } from "../../services/finance/reconcileDraft";
-import { applySureMatches, matchRow, moneyInOnly, reconcilePairs, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
+import { applySureMatches, matchRow, matchRows, moneyInOnly, reconcilePairs, rowPaymentIds, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
 
 const vehicleCategories = [
   "Road Tax",
@@ -59,8 +59,7 @@ type LoadedStatement = BankStatementPreview & {
 // The browser's storage, when it allows it (private windows and blocked site data do not).
 const browserStore = () => { try { return window.localStorage; } catch { return null; } };
 const shortDate = (date: string) => { const d = new Date(`${date}T00:00:00`); return Number.isNaN(d.getTime()) ? date || "No date" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); };
-const matchedPaymentIds = (rows: BankReviewRow[]) =>
-  rows.filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id).map((row) => row.matched_id as string);
+const matchedPaymentIds = (rows: BankReviewRow[]) => rows.flatMap(rowPaymentIds);
 
 export default function BankStatementPanel({
   month,
@@ -90,7 +89,7 @@ export default function BankStatementPanel({
   >(null);
   const generation = useRef(0);
   // Payments already matched to a posted bank credit this month, and in the statements being reviewed
-  const postedPaymentIds = useMemo(() => new Set((input?.bank_rows ?? []).filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id && row.match_valid !== false).map((row) => row.matched_id as string)), [input]);
+  const postedPaymentIds = useMemo(() => new Set((input?.bank_rows ?? []).filter((row) => row.match_valid !== false).flatMap(rowPaymentIds)), [input]);
   const draftPaymentIds = useMemo(() => new Set(statements.flatMap((statement) => matchedPaymentIds(statement.rows))), [statements]);
   // Suggested matches for pending credits, across every loaded statement so one payment is suggested only once
   const allSuggestions = useMemo(() => (input ? suggestAcrossStatements(statements.map((statement) => statement.rows), input.ehailing, new Set([...postedPaymentIds, ...draftPaymentIds]), paymentReferences) : []), [statements, input, postedPaymentIds, draftPaymentIds, paymentReferences]);
@@ -113,7 +112,7 @@ export default function BankStatementPanel({
   // with a reason, so the statement can be posted; nothing becomes revenue or a new expense.
   const pendingRows = (side: "debit" | "credit", rows = preview?.rows ?? []) => rows.filter((row) => row.decision === "PENDING" && (side === "debit" ? row.debit > 0 : row.credit > 0));
   const excludePending = (side: "debit" | "credit", note: string) =>
-    setRows(active, (rows) => rows.map((row) => row.decision === "PENDING" && (side === "debit" ? row.debit > 0 : row.credit > 0) ? { ...row, decision: "EXCLUDED", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: note } : row));
+    setRows(active, (rows) => rows.map((row) => row.decision === "PENDING" && (side === "debit" ? row.debit > 0 : row.credit > 0) ? { ...row, decision: "EXCLUDED", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: note } : row));
   // Prints only the reconciliation report (same approach as the termination report)
   const printReport = () => {
     document.body.classList.add("printing-reconcile-report");
@@ -165,7 +164,7 @@ export default function BankStatementPanel({
     if (file.type.includes("pdf") || file.type.startsWith("image/")) {
       const extracted = await extractBankStatement(file);
       return {
-        rows: extracted.rows.map((row) => ({ ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: "" })),
+        rows: extracted.rows.map((row) => ({ ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: "" })),
         issues: [],
         total_debits: extracted.total_debits,
         total_credits: extracted.total_credits,
@@ -392,7 +391,7 @@ export default function BankStatementPanel({
         suggestions={allSuggestions}
         disabled={disabled || busy}
         onMatch={(statement, sourceRow, paymentId, note) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? matchRow(row, paymentId, note) : row)))}
-        onUndo={(statement, sourceRow) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? { ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: "" } : row)))}
+        onUndo={(statement, sourceRow) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? { ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: "" } : row)))}
         onOpen={setActive}
       />
       {preview && (
@@ -606,7 +605,7 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
   };
   const labels: Record<LineFilter, string> = { todo: "To decide", weak: "Weak matches", matched: "Matched", excluded: "Not rent", all: "All" };
   const shown = rows.map((row, index) => ({ row, index })).filter(({ row }) => groups[filter](row));
-  const reset = { decision: "PENDING" as const, payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, review_note: "" };
+  const reset = { decision: "PENDING" as const, payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: "" };
   return (
     <div className="mt-3">
       <div className="reconcile-filters" role="tablist" aria-label="Show bank lines">
@@ -626,7 +625,7 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
               const suggestion = row.decision === "PENDING" ? suggestions.get(row.source_row) : undefined;
               const name = senderName(row.description) || row.description.slice(0, 40);
               const open = picking === index && row.decision === "PENDING";
-              const candidates = open ? matchCandidates(row, input).filter((c) => c.kind !== "payment" || !usedPaymentIds.has(c.id)) : [];
+              const smart = open ? matchCandidates(row, input).find((c) => c.kind === "smart_import") : undefined;
               return (
                 <tr key={row.source_row} className={`is-${row.decision.toLowerCase()}`}>
                   <td className="nowrap">{shortDate(row.transaction_date)}</td>
@@ -636,7 +635,7 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
                     {(name !== row.description || row.reference) && <div className="reconcile-sub" title={`${row.description}${row.reference ? ` · ${row.reference}` : ""}`}>{row.description}{row.reference ? ` · ${row.reference}` : ""}</div>}
                   </td>
                   <td>
-                    {row.decision === "MATCHED" && <span className="reconcile-status is-matched">✓ {row.matched_kind === "payment" && row.matched_id ? paymentLabel(row.matched_id) : row.matched_kind === "smart_import" ? "Smart Drive import" : row.matched_kind}</span>}
+                    {row.decision === "MATCHED" && <span className="reconcile-status is-matched">✓ {rowPaymentIds(row).length ? rowPaymentIds(row).map(paymentLabel).join(" + ") : row.matched_kind === "smart_import" ? "Smart Drive import" : row.matched_kind}</span>}
                     {row.decision === "EXCLUDED" && <span className="reconcile-status is-excluded">Not rent{row.review_note && row.review_note !== NOT_RENT ? `: ${row.review_note}` : ""}</span>}
                     {suggestion && (
                       <span className="reconcile-status">
@@ -646,10 +645,10 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
                     )}
                     {row.decision === "PENDING" && !suggestion && !open && <span className="text-slate-500">No match found</span>}
                     {open && (
-                      <select autoFocus className="rounded border p-1" defaultValue="" onChange={(e) => { const [kind, ...id] = e.target.value.split(":"); if (!kind) return; onChange(index, { ...reset, decision: "MATCHED", matched_kind: kind as BankMatchKind, matched_id: id.join(":"), review_note: "Matched by hand" }); setPicking(null); }}>
-                        <option value="">{candidates.length ? "Choose the payment…" : "No unmatched payment with this amount"}</option>
-                        {candidates.map((c) => <option key={`${c.kind}:${c.id}`} value={`${c.kind}:${c.id}`}>{c.label}</option>)}
-                      </select>
+                      <>
+                        <PaymentPicker row={row} input={input} usedPaymentIds={usedPaymentIds} onCancel={() => setPicking(null)} onPick={(ids, note) => { onChange(index, matchRows(row, ids, note)); setPicking(null); }} />
+                        {smart && <button type="button" className="mt-1 rounded border px-2 py-0.5 text-xs" onClick={() => { onChange(index, { ...reset, decision: "MATCHED", matched_kind: "smart_import", matched_id: smart.id, review_note: "Matched by hand" }); setPicking(null); }}>It's the Smart Drive payout instead</button>}
+                      </>
                     )}
                   </td>
                   <td className="reconcile-actions">
@@ -672,6 +671,58 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
     </div>
   );
 }
+/**
+ * Picks the payment, or several payments, a bank credit pays for. Tick payments until they add up to the bank amount;
+ * one transfer covering rent and a penalty recorded separately is matched to both. Payments already matched elsewhere
+ * are not offered; the sender's own payments come first, then the nearest dates.
+ */
+function PaymentPicker({ row, input, usedPaymentIds, onPick, onCancel }: {
+  row: BankReviewRow;
+  input: FinanceInput | null;
+  usedPaymentIds: Set<string>;
+  onPick: (paymentIds: string[], note: string) => void;
+  onCancel: () => void;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const toCents = (n: number) => Math.round(n * 100);
+  const target = toCents(row.credit);
+  const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
+  const pool = (input?.ehailing ?? [])
+    .filter((p) => p.cash_amount > 0 && toCents(p.cash_amount) <= target && !usedPaymentIds.has(p.source_payment_id))
+    .map((p) => ({ p, same: senderLooksLike(row.description, p.driver_name_snapshot), gap: Math.abs(day(p.payment_date) - day(row.transaction_date)) }))
+    .sort((a, b) => Number(b.same) - Number(a.same) || a.gap - b.gap);
+  const term = search.trim().toUpperCase();
+  const shown = pool.filter(({ p }) => selected.includes(p.source_payment_id) || !term || `${p.driver_name_snapshot ?? ""} ${p.car_plate_snapshot ?? p.plate_key ?? ""}`.toUpperCase().includes(term)).slice(0, 40);
+  const total = selected.reduce((sum, id) => sum + toCents(input?.ehailing.find((p) => p.source_payment_id === id)?.cash_amount ?? 0), 0);
+  const left = target - total;
+  const toggle = (id: string) => setSelected((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+  return (
+    <div className="reconcile-picker">
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search driver or plate" className="rounded border p-1 text-xs" aria-label="Search payments" />
+      <div className="reconcile-picker-list">
+        {shown.length === 0 && <p className="text-xs text-slate-500">No unmatched payment up to {money(row.credit)}.</p>}
+        {shown.map(({ p, same }) => (
+          <label key={p.source_payment_id} className={same ? "is-same" : ""}>
+            <input type="checkbox" checked={selected.includes(p.source_payment_id)} onChange={() => toggle(p.source_payment_id)} />
+            <span>{shortDate(p.payment_date)}</span>
+            <b>{p.driver_name_snapshot ?? "Driver"}</b>
+            <span>{p.car_plate_snapshot ?? p.plate_key ?? ""}</span>
+            <span className="num">{money(p.cash_amount)}</span>
+          </label>
+        ))}
+      </div>
+      <div className="reconcile-picker-foot">
+        <span className={left === 0 && selected.length ? "text-emerald-700" : left < 0 ? "text-red-700" : ""}>
+          Ticked {money(total / 100)} of {money(row.credit)}{left === 0 && selected.length ? " ✓" : left > 0 ? ` · ${money(left / 100)} left` : ` · ${money(-left / 100)} too much`}
+        </span>
+        <button type="button" className="is-primary" disabled={!selected.length || left !== 0} onClick={() => onPick(selected, selected.length > 1 ? `One transfer for ${selected.length} payments` : "Matched by hand")}>Match</button>
+        <button type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function ReviewRow({
   row,
   input,
@@ -922,6 +973,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
                       <td className="nowrap">{shortDate(bank.row.transaction_date)}</td>
                       <td>
                         <span title={bank.row.description}>{senderName(bank.row.description) || bank.row.description.slice(0, 40)}</span>
+                        {!!pair.shared && <div className="reconcile-hint">One transfer for {pair.shared + 1} payments</div>}
                         {pair.state === "suggested" && pair.confidence && <div><span className={`reconcile-confidence is-${pair.confidence.toLowerCase()}`}>{pair.confidence === "WEAK" ? "Weak match: check the receipt" : pair.confidence === "STRONG" ? "Strong match" : "Certain match"}</span></div>}
                         {pair.state === "guess" && <div className={pair.sameName ? "reconcile-hint" : "reconcile-hint is-warn"}>{pair.sameName ? "Same amount, name agrees" : "Same amount, different name"}{pair.others ? ` · ${pair.others} other ${pair.others === 1 ? "line" : "lines"} with this amount` : ""}</div>}
                       </td>
@@ -985,7 +1037,7 @@ function ReconcileReport({ month, input, postedIds, paymentLabel }: { month: str
         <thead><tr><th>Date</th><th>Bank description</th><th>Amount</th><th>Matched to</th></tr></thead>
         <tbody>
           {matched.filter((row) => row.credit > 0).map((row) => (
-            <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit)}</td><td>{row.matched_kind === "payment" && row.matched_id ? paymentLabel(row.matched_id) : row.matched_kind}</td></tr>
+            <tr key={`${row.import_id}-${row.source_row}`}><td>{row.transaction_date}</td><td>{row.description}</td><td className="num">{money(row.credit)}</td><td>{rowPaymentIds(row).length ? rowPaymentIds(row).map(paymentLabel).join(" + ") : row.matched_kind}</td></tr>
           ))}
         </tbody>
       </table>

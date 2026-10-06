@@ -23,7 +23,18 @@ export function suggestAcrossStatements(statements: BankReviewRow[][], payments:
 }
 
 export function matchRow(row: BankReviewRow, paymentId: string, note: string): BankReviewRow {
-  return { ...row, decision: 'MATCHED', payment_source: null, category: null, plate_key: null, matched_kind: 'payment', matched_id: paymentId, review_note: note };
+  return { ...row, decision: 'MATCHED', payment_source: null, category: null, plate_key: null, matched_kind: 'payment', matched_id: paymentId, matched_ids: null, review_note: note };
+}
+
+/** Matches a bank credit to one payment, or to several whose cash adds up to it (kept in matched_ids). */
+export function matchRows(row: BankReviewRow, paymentIds: string[], note: string): BankReviewRow {
+  return { ...matchRow(row, paymentIds[0], note), matched_ids: paymentIds.length >= 2 ? [...paymentIds] : null };
+}
+
+/** The payments a bank line is matched to: none, one, or several for a split match. */
+export function rowPaymentIds(row: BankReviewRow): string[] {
+  if (row.decision !== 'MATCHED' || row.matched_kind !== 'payment' || !row.matched_id) return [];
+  return row.matched_ids && row.matched_ids.length >= 2 ? [...row.matched_ids] : [row.matched_id];
 }
 
 /** Certain and strong matches are taken without a click; weak ones (looser name, wide date gap, cash deposit) wait. */
@@ -105,6 +116,8 @@ export interface ReconcilePair {
   /** The bank line on the right: statement index (null when already posted), the line and its account. */
   bank?: { statement: number | null; row: BankReviewRow; account: string };
   confidence?: PaymentSuggestion['confidence'];
+  /** For a match: how many other payments share the same bank line (one transfer paying several). */
+  shared?: number;
   /** For a guess: whether the sender's name looks like the driver, and how many other open lines share the amount. */
   sameName?: boolean;
   others?: number;
@@ -121,12 +134,12 @@ export function reconcilePairs(
   suggestions: Array<Map<number, PaymentSuggestion>>,
   looksLike: (description: string, driverName: string | null | undefined) => boolean = () => false,
 ): ReconcilePair[] {
-  const postedBy = new Map(posted.filter(({ row }) => row.decision === 'MATCHED' && row.matched_kind === 'payment' && row.matched_id).map((entry) => [entry.row.matched_id as string, entry]));
+  const postedBy = new Map(posted.flatMap((entry) => rowPaymentIds(entry.row).map((id) => [id, entry] as const)));
   const draftBy = new Map<string, { statement: number; row: BankReviewRow }>();
   const suggestedBy = new Map<string, { statement: number; row: BankReviewRow; confidence: PaymentSuggestion['confidence'] }>();
   statements.forEach((statement, index) => {
     for (const row of statement.rows) {
-      if (row.decision === 'MATCHED' && row.matched_kind === 'payment' && row.matched_id) draftBy.set(row.matched_id, { statement: index, row });
+      for (const id of rowPaymentIds(row)) draftBy.set(id, { statement: index, row });
       const suggestion = row.decision === 'PENDING' ? suggestions[index]?.get(row.source_row) : undefined;
       if (suggestion) suggestedBy.set(suggestion.paymentId, { statement: index, row, confidence: suggestion.confidence });
     }
@@ -138,9 +151,9 @@ export function reconcilePairs(
     .map((payment): ReconcilePair => {
       const id = payment.source_payment_id;
       const done = postedBy.get(id);
-      if (done) return { payment, state: 'posted', bank: { statement: null, row: done.row, account: done.account } };
+      if (done) return { payment, state: 'posted', bank: { statement: null, row: done.row, account: done.account }, shared: rowPaymentIds(done.row).length - 1 };
       const draft = draftBy.get(id);
-      if (draft) return { payment, state: 'matched', bank: { ...draft, account: statements[draft.statement].account } };
+      if (draft) return { payment, state: 'matched', bank: { ...draft, account: statements[draft.statement].account }, shared: rowPaymentIds(draft.row).length - 1 };
       const suggested = suggestedBy.get(id);
       if (suggested) return { payment, state: 'suggested', confidence: suggested.confidence, bank: { statement: suggested.statement, row: suggested.row, account: statements[suggested.statement].account } };
       // Open lines with the amount that no other payment's suggestion has claimed; a name that agrees comes first.

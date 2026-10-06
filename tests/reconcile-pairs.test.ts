@@ -54,3 +54,20 @@ test('each system payment is paired with its bank line: posted, matched, suggest
   assert.equal(pairs[3].sameName, false);
   assert.equal(pairs[3].others, 0);
 });
+
+test('a bank line matched to several payments ticks each of them, and the review accepts it only when they add up', async () => {
+  const { matchRows, rowPaymentIds } = await import('../services/finance/reconcileQueue.ts');
+  const { validateBankReview } = await import('../services/finance/bankStatements.ts');
+  const rent = payment('p1', '2026-08-25', 500, 'Fixture Driver Alpha');
+  const penalty = payment('p2', '2026-08-25', 10, 'Fixture Driver Alpha');
+  const other = payment('p3', '2026-08-26', 20, 'Fixture Driver Alpha');
+  const row = matchRows(credit(1, '2026-08-25', 510, 'IBG FIXTURE DRIVER ALPHA'), ['p1', 'p2'], 'Rent and penalty in one transfer');
+  assert.deepEqual([row.matched_id, row.matched_ids, rowPaymentIds(row)], ['p1', ['p1', 'p2'], ['p1', 'p2']]);
+  assert.equal(matchRows(credit(2, '2026-08-25', 500, 'X'), ['p1'], 'one').matched_ids, null); // one payment stays a plain match
+  const pairs = reconcilePairs([rent, penalty, other], [], [{ account: 'Bank A', rows: [row] }], [new Map()]);
+  assert.deepEqual(pairs.map((p) => [p.payment.source_payment_id, p.state, p.shared ?? 0]), [['p1', 'matched', 1], ['p2', 'matched', 1], ['p3', 'missing', 0]]);
+  const input = { month: { finance_month: '2026-08-01' }, ehailing: [rent, penalty, other], smart_import: null, recurring_costs: [], insurance: [], expenses: [] } as any;
+  assert.deepEqual(validateBankReview([row], '2026-08', input), []);
+  const wrong = matchRows(credit(1, '2026-08-25', 510, 'IBG FIXTURE DRIVER ALPHA'), ['p1', 'p3'], 'x');
+  assert.ok(validateBankReview([wrong], '2026-08', input).some((issue) => /match/i.test(issue.code)));
+});
