@@ -12,7 +12,7 @@ export interface PaymentTransaction {
   date: string; // YYYY-MM-DD
   amount: number;
   serviceClaim?: number;
-  paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM';
+  paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM';
   /** The receipt or DuitNow reference, when one was typed. */
   reference?: string;
 }

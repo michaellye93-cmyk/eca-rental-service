@@ -115,6 +115,8 @@ interface MoneyProps {
   cashSummary?: CashLineSummary | null;
   onBalancesChange?: (rows: CashBalanceEntry[]) => void;
   onReloadOutlook?: () => void;
+  /** Changes a payment's method to Cash (in hand) on the Drivers page (Reconcile's "Paid in cash"). */
+  onMarkPaymentCash?: (paymentId: string) => Promise<void>;
 }
 type UploadKind = "SMART_DRIVE" | "WORKSHOP" | SectionKind;
 type UploadPreview = {
@@ -712,6 +714,7 @@ export default function FinanceView(props: MoneyProps = {}) {
                 void invoke(async () => next, message);
               }}
               onError={setError}
+              onMarkCash={props.onMarkPaymentCash ? (paymentId) => invoke(async () => { await props.onMarkPaymentCash!(paymentId); return refreshPayments(month); }, "Payment marked as paid in cash.") : undefined}
             />
           )}
           {page === "expenses" && (

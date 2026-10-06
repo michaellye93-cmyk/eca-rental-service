@@ -54,8 +54,8 @@ import StatementDialog from './StatementDialog';
 interface AdminDashboardProps {
   drivers: Driver[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM', reference?: string) => void;
-  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM', reference?: string) => void;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM', reference?: string) => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM', reference?: string) => void | Promise<void>;
   onCreateDriver: (driver: Driver) => Promise<void>;
   onUpdateDriver: (driver: Driver) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
@@ -324,7 +324,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editAmount, setEditAmount] = useState<string>('');
   const [editServiceClaim, setEditServiceClaim] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
-  const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | null>(null);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | null>(null);
   const [editReference, setEditReference] = useState<string>('');
 
   const liveDriverForPayment = selectedDriverForPayment ? (drivers.find(d => d.id === selectedDriverForPayment.id) || selectedDriverForPayment) : null;
@@ -369,7 +369,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
   const [paymentDate, setPaymentDate] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM' | null>(null);
   const [paymentReference, setPaymentReference] = useState('');
   // Payments that look like the one being recorded; saving then needs a second confirmation
   const [duplicateWarning, setDuplicateWarning] = useState<PossibleDuplicate[] | null>(null);
@@ -1425,6 +1425,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   cashSummary={cashSummary}
                   onBalancesChange={setBalances}
                   onReloadOutlook={() => void reloadOutlook()}
+                  onMarkPaymentCash={async (paymentId) => {
+                    // Reconcile's "Paid in cash": same edit as the payment window, method changed to Cash (in hand).
+                    const tx = driverData.flatMap((d) => d.paymentHistory).find((p) => p.id === paymentId);
+                    if (!tx || !onEditPayment) throw new Error('That payment was not found. Reload the page and try again.');
+                    await onEditPayment(paymentId, tx.amount, tx.serviceClaim || 0, tx.date, 'CASH', tx.reference ?? '');
+                  }}
                 />
               </React.Suspense>
             </ScreenLoadBoundary>
@@ -1614,6 +1620,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <>
                           <button type="button" aria-pressed={paymentMethod === 'BANK TRANSFER'} onClick={() => setPaymentMethod('BANK TRANSFER')} className={`p-2 rounded border ${paymentMethod === 'BANK TRANSFER' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Bank Transfer</button>
                           <button type="button" aria-pressed={paymentMethod === 'CASH DEPOSIT'} onClick={() => setPaymentMethod('CASH DEPOSIT')} className={`p-2 rounded border ${paymentMethod === 'CASH DEPOSIT' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Cash Deposit</button>
+                          <button type="button" aria-pressed={paymentMethod === 'CASH'} onClick={() => setPaymentMethod('CASH')} className={`col-span-2 p-2 rounded border ${paymentMethod === 'CASH' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-gray-300'}`}>Cash (in hand, not banked)</button>
                         </>
                       )}
                     </div>
@@ -1692,6 +1699,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <select id={`edit-method-${tx.id}`} value={editPaymentMethod || 'BANK TRANSFER'} onChange={e => setEditPaymentMethod(e.target.value as any)} className="w-full p-1 border border-gray-300 rounded text-xs">
                                   <option value="BANK TRANSFER">Bank Transfer</option>
                                   <option value="CASH DEPOSIT">Cash Deposit</option>
+                                  <option value="CASH">Cash (in hand)</option>
                                 </select>
                               )}
                             </div>

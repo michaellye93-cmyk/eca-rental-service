@@ -71,3 +71,14 @@ test('a bank line matched to several payments ticks each of them, and the review
   const wrong = matchRows(credit(1, '2026-08-25', 510, 'IBG FIXTURE DRIVER ALPHA'), ['p1', 'p3'], 'x');
   assert.ok(validateBankReview([wrong], '2026-08', input).some((issue) => /match/i.test(issue.code)));
 });
+
+test('a payment recorded as cash in hand is not expected in the bank, unless a bank line was matched to it', () => {
+  const cash = { ...payment('p1', '2026-08-03', 300, 'Fixture Driver Alpha'), payment_method: 'CASH' };
+  const deposited = { ...payment('p2', '2026-08-04', 200, 'Fixture Driver Beta'), payment_method: 'CASH' };
+  const statements = [{ account: 'Bank A', rows: [
+    credit(1, '2026-08-03', 300, 'IBG SOMEONE ELSE'), // same amount: no guess is offered for a cash payment
+    credit(2, '2026-08-04', 200, 'CDT CASH DEPOSIT', matched('p2')),
+  ] }];
+  const pairs = reconcilePairs([cash, deposited], [], statements, [new Map()]);
+  assert.deepEqual(pairs.map((p) => [p.payment.source_payment_id, p.state]), [['p1', 'cash'], ['p2', 'matched']]);
+});

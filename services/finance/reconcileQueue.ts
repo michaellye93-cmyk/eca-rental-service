@@ -109,7 +109,10 @@ export function summarizeProblems(issues: Array<{ code: string; detail: string }
   return lines;
 }
 
-export type PairState = 'posted' | 'matched' | 'suggested' | 'guess' | 'missing';
+export type PairState = 'posted' | 'matched' | 'suggested' | 'guess' | 'missing' | 'cash';
+
+/** Rent paid in cash in hand: no bank line is expected for it. */
+export const isCashInHand = (payment: EhailingPayment) => String(payment.payment_method ?? '').toUpperCase() === 'CASH';
 export interface ReconcilePair {
   payment: EhailingPayment;
   state: PairState;
@@ -155,6 +158,7 @@ export function reconcilePairs(
       const draft = draftBy.get(id);
       if (draft) return { payment, state: 'matched', bank: { ...draft, account: statements[draft.statement].account }, shared: rowPaymentIds(draft.row).length - 1 };
       const suggested = suggestedBy.get(id);
+      if (isCashInHand(payment)) return { payment, state: 'cash' };
       if (suggested) return { payment, state: 'suggested', confidence: suggested.confidence, bank: { statement: suggested.statement, row: suggested.row, account: statements[suggested.statement].account } };
       // Open lines with the amount that no other payment's suggestion has claimed; a name that agrees comes first.
       const lines = bankLinesForPayment(payment, rowsOf).filter((line) => !suggestions[line.statement]?.has(line.row.source_row));

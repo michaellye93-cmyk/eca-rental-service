@@ -15,7 +15,7 @@ import {
 import { postBankStatement, reviewBankMatch } from "../../services/finance/api";
 import { senderLooksLike, senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
 import { clearReconcileDraft, loadReconcileDraft, saveReconcileDraft } from "../../services/finance/reconcileDraft";
-import { applySureMatches, matchRow, matchRows, moneyInOnly, reconcilePairs, rowPaymentIds, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
+import { applySureMatches, isCashInHand, matchRow, matchRows, moneyInOnly, reconcilePairs, rowPaymentIds, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
 
 const vehicleCategories = [
   "Road Tax",
@@ -68,6 +68,7 @@ export default function BankStatementPanel({
   onPosted,
   onError,
   paymentReferences,
+  onMarkCash,
 }: {
   month: string;
   input: FinanceInput | null;
@@ -76,6 +77,8 @@ export default function BankStatementPanel({
   onError: (message: string) => void;
   /** The receipt or DuitNow reference recorded with each payment, by payment id. */
   paymentReferences?: Map<string, string>;
+  /** Marks a payment as paid in cash in hand (changes its method and refreshes Finance's copy). */
+  onMarkCash?: (paymentId: string) => unknown;
 }) {
   const [statements, setStatements] = useState<LoadedStatement[]>([]);
   const [active, setActive] = useState(0);
@@ -393,6 +396,7 @@ export default function BankStatementPanel({
         onMatch={(statement, sourceRow, paymentId, note) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? matchRow(row, paymentId, note) : row)))}
         onUndo={(statement, sourceRow) => setRows(statement, (rows) => rows.map((row) => (row.source_row === sourceRow ? { ...row, decision: "PENDING", payment_source: null, category: null, plate_key: null, matched_kind: null, matched_id: null, matched_ids: null, review_note: "" } : row)))}
         onOpen={setActive}
+        onMarkCash={onMarkCash}
       />
       {preview && (
         <>
@@ -892,13 +896,13 @@ function ReviewRow({
  * it (posted, or in a loaded statement still to post). Unsolved payments are listed oldest first with any open bank
  * line of the same amount, so each can be matched in one click or looked up in the bank.
  */
-type PairFilter = "all" | "ticked" | "look" | "missing";
+type PairFilter = "all" | "ticked" | "look" | "missing" | "cash";
 /**
  * The reconciliation itself: every cash payment recorded in the app on the left, the bank line that proves it on the
  * right, and a tick when they are matched. Payments without a match show the matcher's suggestion or the nearest
  * same-amount line (labelled when the name differs), or "Not found in bank".
  */
-function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo, onOpen }: {
+function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo, onOpen, onMarkCash }: {
   input: FinanceInput | null;
   statements: Array<{ account_label: string; filename: string; rows: BankReviewRow[] }>;
   suggestions: Array<Map<number, PaymentSuggestion>>;
@@ -906,6 +910,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
   onMatch: (statement: number, sourceRow: number, paymentId: string, note: string) => void;
   onUndo: (statement: number, sourceRow: number) => void;
   onOpen: (statement: number) => void;
+  onMarkCash?: (paymentId: string) => unknown;
 }) {
   const [filter, setFilter] = useState<PairFilter>("all");
   const [cashDepositsOnly, setCashDepositsOnly] = useState(false);
@@ -919,18 +924,20 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
     ticked: (pair) => pair.state === "posted" || pair.state === "matched",
     look: (pair) => pair.state === "suggested" || pair.state === "guess",
     missing: (pair) => pair.state === "missing",
+    cash: (pair) => pair.state === "cash",
   };
-  const labels: Record<PairFilter, string> = { all: "All", ticked: "✓ Matched", look: "Needs a look", missing: "Not found in bank" };
+  const labels: Record<PairFilter, string> = { all: "All", ticked: "✓ Matched", look: "Needs a look", missing: "Not found in bank", cash: "Cash in hand" };
   const ticked = pairs.filter(groups.ticked);
-  const open = pairs.filter((pair) => !groups.ticked(pair));
+  const cash = pairs.filter(groups.cash);
+  const open = pairs.filter((pair) => !groups.ticked(pair) && !groups.cash(pair));
   const shown = pairs.filter((pair) => groups[filter](pair) && (!cashDepositsOnly || isCashDeposit(pair.payment)));
-  const percent = pairs.length ? Math.round((ticked.length / pairs.length) * 100) : 0;
+  const percent = pairs.length ? Math.round(((ticked.length + cash.length) / pairs.length) * 100) : 0;
   const waiting = pairs.filter((pair) => pair.state === "matched").length;
   return (
     <section className="mt-4 rounded border p-3" aria-labelledby="payment-check-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="payment-check-heading" className="font-semibold">
-          System vs bank: <span className="text-emerald-700">✓ {ticked.length} matched</span>, <span className={open.length ? "text-red-700" : "text-emerald-700"}>{open.length} not yet</span>
+          System vs bank: <span className="text-emerald-700">✓ {ticked.length} matched</span>{cash.length > 0 && <>, <span className="text-slate-600">{cash.length} cash in hand ({money(cash.reduce((sum, pair) => sum + pair.payment.cash_amount, 0))})</span></>}, <span className={open.length ? "text-red-700" : "text-emerald-700"}>{open.length} not yet</span>
           {open.length > 0 && ` (${money(open.reduce((sum, pair) => sum + pair.payment.cash_amount, 0))})`}
         </h3>
         <label className="text-sm">
@@ -963,7 +970,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
             {shown.map((pair) => {
               const p = pair.payment;
               const bank = pair.bank;
-              const mark = pair.state === "posted" || pair.state === "matched" ? "✓" : pair.state === "missing" ? "✗" : "?";
+              const mark = pair.state === "posted" || pair.state === "matched" ? "✓" : pair.state === "missing" ? "✗" : pair.state === "cash" ? "C" : "?";
               return (
                 <tr key={p.source_payment_id} className={`is-${pair.state}`}>
                   <td className="nowrap">{shortDate(p.payment_date)}</td>
@@ -984,13 +991,18 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
                       <td className="nowrap">{bank.statement === null ? bank.account : <button type="button" className="reconcile-candidate-open" onClick={() => onOpen(bank.statement as number)}>{bank.account}</button>}</td>
                     </>
                   ) : (
-                    <td colSpan={4} className="text-red-700">{statements.length ? "Not found in bank. Check the other account, the receipt or next month's statement." : "Load the bank statements to check."}</td>
+                    pair.state === "cash"
+                      ? <td colSpan={4} className="text-slate-600">Paid in cash (in hand), so no bank line is expected.</td>
+                      : <td colSpan={4} className="text-red-700">{statements.length ? "Not found in bank. Check the other account, the receipt or next month's statement." : "Load the bank statements to check."}</td>
                   )}
                   <td className="reconcile-actions">
                     {pair.state === "posted" && <span className="text-slate-500">Posted</span>}
                     {pair.state === "matched" && bank && bank.statement !== null && <button type="button" disabled={disabled} onClick={() => onUndo(bank.statement as number, bank.row.source_row)}>Undo</button>}
                     {(pair.state === "suggested" || pair.state === "guess") && bank && bank.statement !== null && (
                       <button type="button" className={pair.state === "suggested" || pair.sameName ? "is-primary" : ""} disabled={disabled} onClick={() => onMatch(bank.statement as number, bank.row.source_row, p.source_payment_id, pair.state === "suggested" ? "Suggested match confirmed" : "Matched by hand: same amount")}>Match</button>
+                    )}
+                    {onMarkCash && (pair.state === "suggested" || pair.state === "guess" || pair.state === "missing") && !isCashInHand(p) && (
+                      <button type="button" disabled={disabled} title="Changes this payment's method to Cash (in hand) on the Drivers page" onClick={() => { if (window.confirm(`Mark ${p.driver_name_snapshot ?? "this driver"}'s ${money(p.cash_amount)} on ${shortDate(p.payment_date)} as paid in cash (in hand)? Its payment method changes to Cash.`)) void onMarkCash(p.source_payment_id); }}>Paid in cash</button>
                     )}
                   </td>
                 </tr>

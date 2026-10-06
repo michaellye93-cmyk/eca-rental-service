@@ -1312,3 +1312,7 @@
 .reconcile-picker-foot button:disabled {
   opacity: 0.5;
 }
+.reconcile-mark.is-cash {
+  color: #475569;
+  background: #f1f5f9;
+}

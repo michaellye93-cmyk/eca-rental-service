@@ -73,10 +73,13 @@ export function useBankStatus(driver: Pick<Driver, 'id' | 'paymentHistory'> | nu
  * "Bank ✓" when a posted bank statement was matched to the payment; "Not in bank" when its month's statement is posted
  * but no bank line was matched to it, so the receipt needs checking. Claim-only payments bring no money, so no badge.
  */
-export function BankBadge({ payment, status }: { payment: Pick<Driver['paymentHistory'][number], 'id' | 'date' | 'amount'>; status: BankStatus | null }) {
+export function BankBadge({ payment, status }: { payment: Pick<Driver['paymentHistory'][number], 'id' | 'date' | 'amount' | 'paymentMethod'>; status: BankStatus | null }) {
   if (!status || !(payment.amount > 0)) return null;
   if (status.matched.has(payment.id)) {
     return <span className="ml-1 inline-block rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" title="Matched to a line on the posted bank statement">Bank ✓</span>;
+  }
+  if (payment.paymentMethod === 'CASH') {
+    return <span className="ml-1 inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700" title="Paid in cash in hand, so no bank line is expected">Cash</span>;
   }
   if (status.months.has(payment.date.slice(0, 7))) {
     return <span className="ml-1 inline-block rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-800" title="This month's bank statement is posted, but no bank line was matched to this payment. Check the receipt.">Not in bank</span>;

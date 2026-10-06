@@ -257,7 +257,7 @@ const App: React.FC = () => {
   // Whole rows, so columns added later (such as the reference) come back without a change here
   const PAYMENT_COLUMNS = '*';
 
-  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM' = 'BANK TRANSFER', reference?: string) => {
+  const handleUpdatePayment = async (driverId: string, amount: number, date: string, serviceClaim: number = 0, paymentMethod: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM' = 'BANK TRANSFER', reference?: string) => {
     // Shown straight away, then swapped for the saved row; the rest of the list is not reloaded.
     const tempId = `temp-${Date.now()}`;
     updateDriverPayments(driverId, payments => [{ id: tempId, amount, serviceClaim, date, paymentMethod, ...(reference ? { reference } : {}) }, ...payments]);
@@ -281,7 +281,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CLAIM', reference?: string) => {
+  const handleEditPayment = async (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM', reference?: string) => {
     const driver = drivers.find(d => d.paymentHistory.some(p => p.id === paymentId));
     const current = driver?.paymentHistory.find(p => p.id === paymentId);
     if (!driver || !current) return;
