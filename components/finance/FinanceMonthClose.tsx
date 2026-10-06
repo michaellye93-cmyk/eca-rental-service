@@ -94,7 +94,7 @@ type Props = {
   onShowAudit: () => void;
   onShowIssues: () => void;
   onOverview: () => void;
-  onExpenses: (source: FinanceExpense["payment_source"]) => void;
+  onExpenses: (source: FinanceExpense["payment_source"] | "other_income") => void;
   onViewImport: () => void;
   onReviewSelected?: () => void;
 };
@@ -128,7 +128,7 @@ export default function FinanceMonthClose(p: Props) {
       title: "Operation Fix Cost",
       source: "Corporate Opex" as const,
       kind: "corporate_expense",
-      hint: "Use Amount (RM). Monthly recurring costs use Start Month and optional End Month; Expense Date is optional.",
+      hint: "Company running costs such as salaries, rent and utilities. Tax instalments count in cash flow only.",
     },
     {
       key: "other_income" as const,
@@ -177,12 +177,11 @@ export default function FinanceMonthClose(p: Props) {
     <div className="finance-content">
       <section className="finance-close-header">
         <div>
-          <p className="finance-eyebrow">{monthName}</p>
-          <h2>{closed ? "Month is closed" : "Prepare month close"}</h2>
+          <h2>{monthName}{closed ? ": closed" : ""}</h2>
           <p>
             {closed
               ? `Closed ${updated(input.month.frozen_at)}. Figures stay frozen until reopened.`
-              : "Prepare each data source, review your P&L, then close the month."}
+              : "Each source below must be loaded and reviewed. Then check the Overview and close the month."}
           </p>
         </div>
         <div className="finance-close-actions">
@@ -368,29 +367,10 @@ export default function FinanceMonthClose(p: Props) {
                     · {updated(review.reviewed_at)}
                   </p>
                 )}
-                <p className="finance-column-hint">
-                  Excel columns:{" "}
-                  {section.key === "other_income" ? "Finance Month, Income Type, Amount, Car Plate or Business Unit" : section.source === "Corporate Opex"
-                    ? "Frequency, Start Month, End Month, Expense Date, Category, Amount (RM)"
-                    : "Car Plate, Date, Amount"}
-                  {section.source === "Vehicle Direct Cost" ? ", Category" : ""}
-                  {section.source === "Corporate Opex" ? ". Payee, Source and Notes are optional." : ". Supplier, Reference and Note are optional."}
-                </p>
               </div>
               <div className="finance-section-action">
                 {!closed && (
                   <>
-                    {section.source && <button
-                      className="finance-secondary"
-                      disabled={busy || !draft}
-                      onClick={() => p.onExpenses(section.source)}
-                    >
-                      Add expense
-                    </button>}
-                    <Upload
-                      disabled={busy || !draft}
-                      onFile={(file) => p.onFile(section.kind, file)}
-                    />
                     <button
                       className="finance-secondary"
                       disabled={busy || !draft || Boolean(review?.valid)}
@@ -409,12 +389,12 @@ export default function FinanceMonthClose(p: Props) {
                     </button>
                   </>
                 )}
-                {section.source && <button
+                <button
                   className="finance-link"
-                  onClick={() => p.onExpenses(section.source)}
+                  onClick={() => p.onExpenses(section.source ?? "other_income")}
                 >
-                  View records
-                </button>}
+                  Open in Records
+                </button>
               </div>
             </section>
           );

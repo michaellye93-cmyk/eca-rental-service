@@ -225,8 +225,8 @@ function ScenarioTable({ today, outlook, drivers, overdue }: { today: string; ou
         <div>
           <h3 id="cash-scenarios-heading">Cash at month end: collection scenarios</h3>
           <p>
-            The same bills as the table above, with rent collected at different rates. The last line also recovers 10% of
-            today's overdue rent ({money(overdue)}) each month.
+            The same bills as the table above, with rent collected at different rates. The first line is the table above;
+            the last also recovers 10% of today's overdue rent ({money(overdue)}) each month.
           </p>
         </div>
       </div>
@@ -286,7 +286,6 @@ function OutlookTable({ today, outlook, drivers, rate }: { today: string; outloo
               <th scope="row">Cash at end</th>
               {buckets.map(b => <td key={b.from} className={`${b.closing < 0 ? 'finance-negative' : ''} ${b.closing === lowest ? 'cash-lowest' : ''}`}>{money(b.closing)}</td>)}
             </tr>
-            {row('…if all rent due is collected', buckets.map(b => money(b.closingIfAllRentPaid)), 'cash-if-paid')}
           </tbody>
         </table>
       </div>

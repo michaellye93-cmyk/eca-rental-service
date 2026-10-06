@@ -922,3 +922,92 @@
   body.printing-reconcile-report .reconcile-report h2 { font-size: 16pt; margin: 0 0 2mm; }
   body.printing-reconcile-report .reconcile-report h3 { font-size: 12pt; margin: 6mm 0 0; break-after: avoid; }
 }
+
+/* Money page layout: four-figure strips, two statements side by side, statement rows and small tags. */
+.finance-summary-grid.is-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.finance-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.finance-strip-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 12px 0 0;
+}
+.finance-table.finance-statement {
+  min-width: 0;
+}
+.finance-statement td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  white-space: normal;
+}
+.finance-statement td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.finance-statement .is-group td {
+  text-align: left;
+  padding-top: 16px;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.finance-statement .is-indent td:first-child {
+  padding-left: 22px;
+}
+.finance-statement .is-subtotal td {
+  font-weight: 600;
+  border-top: 1px solid var(--f-line);
+}
+.finance-statement .is-total td {
+  font-weight: 700;
+  font-size: 15px;
+  background: var(--f-accent-soft);
+}
+.finance-statement small {
+  color: var(--f-muted);
+  font-weight: 500;
+}
+.finance-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--f-line);
+  background: var(--f-ground);
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.finance-tag.is-warn {
+  border-color: #f2c9a0;
+  background: #fff6ec;
+  color: var(--f-danger);
+}
+.finance-tag.is-good {
+  border-color: #b9e0d5;
+  background: var(--f-accent-soft);
+  color: var(--f-accent);
+}
+@media (max-width: 900px) {
+  .finance-summary-grid.is-four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .finance-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .finance-summary-grid.is-four {
+    grid-template-columns: 1fr;
+  }
+}

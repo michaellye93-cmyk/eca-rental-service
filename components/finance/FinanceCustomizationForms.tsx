@@ -403,6 +403,7 @@ export interface OtherIncomePanelProps {
     record: Record<string, unknown>,
   ) => Promise<boolean>;
   onExport?: () => void;
+  onImport?: (file?: File) => void;
 }
 
 type IncomeDraft = {
@@ -434,7 +435,9 @@ export function OtherIncomePanel({
   disabled = false,
   onSave,
   onExport,
+  onImport,
 }: OtherIncomePanelProps) {
+  const incomeImportRef = useRef<HTMLInputElement>(null);
   const [editor, setEditor] = useState<{
     row?: OtherIncome;
     values: IncomeDraft;
@@ -492,7 +495,7 @@ export function OtherIncomePanel({
           <p>Record income outside the standard rental import for this month.</p>
           <strong>{formatCurrency(current.reduce((sum, row) => sum + row.amount, 0))} recorded this month</strong>
         </div>
-        <div className="finance-dialog-actions">{onExport && <button type="button" className="finance-secondary" onClick={onExport}>Export Excel</button>}<button
+        <div className="finance-dialog-actions">{onExport && <button type="button" className="finance-secondary" onClick={onExport}>Export Excel</button>}{onImport && <><input ref={incomeImportRef} className="finance-file-input" type="file" accept=".xlsx" disabled={disabled} onChange={(event) => { onImport(event.target.files?.[0]); event.target.value = ""; }} /><button type="button" className="finance-secondary" disabled={disabled} onClick={() => incomeImportRef.current?.click()}>Upload Excel</button></>}<button
           type="button"
           className="finance-primary"
           disabled={disabled}
@@ -846,7 +849,6 @@ export function WorkshopSummaryPanel({
   onSave,
   onLink,
 }: WorkshopSummaryPanelProps) {
-  const [mode, setMode] = useState<"vehicle" | "summary">("vehicle");
   const [editor, setEditor] = useState<{
     row?: WorkshopSummary;
     values: SummaryDraft;
@@ -890,81 +892,24 @@ export function WorkshopSummaryPanel({
     <section className="finance-panel">
       <div className="finance-section-heading">
         <div>
-          <h3>Workshop Billing</h3>
-          <p>Review vehicle entries or reconcile them to a monthly total.</p>
+          <h3>Monthly workshop totals</h3>
+          <p>Optional. When a workshop sends one bill for the month, enter the total and link the car lines above to it; anything not linked shows as unallocated.</p>
         </div>
-        {mode === "summary" && (
-          <button
-            type="button"
-            className="finance-primary"
-            disabled={disabled}
-            onClick={() => {
-              setError(null);
-              setEditor({ values: summaryDraft() });
-            }}
-          >
-            Add monthly total
-          </button>
-        )}
-      </div>
-      <div className="finance-tabs" role="tablist" aria-label="Workshop entry mode">
         <button
           type="button"
-          role="tab"
-          aria-selected={mode === "vehicle"}
-          className={mode === "vehicle" ? "is-active" : ""}
-          onClick={() => setMode("vehicle")}
+          className="finance-secondary"
+          disabled={disabled}
+          onClick={() => {
+            setError(null);
+            setEditor({ values: summaryDraft() });
+          }}
         >
-          By vehicle
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "summary"}
-          className={mode === "summary" ? "is-active" : ""}
-          onClick={() => setMode("summary")}
-        >
-          Monthly total
+          Add monthly total
         </button>
       </div>
       <ErrorLine error={error} />
 
-      {mode === "vehicle" ? (
-        <Table
-          headers={[
-            "Date",
-            "Vehicle",
-            "Supplier",
-            "Reference",
-            "Amount",
-            "Allocation",
-          ]}
-        >
-          {workshopExpenses.length ? (
-            workshopExpenses.map((row) => (
-              <tr key={row.id}>
-                <td>{row.billing_date ?? "—"}</td>
-                <td>
-                  {row.plate_key
-                    ? vehicleByPlate.get(row.plate_key)?.display_plate ??
-                      row.plate_key
-                    : "Unmatched"}
-                </td>
-                <td>{row.supplier ?? "—"}</td>
-                <td>{row.reference ?? "—"}</td>
-                <td className="finance-strong">{formatCurrency(row.amount)}</td>
-                <td>
-                  {row.id && allocatedExpenseIds.has(row.id)
-                    ? "Linked to monthly total"
-                    : "Not linked"}
-                </td>
-              </tr>
-            ))
-          ) : (
-            <EmptyRow columns={6} text="No vehicle workshop entries for this month." />
-          )}
-        </Table>
-      ) : (
+      {(
         <Table
           headers={[
             "Scope",
