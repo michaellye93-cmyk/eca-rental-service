@@ -126,8 +126,8 @@ export function summarizeProblems(issues: Array<{ code: string; detail: string }
 
 export type PairState = 'posted' | 'matched' | 'suggested' | 'guess' | 'missing' | 'cash';
 
-/** Rent paid in cash in hand: no bank line is expected for it. */
-export const isCashInHand = (payment: EhailingPayment) => String(payment.payment_method ?? '').toUpperCase() === 'CASH';
+/** Rent paid in cash in hand, or settled from the driver's deposit (contra): no bank line is expected for it. */
+export const isCashInHand = (payment: EhailingPayment) => ['CASH', 'DEPOSIT CONTRA'].includes(String(payment.payment_method ?? '').toUpperCase());
 export interface ReconcilePair {
   payment: EhailingPayment;
   state: PairState;

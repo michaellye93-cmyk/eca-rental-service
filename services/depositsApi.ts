@@ -6,7 +6,7 @@ import { supabase } from '../supabaseClient';
  * table is not available yet (the file has not been run), so screens can carry on without it.
  */
 export type DepositKind = 'DEPOSIT' | 'DOWNPAYMENT';
-export type DepositEntry = 'RECEIVED' | 'REFUNDED' | 'FORFEITED';
+export type DepositEntry = 'RECEIVED' | 'REFUNDED' | 'FORFEITED' | 'CONTRA';
 export interface DriverDeposit {
   id: string;
   driver_id: string;

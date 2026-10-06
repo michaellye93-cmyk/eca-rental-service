@@ -18,7 +18,8 @@ export interface MonthCashFlow {
  */
 export function monthCashFlow(input: FinanceInput, report: FinanceReport): MonthCashFlow {
   const month = monthKey(input.month.finance_month);
-  const rent_cash = cents(input.ehailing.reduce((sum, payment) => sum + payment.cash_amount, 0));
+  // Rent settled from a deposit (contra) moves no cash this month: the cash came in as the deposit.
+  const rent_cash = cents(input.ehailing.filter((payment) => String(payment.payment_method ?? '').toUpperCase() !== 'DEPOSIT CONTRA').reduce((sum, payment) => sum + payment.cash_amount, 0));
   const smart_drive_net = cents(input.smart_rows.reduce((sum, row) => sum + row.gross_revenue - row.commission, 0));
   const other_income = cents((input.other_income ?? [])
     .filter((row) => row.status === 'CONFIRMED' && !row.cancelled_at && monthKey(row.finance_month) === month)

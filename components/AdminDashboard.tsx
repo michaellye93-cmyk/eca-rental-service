@@ -54,8 +54,8 @@ import StatementDialog from './StatementDialog';
 interface AdminDashboardProps {
   drivers: Driver[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM', reference?: string) => void;
-  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM', reference?: string) => void | Promise<void>;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void | Promise<void>;
   onCreateDriver: (driver: Driver) => Promise<void>;
   onUpdateDriver: (driver: Driver) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
@@ -324,7 +324,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editAmount, setEditAmount] = useState<string>('');
   const [editServiceClaim, setEditServiceClaim] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
-  const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | null>(null);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | null>(null);
   const [editReference, setEditReference] = useState<string>('');
 
   const liveDriverForPayment = selectedDriverForPayment ? (drivers.find(d => d.id === selectedDriverForPayment.id) || selectedDriverForPayment) : null;
@@ -369,7 +369,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
   const [paymentDate, setPaymentDate] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'CLAIM' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM' | null>(null);
   const [paymentReference, setPaymentReference] = useState('');
   // Payments that look like the one being recorded; saving then needs a second confirmation
   const [duplicateWarning, setDuplicateWarning] = useState<PossibleDuplicate[] | null>(null);
@@ -1384,7 +1384,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                           {expanded && (
                             <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 sm:p-4">
-                              <ExpandedDriverDetails driver={driver} onLogPaymentClick={() => handleOpenPaymentModal(driver)} />
+                              <ExpandedDriverDetails driver={driver} onLogPaymentClick={() => handleOpenPaymentModal(driver)} onContraPayment={(amount, date) => onUpdatePayment(driver.id, amount, date, 0, 'DEPOSIT CONTRA', 'Deposit contra')} />
                               {!driver.isDelisted && <CollectionsPanels driver={driver} extras={extras} isAdmin={userRole === 'admin'} today={todayStr} now={kualaLumpurNow()} />}
                             </div>
                           )}
@@ -1700,6 +1700,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <option value="BANK TRANSFER">Bank Transfer</option>
                                   <option value="CASH DEPOSIT">Cash Deposit</option>
                                   <option value="CASH">Cash (in hand)</option>
+                                  <option value="DEPOSIT CONTRA">Deposit contra</option>
                                 </select>
                               )}
                             </div>

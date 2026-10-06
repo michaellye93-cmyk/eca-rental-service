@@ -68,6 +68,7 @@ test('staff and admins record deposits and downpayments, every change is logged,
     await asUser(db, STAFF_ID);
     const id = await addDeposit(db, { kind: 'DOWNPAYMENT', amount: 1000 });
     await db.query(`update public.driver_deposits set amount=900 where id=$1`, [id]);
+    await addDeposit(db, { entry: 'CONTRA', amount: 100 }); // used to settle rent on delisting
     const log = await rows<{ action: string; changed_by_role: string }>(db, `select action, changed_by_role from public.deposit_changes where deposit_id=$1 order by id`, [id]);
     assert.deepEqual(log.map((r) => [r.action, r.changed_by_role]), [['INSERT', 'staff'], ['UPDATE', 'staff']]);
     await assert.rejects(db.query(`insert into public.driver_deposits(driver_id,kind,entry,entry_date,amount) values ($1,'BOND','RECEIVED','2026-08-03',10)`, [DRIVER_A]));

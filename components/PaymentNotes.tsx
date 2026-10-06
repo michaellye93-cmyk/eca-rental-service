@@ -78,6 +78,9 @@ export function BankBadge({ payment, status }: { payment: Pick<Driver['paymentHi
   if (status.matched.has(payment.id)) {
     return <span className="ml-1 inline-block rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" title="Matched to a line on the posted bank statement">Bank ✓</span>;
   }
+  if (payment.paymentMethod === 'DEPOSIT CONTRA') {
+    return <span className="ml-1 inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700" title="Settled from the driver's deposit, so no bank line is expected">Deposit contra</span>;
+  }
   if (payment.paymentMethod === 'CASH') {
     return <span className="ml-1 inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700" title="Paid in cash in hand, so no bank line is expected">Cash</span>;
   }

@@ -18,11 +18,14 @@ import {
 interface ExpandedDriverDetailsProps {
   driver: Driver;
   onLogPaymentClick: () => void;
+  /** Records a rent payment settled from the driver's deposit (contra) on delisting. */
+  onContraPayment?: (amount: number, date: string) => unknown;
 }
 
 export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ 
-  driver, 
-  onLogPaymentClick 
+  driver,
+  onLogPaymentClick,
+  onContraPayment,
 }) => {
   const [receipts, setReceipts] = useState<Record<string, { name: string; size: string; previewUrl: string }>>(() => {
     // Try to load any previously saved file previews from localStorage (simulated string data)
@@ -226,7 +229,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
         
         {/* Live Payments Feed */}
         <div className="lg:col-span-2 space-y-4">
-          <DriverDeposits driver={driver} />
+          <DriverDeposits driver={driver} onContraPayment={onContraPayment} />
           <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-500" />
             Live Payment Transactions & Timelines

@@ -1,5 +1,6 @@
 -- Deposits and downpayments (the owner's decision of 2026-10-06): Sewa Biasa drivers pay a refundable Deposit, Sewa
--- Beli drivers a Downpayment. Each is recorded per driver as received, refunded or forfeited, with every change logged
+-- Beli drivers a Downpayment. Each is recorded per driver as received, refunded, forfeited or used for rent (contra:
+-- on delisting the deposit settles rent owed; the app records a matching rent payment), with every change logged
 -- (Admin/Staff, before and after) like payments. They are not rent: rent rules never read this table.
 --
 -- Reconcile: a bank credit may now be matched to rent payments and deposit receipts together (one transfer paying rent
@@ -13,7 +14,7 @@ create table if not exists public.driver_deposits (
   id uuid primary key default gen_random_uuid(),
   driver_id uuid not null references public.drivers(id),
   kind text not null check (kind in ('DEPOSIT', 'DOWNPAYMENT')),
-  entry text not null check (entry in ('RECEIVED', 'REFUNDED', 'FORFEITED')),
+  entry text not null check (entry in ('RECEIVED', 'REFUNDED', 'FORFEITED', 'CONTRA')),
   entry_date date not null,
   amount numeric(12,2) not null check (amount > 0 and amount < 1000000),
   method text,

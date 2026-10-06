@@ -54,6 +54,9 @@ test('deposits and downpayments received are cash in and refunds cash out, outsi
   assert.equal(flow.in.deposits, 1250);
   assert.equal(flow.out.deposits_refunded, 100); // a forfeit moves no cash
   assert.equal(flow.net, -560 + 1250 - 100);
+  // Rent settled from the deposit on delisting is revenue but not cash.
+  const contra = { ...withDeposits, ehailing: [...withDeposits.ehailing, { ...withDeposits.ehailing[0], source_payment_id: 'p2', cash_amount: 200, service_claim: 0, gross_rental_revenue: 200, payment_method: 'DEPOSIT CONTRA' }] } as FinanceInput;
+  assert.equal(monthCashFlow(contra, calculateFinance(contra)).in.rent_cash, 900);
 });
 
 test('the 20% target shows the margin, the profit needed, the gap in RM and the idle cars', () => {
