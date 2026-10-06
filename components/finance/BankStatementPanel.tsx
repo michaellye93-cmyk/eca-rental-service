@@ -56,7 +56,7 @@ type LoadedStatement = BankStatementPreview & {
 };
 // The browser's storage, when it allows it (private windows and blocked site data do not).
 const browserStore = () => { try { return window.localStorage; } catch { return null; } };
-const shortDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+const shortDate = (date: string) => { const d = new Date(`${date}T00:00:00`); return Number.isNaN(d.getTime()) ? date || "No date" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); };
 const matchedPaymentIds = (rows: BankReviewRow[]) =>
   rows.filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id).map((row) => row.matched_id as string);
 
@@ -428,6 +428,7 @@ export default function BankStatementPanel({
             </ul>
           )}
           <BankLines
+            key={preview.source_hash}
             rows={preview.rows}
             input={input}
             suggestions={suggestions}
@@ -616,7 +617,8 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
               if (row.debit > 0) return <ReviewRow key={`d-${row.source_row}`} row={row} input={input} onChange={(values) => onChange(index, values)} />;
               const suggestion = row.decision === "PENDING" ? suggestions.get(row.source_row) : undefined;
               const name = senderName(row.description) || row.description.slice(0, 40);
-              const candidates = picking === index ? matchCandidates(row, input).filter((c) => c.kind !== "payment" || !usedPaymentIds.has(c.id)) : [];
+              const open = picking === index && row.decision === "PENDING";
+              const candidates = open ? matchCandidates(row, input).filter((c) => c.kind !== "payment" || !usedPaymentIds.has(c.id)) : [];
               return (
                 <tr key={row.source_row} className={`is-${row.decision.toLowerCase()}`}>
                   <td className="nowrap">{shortDate(row.transaction_date)}</td>
@@ -634,8 +636,8 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, paymentLabel, dis
                         {paymentLabel(suggestion.paymentId)}
                       </span>
                     )}
-                    {row.decision === "PENDING" && !suggestion && picking !== index && <span className="text-slate-500">No match found</span>}
-                    {picking === index && (
+                    {row.decision === "PENDING" && !suggestion && !open && <span className="text-slate-500">No match found</span>}
+                    {open && (
                       <select autoFocus className="rounded border p-1" defaultValue="" onChange={(e) => { const [kind, ...id] = e.target.value.split(":"); if (!kind) return; onChange(index, { ...reset, decision: "MATCHED", matched_kind: kind as BankMatchKind, matched_id: id.join(":"), review_note: "Matched by hand" }); setPicking(null); }}>
                         <option value="">{candidates.length ? "Choose the payment…" : "No unmatched payment with this amount"}</option>
                         {candidates.map((c) => <option key={`${c.kind}:${c.id}`} value={`${c.kind}:${c.id}`}>{c.label}</option>)}
