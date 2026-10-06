@@ -122,3 +122,20 @@ test('each suggestion says how sure it is: reference certain, plate or close nam
   );
   assert.deepEqual([1, 2, 3, 4, 5].map((row) => suggestions.get(row)?.confidence), ['CERTAIN', 'STRONG', 'STRONG', 'WEAK', 'WEAK']);
 });
+
+test('a bank-shortened name and a same-day, same-amount transfer count as a strong match', () => {
+  const suggestions = suggestPaymentMatches(
+    [
+      credit(1, '2026-08-03', 400, 'RPP INWARD INST TRF ALIYAN BIN KHAMARI Sewa/beli 02/08', '41'),
+      credit(2, '2026-08-03', 200, 'RPP INWARD INST TRF FIXTUREMAN NOOR HALIM B Sewa 200', '9129'),
+    ],
+    [
+      payment('p1', '2026-08-03', 400, 'ALIYAN BIN KHAMARIN', 'XAA 1001'),
+      payment('p2', '2026-08-03', 200, 'FIXTUREMAN NOOR HALIM BIN AB AZIZ', 'XAB 2001'),
+    ],
+  );
+  assert.equal(suggestions.get(1)?.paymentId, 'p1');
+  assert.equal(suggestions.get(1)?.confidence, 'STRONG');
+  assert.equal(suggestions.get(2)?.paymentId, 'p2');
+  assert.equal(suggestions.get(2)?.confidence, 'STRONG');
+});

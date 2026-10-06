@@ -19,8 +19,8 @@ export type SuggestionPass =
 
 /**
  * How sure a suggestion is that the bank line is that driver's payment. CERTAIN: the receipt reference recorded with the
- * payment is on the bank line. STRONG: the driver's plate, or a close match of their name, with the same amount within
- * 5 days. WEAK: anything else (a looser name, a wider date gap, or a cash deposit, which carries no name).
+ * payment is on the bank line. STRONG: same amount and either the driver's plate within 5 days, their name on the same or
+ * next day, or a close match of their name within 5 days. WEAK: anything else (a looser name, a wider date gap, or a cash deposit, which carries no name).
  */
 export type MatchConfidence = 'CERTAIN' | 'STRONG' | 'WEAK';
 
@@ -60,7 +60,7 @@ const squash = (text: string | null | undefined) => String(text ?? '').toUpperCa
 function senderName(description: string): string {
   return description
     .toUpperCase()
-    .split(/[^A-Z0-9/.]+/)
+    .split(/[^A-Z0-9.]+/)
     // Tokens with digits are references, plates or bank codes, never part of a name.
     .filter(token => token && !BANKING_WORDS.has(token) && !/\d/.test(token) && !/^\/+$/.test(token))
     .join(' ');
@@ -98,7 +98,9 @@ function nameMatch(driverName: string, sender: string) {
   const senderClean = String(sender || '').toUpperCase().replace(honorifics, '');
   const driverTokens = driverClean.split(/[\s-]+/).filter(t => t.length >= 2).map(normalizeToken);
   const senderTokens = senderClean.split(/[\s-]+/).filter(t => t.length >= 2).map(normalizeToken);
-  const shared = driverTokens.filter(t => senderTokens.includes(t));
+  // Banks cut long names short ("JEMANGI" for "JEMANGIN"), so a token that starts the other (4+ letters) counts as shared.
+  const same = (a: string, b: string) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+  const shared = driverTokens.filter(t => senderTokens.some(s => same(t, s)));
   const tokenSimilarity = driverTokens.length + senderTokens.length > 0 ? (shared.length * 2) / (driverTokens.length + senderTokens.length) : 0;
   const bigram = bigramSimilarity(driverClean, senderClean);
   const driverSquashed = driverClean.replace(/[^A-Z0-9]/g, '');
@@ -171,7 +173,7 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
         if (score > bestScore) {
           bestScore = score;
           best = payment;
-          bestConfidence = days <= 5.05 && (plate || (name.isMatch && name.similarity >= 0.8)) ? 'STRONG' : 'WEAK';
+          bestConfidence = (plate && days <= 5.05) || (name.isMatch && (days <= 1.05 || (days <= 5.05 && name.similarity >= 0.8))) ? 'STRONG' : 'WEAK';
         }
       }
       if (best) suggest(row, best, pass, bestConfidence);

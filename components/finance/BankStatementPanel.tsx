@@ -327,6 +327,7 @@ export default function BankStatementPanel({
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-emerald-900">
               {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"}: {sureSuggestions.length} certain or strong, {weakSuggestions} weak. Weak ones need a look at the receipt before you use them.
               {sureSuggestions.length > 0 && <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {sureSuggestions.length} certain and strong</button>}
+              {weakSuggestions > 0 && <button type="button" disabled={disabled || busy} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold" onClick={() => { if (window.confirm(`Use all ${weakSuggestions} weak matches? Each is the same amount from a looser name match, a wider date gap or a cash deposit. Only do this after looking through them.`)) [...suggestions.values()].filter((suggestion) => suggestion.confidence === "WEAK").forEach((suggestion) => applySuggestion(suggestion)); }}>Use the {weakSuggestions} weak ones too</button>}
             </p>
           )}
           {(pendingRows("credit").length > 0 || pendingRows("debit").length > 0) && (
