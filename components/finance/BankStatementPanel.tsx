@@ -522,7 +522,9 @@ export default function BankStatementPanel({
                         .match_valid === false && (
                         <span className="mr-2 text-red-700">Invalid match</span>
                       )}
-                      {row.decision !== "EXPENSE" ? (
+                      {rowPaymentIds(row).length > 1 ? (
+                        <span className="text-slate-500" title="One transfer matched to several payments; it cannot be amended here">{rowPaymentIds(row).length} payments</span>
+                      ) : row.decision !== "EXPENSE" ? (
                         <button
                           disabled={disabled || busy}
                           onClick={() => setReviewing(row)}
@@ -693,7 +695,8 @@ function PaymentPicker({ row, input, usedPaymentIds, onPick, onCancel }: {
     .map((p) => ({ p, same: senderLooksLike(row.description, p.driver_name_snapshot), gap: Math.abs(day(p.payment_date) - day(row.transaction_date)) }))
     .sort((a, b) => Number(b.same) - Number(a.same) || a.gap - b.gap);
   const term = search.trim().toUpperCase();
-  const shown = pool.filter(({ p }) => selected.includes(p.source_payment_id) || !term || `${p.driver_name_snapshot ?? ""} ${p.car_plate_snapshot ?? p.plate_key ?? ""}`.toUpperCase().includes(term)).slice(0, 40);
+  const ticked = pool.filter(({ p }) => selected.includes(p.source_payment_id));
+  const shown = [...ticked, ...pool.filter(({ p }) => !selected.includes(p.source_payment_id) && (!term || `${p.driver_name_snapshot ?? ""} ${p.car_plate_snapshot ?? p.plate_key ?? ""}`.toUpperCase().includes(term))).slice(0, 40)];
   const total = selected.reduce((sum, id) => sum + toCents(input?.ehailing.find((p) => p.source_payment_id === id)?.cash_amount ?? 0), 0);
   const left = target - total;
   const toggle = (id: string) => setSelected((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
