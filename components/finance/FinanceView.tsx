@@ -882,6 +882,8 @@ function Overview({
   const totals = report.totals;
   const target = marginTarget(report, 0.2);
   const cashFlow = monthCashFlow(input, report);
+  // Sewa Beli downpayments received this month: income, but kept aside from revenue and the target (owner, 2026-10-06).
+  const extraIncome = Math.round((input.deposits ?? []).filter((d) => d.kind === "DOWNPAYMENT" && d.entry === "RECEIVED").reduce((sum, d) => sum + Number(d.amount), 0) * 100) / 100;
   const direct = directCostBreakdown(totals);
   const pct = (value: number | null) => (value === null ? "—" : `${(value * 100).toFixed(1)}%`);
   const businesses = (Object.entries(report.businesses) as Array<[string, FinanceReport["totals"]]>).filter(
@@ -928,6 +930,7 @@ function Overview({
                 <tr className="is-subtotal"><td>Contribution <small>({pct(target.contribution_margin)})</small></td><td>{formatMoney(totals.contribution)}</td></tr>
                 {line("Operation Fix Cost", -report.corporate_opex)}
                 <tr className="is-total"><td>Operating profit <small>({pct(target.margin)})</small></td><td className={report.management_profit < 0 ? "finance-negative" : ""}>{formatMoney(report.management_profit)}</td></tr>
+                {extraIncome > 0 && <tr><td>Extra income: Sewa Beli downpayments <small>(kept aside, not in revenue or the 20% target)</small></td><td>{formatMoney(extraIncome)}</td></tr>}
               </tbody>
             </table>
           </div>
