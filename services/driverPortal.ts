@@ -72,10 +72,13 @@ export const driverPortalView = (driver: Driver, now: Date): DriverPortalView =>
       : `Next step: pay ${formatCurrency(step)} to bring it down to ${formatCurrency(nextLevel)}.`;
   }
 
-  // Cash payments only (a service claim alone is not a payment the driver made); same-day transfers count together.
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+  // Cash payments up to today only (a service claim alone is not a payment the driver made); same-day transfers count together.
   const cashByDay = new Map<string, number>();
   for (const payment of driver.paymentHistory || []) {
-    if (payment.amount > 0 && !isNaN(parseDate(payment.date).getTime())) {
+    const day = parseDate(payment.date);
+    if (payment.amount > 0 && !isNaN(day.getTime()) && day <= endOfDay) {
       cashByDay.set(payment.date, (cashByDay.get(payment.date) ?? 0) + payment.amount);
     }
   }
@@ -118,9 +121,10 @@ export const driverPortalView = (driver: Driver, now: Date): DriverPortalView =>
     if (driver.rentalCycle === 'MONTHLY') horizon.setMonth(horizon.getMonth() + UPCOMING_COUNT + 1);
     else horizon.setDate(horizon.getDate() + 7 * (UPCOMING_COUNT + 1));
     upcoming = generateDriverInvoices(driver, now, horizon)
-      .filter(invoice => parseDate(invoice.dueDate) > endOfToday)
+      // Rent already paid ahead is not due again; a part-paid cycle shows what is left
+      .filter(invoice => parseDate(invoice.dueDate) > endOfToday && invoice.remainingBalance > 0.01)
       .slice(0, UPCOMING_COUNT)
-      .map(invoice => ({ date: formatDate(invoice.dueDate), amount: formatCurrency(invoice.amount) }));
+      .map(invoice => ({ date: formatDate(invoice.dueDate), amount: formatCurrency(invoice.remainingBalance) }));
   }
 
   return { tone, title, message, milestone, thanks, progress, contract, upcoming };

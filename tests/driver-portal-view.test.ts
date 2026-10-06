@@ -103,3 +103,16 @@ test('upcoming due dates show the next three rents after today, and stop at the 
   assert.deepEqual(ending.map(row => row.date), ['15 Aug 2026']);
   assert.deepEqual(driverPortalView(driver({ isDelisted: true, delistDate: '2026-08-09' }), on('2026-08-10')).upcoming, []);
 });
+
+test('rent already paid in advance is not listed as coming up, and a part-paid week shows what is left', () => {
+  const ahead = driverPortalView(driver({ paymentHistory: [paid('2026-08-01', 100), paid('2026-08-08', 200)] }), on('2026-08-10'));
+  assert.deepEqual(ahead.upcoming.map(row => row.date), ['22 Aug 2026', '29 Aug 2026', '05 Sept 2026']);
+  const part = driverPortalView(driver({ paymentHistory: [paid('2026-08-01', 100), paid('2026-08-08', 140)] }), on('2026-08-10'));
+  assert.equal(part.upcoming[0].date, '15 Aug 2026');
+  assert.match(part.upcoming[0].amount, /RM\s?60\.00/);
+});
+
+test('a payment dated after today (a typing slip) is not thanked yet', () => {
+  const view = driverPortalView(driver({ paymentHistory: [paid('2026-08-01', 100), paid('2027-01-01', 100)] }), on('2026-08-10'));
+  assert.match(view.thanks ?? '', /01 Aug 2026/);
+});
