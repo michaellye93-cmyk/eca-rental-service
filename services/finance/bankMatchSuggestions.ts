@@ -17,11 +17,19 @@ export type SuggestionPass =
   | 'CASH_DEPOSIT_12_DAYS'
   | 'CASH_DEPOSIT_CLOSEST';
 
+/**
+ * How sure a suggestion is that the bank line is that driver's payment. CERTAIN: the receipt reference recorded with the
+ * payment is on the bank line. STRONG: the driver's plate, or a close match of their name, with the same amount within
+ * 5 days. WEAK: anything else (a looser name, a wider date gap, or a cash deposit, which carries no name).
+ */
+export type MatchConfidence = 'CERTAIN' | 'STRONG' | 'WEAK';
+
 export interface PaymentSuggestion {
   sourceRow: number;
   paymentId: string;
   pass: SuggestionPass;
   reason: string;
+  confidence: MatchConfidence;
 }
 
 const REASONS: Record<SuggestionPass, string> = {
@@ -125,9 +133,9 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
   const pool = payments.filter(payment => payment.cash_amount > 0 && !taken.has(payment.source_payment_id));
   const used = new Set<string>();
   const suggestions = new Map<number, PaymentSuggestion>();
-  const suggest = (row: BankReviewRow, payment: EhailingPayment, pass: SuggestionPass) => {
+  const suggest = (row: BankReviewRow, payment: EhailingPayment, pass: SuggestionPass, confidence: MatchConfidence) => {
     used.add(payment.source_payment_id);
-    suggestions.set(row.source_row, { sourceRow: row.source_row, paymentId: payment.source_payment_id, pass, reason: REASONS[pass] });
+    suggestions.set(row.source_row, { sourceRow: row.source_row, paymentId: payment.source_payment_id, pass, reason: REASONS[pass], confidence });
   };
 
   // Pass 0: the payment's recorded reference appears in the bank line (spaces, hyphens and case ignored), same amount.
@@ -138,7 +146,7 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
       const reference = squash(references.get(payment.source_payment_id));
       return !used.has(payment.source_payment_id) && reference.length >= MIN_REFERENCE_LENGTH && sameAmount(payment, row) && text.includes(reference);
     });
-    if (match) suggest(row, match, 'REFERENCE');
+    if (match) suggest(row, match, 'REFERENCE', 'CERTAIN');
   }
 
   // Passes 1-4: name or plate, same amount, widening day windows; closer dates score higher.
@@ -151,6 +159,7 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
       const sender = senderName(row.description);
       let best: EhailingPayment | null = null;
       let bestScore = -1;
+      let bestConfidence: MatchConfidence = 'WEAK';
       for (const payment of pool) {
         if (used.has(payment.source_payment_id) || !sameAmount(payment, row)) continue;
         const days = daysApart(payment.payment_date, row.transaction_date);
@@ -159,9 +168,13 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
         const plate = plateMatch(payment.car_plate_snapshot ?? payment.plate_key ?? '', row);
         if (!name.isMatch && !plate) continue;
         const score = (name.isMatch ? 100 * name.similarity : 0) + (plate ? 150 : 0) + Math.max(0, (window - days) * dateWeight);
-        if (score > bestScore) { bestScore = score; best = payment; }
+        if (score > bestScore) {
+          bestScore = score;
+          best = payment;
+          bestConfidence = days <= 5.05 && (plate || (name.isMatch && name.similarity >= 0.8)) ? 'STRONG' : 'WEAK';
+        }
       }
-      if (best) suggest(row, best, pass);
+      if (best) suggest(row, best, pass, bestConfidence);
     }
   }
 
@@ -179,7 +192,7 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
         const score = 50 + Math.max(0, (window - days) * dateWeight);
         if (score > bestScore) { bestScore = score; best = payment; }
       }
-      if (best) suggest(row, best, pass);
+      if (best) suggest(row, best, pass, 'WEAK');
     }
   }
 
@@ -189,7 +202,7 @@ export function suggestPaymentMatches(rows: BankReviewRow[], payments: EhailingP
     const closest = pool
       .filter(payment => !used.has(payment.source_payment_id) && sameAmount(payment, row) && daysApart(payment.payment_date, row.transaction_date) <= 12.05)
       .sort((a, b) => daysApart(a.payment_date, row.transaction_date) - daysApart(b.payment_date, row.transaction_date))[0];
-    if (closest) suggest(row, closest, 'CASH_DEPOSIT_CLOSEST');
+    if (closest) suggest(row, closest, 'CASH_DEPOSIT_CLOSEST', 'WEAK');
   }
   return suggestions;
 }

@@ -19,7 +19,7 @@ test('a transfer whose description carries banking words still matches the drive
     [credit(1, '2026-09-10', 400, 'DUITNOW INSTANT TRANSFER FROM ALI BIN ABU REF 00123456')],
     [payment('p1', '2026-09-10', 400, 'Ali bin Abu', 'XAA 1001'), payment('p2', '2026-09-10', 400, 'Chong Wei Ming', 'XAB 2001')],
   );
-  assert.deepEqual(suggestions.get(1), { sourceRow: 1, paymentId: 'p1', pass: 'NAME_OR_PLATE_1_DAY', reason: 'Name or plate matches, same amount, within 1 day' });
+  assert.deepEqual(suggestions.get(1), { sourceRow: 1, paymentId: 'p1', pass: 'NAME_OR_PLATE_1_DAY', reason: 'Name or plate matches, same amount, within 1 day', confidence: 'STRONG' });
 });
 
 test('a plate in the reference wins over another payment of the same amount a few days away', () => {
@@ -88,7 +88,7 @@ test('a recorded payment reference found in the bank line is the strongest match
     [payment('p1', '2026-09-12', 400, 'Ali bin Abu', 'XAA 1001'), payment('p2', '2026-09-05', 400, 'Chong Wei Ming', 'XAB 2001')],
     new Set(), references,
   );
-  assert.deepEqual(suggestions.get(1), { sourceRow: 1, paymentId: 'p2', pass: 'REFERENCE', reason: 'Payment reference matches, same amount' });
+  assert.deepEqual(suggestions.get(1), { sourceRow: 1, paymentId: 'p2', pass: 'REFERENCE', reason: 'Payment reference matches, same amount', confidence: 'CERTAIN' });
 });
 
 test('a reference match still needs the same amount, and short references are ignored', () => {
@@ -99,4 +99,26 @@ test('a reference match still needs the same amount, and short references are ig
   );
   assert.equal(suggestions.get(1), undefined);
   assert.notEqual(suggestions.get(2)?.pass, 'REFERENCE');
+});
+
+test('each suggestion says how sure it is: reference certain, plate or close name within 5 days strong, the rest weak', () => {
+  const suggestions = suggestPaymentMatches(
+    [
+      credit(1, '2026-09-10', 400, 'DUITNOW TRANSFER', 'DN20260910XYZ123'),
+      credit(2, '2026-09-11', 300, 'INSTANT TRANSFER XAB 2001'),
+      credit(3, '2026-09-12', 250, 'TRANSFER FROM ALI BIN ABU'),
+      credit(4, '2026-09-30', 200, 'TRANSFER FROM CHONG WEI MING'),
+      credit(5, '2026-09-13', 150, 'CASH DEPOSIT CDM'),
+    ],
+    [
+      payment('p1', '2026-09-10', 400, 'Someone Else', 'XAC 3001'),
+      payment('p2', '2026-09-10', 300, 'Another Person', 'XAB 2001'),
+      payment('p3', '2026-09-12', 250, 'Ali bin Abu', 'XAA 1001'),
+      payment('p4', '2026-09-15', 200, 'Chong Wei Ming', 'XAD 4001'),
+      payment('p5', '2026-09-12', 150, 'Cash Payer', 'XAE 5001', 'CASH DEPOSIT'),
+    ],
+    new Set(),
+    new Map([['p1', 'DN20260910XYZ123']]),
+  );
+  assert.deepEqual([1, 2, 3, 4, 5].map((row) => suggestions.get(row)?.confidence), ['CERTAIN', 'STRONG', 'STRONG', 'WEAK', 'WEAK']);
 });

@@ -26,6 +26,7 @@ const CHAIN = [
 ];
 const RELEASE = '20261006090000_finance_car_history_and_cash_flow.sql';
 const BANK_REQUIRED = '20261006120000_finance_bank_reconciliation_required.sql';
+const BANK_STATUS = '20261006150000_finance_payment_bank_status.sql';
 const DRIVER_A = '10000000-0000-4000-8000-00000000000a';
 const OLD_PAYMENT = '20000000-0000-4000-8000-000000000001';
 const NEW_PAYMENT = '20000000-0000-4000-8000-000000000002';
@@ -50,6 +51,7 @@ async function setup() {
       ('XAA1001','XAA1001','E-HAILING','Car Owner','Active'),('XAA2002','XAA2002','E-HAILING','Car Owner','Active');`);
   await migrate(db, RELEASE);
   await migrate(db, BANK_REQUIRED);
+  await migrate(db, BANK_STATUS);
   return db;
 }
 const rows = async <T,>(db: PGlite, sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows;
@@ -192,5 +194,23 @@ test('a month cannot go to review or close until a bank statement for it is reco
     await postBankStatement(db, data.month.revision);
     data = await call('finance_read_month', [august]);
     await assert.rejects(call('finance_transition_month', [august, 'READY', data.month.revision, '']), /Review every Finance section/);
+  } finally { await db.close(); }
+});
+
+test('each payment shows whether a posted bank statement matched it (admins only)', async () => {
+  const db = await setup();
+  try {
+    await asUser(db);
+    const call = async (name: string, args: unknown[]) =>
+      (await rows<{ value: any }>(db, `select public.${name}(${args.map((_, i) => '$' + (i + 1)).join(',')}) value`, args))[0].value;
+    let status = await call('finance_payment_bank_status', [DRIVER_A]);
+    assert.deepEqual(status, { matched: [], months: [] });
+    const data = await call('finance_refresh_payments', [august]);
+    const matchedRow = { ...BANK_ROW, description: 'Transfer from Fixture Driver A', credit: 400, decision: 'MATCHED', matched_kind: 'payment', matched_id: OLD_PAYMENT, review_note: 'Suggested match', transaction_date: '2026-08-03' };
+    await db.query(`select public.finance_post_bank_statement($1,'statement.csv','Operating',$2::jsonb,$3,$4)`, [august, JSON.stringify([matchedRow]), data.month.revision, 'b'.repeat(64)]);
+    status = await call('finance_payment_bank_status', [DRIVER_A]);
+    assert.deepEqual(status, { matched: [OLD_PAYMENT], months: ['2026-08'] });
+    await asUser(db, STAFF_ID);
+    await assert.rejects(call('finance_payment_bank_status', [DRIVER_A]));
   } finally { await db.close(); }
 });

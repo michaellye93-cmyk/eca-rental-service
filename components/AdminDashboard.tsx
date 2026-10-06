@@ -44,7 +44,7 @@ import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
-import { PaymentNoteLines, usePaymentLog } from './PaymentNotes';
+import { BankBadge, PaymentNoteLines, useBankStatus, usePaymentLog } from './PaymentNotes';
 import { findPossibleDuplicates, type PossibleDuplicate } from '../services/paymentLog';
 import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
@@ -376,6 +376,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => { setDuplicateWarning(null); }, [paymentAmount, serviceClaimAmount, paymentDate, paymentMethod, paymentReference, selectedDriverForPayment?.id]);
   // Who recorded and edited each payment listed in the payment window
   const { notes: paymentWindowNotes, recorders: paymentWindowRecorders } = usePaymentLog(isPaymentModalOpen ? liveDriverForPayment : null);
+  const paymentWindowBank = useBankStatus(isPaymentModalOpen ? liveDriverForPayment : null);
 
   // --- Daily screening, shared between staff (Kuala Lumpur calendar day) ---
   const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
@@ -1713,6 +1714,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="flex flex-wrap items-center gap-1.5">
                               <PaymentMethodBadge method={tx.paymentMethod} />
                               {tx.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {tx.reference}</span>}
+                              <BankBadge payment={tx} status={paymentWindowBank} />
                             </div>
                             <PaymentNoteLines lines={paymentWindowNotes.get(tx.id)} />
                           </div>

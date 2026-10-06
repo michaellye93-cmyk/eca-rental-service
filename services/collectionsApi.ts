@@ -8,6 +8,13 @@ import type { CatchUpPlan, PaymentPromise } from './collections';
  */
 
 /** Every logged change to this driver's payments, oldest first. */
+/** Which of a driver's payments a posted bank statement matched, and the months that have a posted statement (admins). */
+export async function loadPaymentBankStatus(driverId: string): Promise<{ matched: string[]; months: string[] }> {
+  const { data, error } = await supabase.rpc('finance_payment_bank_status', { p_driver_id: driverId });
+  if (error) throw error;
+  return { matched: data?.matched ?? [], months: data?.months ?? [] };
+}
+
 export async function loadPaymentChanges(driverId: string): Promise<PaymentChange[]> {
   const { data, error } = await supabase
     .from('payment_changes')

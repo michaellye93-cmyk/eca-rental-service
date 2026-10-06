@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Driver } from '../types';
-import { loadPaymentChanges } from '../services/collectionsApi';
+import { loadPaymentBankStatus, loadPaymentChanges } from '../services/collectionsApi';
 import { paymentNotes, paymentRecorders, type PaymentChange } from '../services/paymentLog';
 
 /**
@@ -46,4 +46,40 @@ export function DeletedPayments({ notes, payments }: { notes: Map<string, string
       <ul className="space-y-0.5">{deleted.map(([id, lines]) => <li key={id}>{lines.at(-1)}</li>)}</ul>
     </div>
   );
+}
+
+export interface BankStatus { matched: Set<string>; months: Set<string> }
+
+/**
+ * Bank confirmation for the driver's payments: which ones a posted bank statement was matched to, and which months have
+ * a posted statement. Null for staff (admin only) or before the database update; then no badge is shown.
+ */
+export function useBankStatus(driver: Pick<Driver, 'id' | 'paymentHistory'> | null): BankStatus | null {
+  const [status, setStatus] = useState<BankStatus | null>(null);
+  const driverId = driver?.id;
+  const payments = driver?.paymentHistory;
+  useEffect(() => {
+    if (!driverId) return;
+    let live = true;
+    loadPaymentBankStatus(driverId)
+      .then(loaded => { if (live) setStatus({ matched: new Set(loaded.matched), months: new Set(loaded.months) }); })
+      .catch(() => { if (live) setStatus(null); });
+    return () => { live = false; };
+  }, [driverId, payments]);
+  return status;
+}
+
+/**
+ * "Bank ✓" when a posted bank statement was matched to the payment; "Not in bank" when its month's statement is posted
+ * but no bank line was matched to it, so the receipt needs checking. Claim-only payments bring no money, so no badge.
+ */
+export function BankBadge({ payment, status }: { payment: Pick<Driver['paymentHistory'][number], 'id' | 'date' | 'amount'>; status: BankStatus | null }) {
+  if (!status || !(payment.amount > 0)) return null;
+  if (status.matched.has(payment.id)) {
+    return <span className="ml-1 inline-block rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" title="Matched to a line on the posted bank statement">Bank ✓</span>;
+  }
+  if (status.months.has(payment.date.slice(0, 7))) {
+    return <span className="ml-1 inline-block rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-800" title="This month's bank statement is posted, but no bank line was matched to this payment. Check the receipt.">Not in bank</span>;
+  }
+  return null;
 }

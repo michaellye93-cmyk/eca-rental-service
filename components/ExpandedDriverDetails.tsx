@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Driver } from '../types';
 import { formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
-import { DeletedPayments, PaymentNoteLines, usePaymentNotes } from './PaymentNotes';
+import { BankBadge, DeletedPayments, PaymentNoteLines, useBankStatus, usePaymentNotes } from './PaymentNotes';
 import { 
   Phone, 
   User, 
@@ -40,6 +40,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
   const billingSchedule = React.useMemo(() => latestInvoices(driver), [driver]);
   // Who recorded and changed each payment (payments from before the change log carry nothing)
   const notes = usePaymentNotes(driver);
+  const bankStatus = useBankStatus(driver);
   // Latest payment compared with the driver's average timing: 3+ days later reads as slipping, 2+ days earlier as recovering
   const velocity = driver.performanceVelocity || 0;
   const paymentTiming = velocity > 3
@@ -250,6 +251,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
                           <PaymentAmount payment={pt} className="font-extrabold text-base text-gray-950" />
                           <PaymentMethodBadge method={pt.paymentMethod} />
                           {pt.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {pt.reference}</span>}
+                          <BankBadge payment={pt} status={bankStatus} />
                         </div>
                         <p className="text-gray-500 font-medium font-mono mt-1 text-xs">
                           Paid on {formatDate(pt.date, 'N/A')}

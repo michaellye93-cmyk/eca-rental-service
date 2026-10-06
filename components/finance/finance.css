@@ -1015,3 +1015,20 @@
   white-space: nowrap;
   flex: none;
 }
+/* How sure a suggested bank match is. */
+.reconcile-confidence {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.reconcile-confidence.is-certain,
+.reconcile-confidence.is-strong {
+  background: #e7f4f0;
+  color: #167c70;
+}
+.reconcile-confidence.is-weak {
+  background: #fff6ec;
+  color: #b45309;
+}

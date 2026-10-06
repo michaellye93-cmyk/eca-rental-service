@@ -24,6 +24,7 @@ const CHAIN = [
   '20260929180000_fleet_close_cars.sql',
   '20261006090000_finance_car_history_and_cash_flow.sql',
   '20261006120000_finance_bank_reconciliation_required.sql',
+  '20261006150000_finance_payment_bank_status.sql',
 ];
 
 test('the new files apply after the whole Finance chain, and the additive ones can safely run twice', async () => {

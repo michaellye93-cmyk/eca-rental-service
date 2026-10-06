@@ -83,7 +83,10 @@ export default function BankStatementPanel({
   };
   const applySuggestion = (suggestion: PaymentSuggestion) =>
     setPreview((current) => current ? { ...current, rows: current.rows.map((row) => row.source_row === suggestion.sourceRow ? { ...row, decision: "MATCHED", payment_source: null, category: null, plate_key: null, matched_kind: "payment", matched_id: suggestion.paymentId, review_note: `Suggested match: ${suggestion.reason}` } : row) } : current);
-  const applyAllSuggestions = () => suggestions.forEach((suggestion) => applySuggestion(suggestion));
+  // "Use all" takes only certain and strong matches; weak ones (loose name, wide date gap, cash deposits) wait for a look.
+  const sureSuggestions = [...suggestions.values()].filter((suggestion) => suggestion.confidence !== "WEAK");
+  const weakSuggestions = suggestions.size - sureSuggestions.length;
+  const applyAllSuggestions = () => sureSuggestions.forEach((suggestion) => applySuggestion(suggestion));
   // After matching, the lines still waiting are usually money out (loans, payouts, bills already in Records) and money in
   // that is not a recorded driver payment (daily rental, transfers between own accounts). Exclude them in one step,
   // with a reason, so the statement can be posted; nothing becomes revenue or a new expense.
@@ -322,8 +325,8 @@ export default function BankStatementPanel({
           </div>
           {suggestions.size > 0 && (
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-emerald-900">
-              {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"} from payment reference, name, plate, amount and date. Check each one before posting.
-              <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {suggestions.size}</button>
+              {suggestions.size} suggested {suggestions.size === 1 ? "match" : "matches"}: {sureSuggestions.length} certain or strong, {weakSuggestions} weak. Weak ones need a look at the receipt before you use them.
+              {sureSuggestions.length > 0 && <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {sureSuggestions.length} certain and strong</button>}
             </p>
           )}
           {(pendingRows("credit").length > 0 || pendingRows("debit").length > 0) && (
@@ -371,7 +374,7 @@ export default function BankStatementPanel({
                       row={row}
                       input={input}
                       onChange={(values) => update(index, values)}
-                      suggestion={suggestion ? { text: `${paymentLabel(suggestion.paymentId)} (${suggestion.reason})`, onUse: () => applySuggestion(suggestion) } : undefined}
+                      suggestion={suggestion ? { text: `${paymentLabel(suggestion.paymentId)} (${suggestion.reason})`, confidence: suggestion.confidence, onUse: () => applySuggestion(suggestion) } : undefined}
                     />
                   );
                 })}
@@ -514,7 +517,7 @@ function ReviewRow({
   input: FinanceInput | null;
   onChange: (v: Partial<BankReviewRow>) => void;
   restrict?: boolean;
-  suggestion?: { text: string; onUse: () => void };
+  suggestion?: { text: string; confidence: "CERTAIN" | "STRONG" | "WEAK"; onUse: () => void };
 }) {
   const vehicles = input?.vehicles ?? [];
   const expense = row.decision === "EXPENSE";
@@ -556,6 +559,7 @@ function ReviewRow({
         </select>
         {suggestion && row.decision === "PENDING" && (
           <span className="reconcile-suggestion">
+            <span className={`reconcile-confidence is-${suggestion.confidence.toLowerCase()}`}>{suggestion.confidence === "CERTAIN" ? "Certain" : suggestion.confidence === "STRONG" ? "Strong" : "Weak: check the receipt"}</span>{" "}
             Suggested: {suggestion.text}
             <button type="button" onClick={suggestion.onUse}>Use</button>
           </span>
