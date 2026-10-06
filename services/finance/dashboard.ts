@@ -50,7 +50,7 @@ export function monthCashFlow(input: FinanceInput, report: FinanceReport): Month
 export interface MarginTarget {
   revenue: number;
   profit: number;
-  /** Net margin (management profit ÷ revenue), or null with no revenue. */
+  /** Operating margin (management profit ÷ revenue), or null with no revenue. */
   margin: number | null;
   contribution_margin: number | null;
   target: number;

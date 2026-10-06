@@ -875,8 +875,8 @@ function ReviewRow({
               className="mr-1 rounded border p-1"
             >
               <option value="">Cost type</option>
-              <option>Workshop Billing</option>
-              <option>Vehicle Direct Cost</option>
+              <option value="Workshop Billing">Workshop</option>
+              <option value="Vehicle Direct Cost">Other Vehicle Costs</option>
               <option value="Corporate Opex">Operation Fix Cost</option>
             </select>
             {row.payment_source !== "Corporate Opex" && (

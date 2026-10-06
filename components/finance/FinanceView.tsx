@@ -97,7 +97,7 @@ const MONEY_PAGES: [Page, string][] = [
 ];
 const monthBased = (page: Page) => page !== "cash" && page !== "collections";
 const PAGE_HEADINGS: Record<Page, [string, string]> = {
-  overview: ["Overview", "How the month did, and how far it is from a 20% net margin."],
+  overview: ["Overview", "How the month did, and how far it is from a 20% operating margin."],
   cash: ["Cash", "Cash in bank, the next three months, and bills coming up."],
   collections: ["Collections", "Who owes rent, and whether it is getting better."],
   vehicles: ["Vehicles", "Which businesses and cars make or lose money this month."],
@@ -897,13 +897,13 @@ function Overview({
     <div className="finance-content">
       <section className="finance-panel">
         <SectionHeading
-          title="20% net margin target"
+          title="20% operating margin target"
           detail={target.margin === null ? "No revenue is recorded for this month yet." : target.gap > 0
             ? `${formatMoney(target.gap)} more profit this month would reach 20% (${formatMoney(target.target_profit)}).`
             : "This month reached the 20% target."}
         />
         <div className="finance-summary-grid is-four">
-          <Total label="Net margin (target 20%)" value={pct(target.margin)} emphasis />
+          <Total label="Operating margin (target 20%)" value={pct(target.margin)} emphasis />
           <Total label="Gap to 20%" value={formatMoney(target.gap)} negative={target.gap > 0} />
           <Total label="Rent collected (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
           <Total label={`Idle cars (${target.idle.count})`} value={formatMoney(-target.idle.cost)} negative={target.idle.cost > 0} />
@@ -932,6 +932,7 @@ function Overview({
                 {line("Operation Fix Cost", -report.corporate_opex)}
                 <tr className="is-total"><td>Operating profit <small>({pct(target.margin)})</small></td><td className={report.management_profit < 0 ? "finance-negative" : ""}>{formatMoney(report.management_profit)}</td></tr>
                 {extraIncome > 0 && <tr><td>Extra income: downpayments and forfeited deposits <small>(kept aside, not in revenue or the 20% target)</small></td><td>{formatMoney(extraIncome)}</td></tr>}
+                {extraIncome > 0 && <tr className="is-total"><td>Profit incl. extra income</td><td className={report.management_profit + extraIncome < 0 ? "finance-negative" : ""}>{formatMoney(report.management_profit + extraIncome)}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -969,7 +970,7 @@ function Overview({
       <section className="finance-panel">
         <SectionHeading title="Month by month" detail="Each month since August 2026, against the 20% target. Draft months can still change; closed months are final." />
         {!trend ? <Skeleton lines={3} /> : (
-          <DataTable headers={["Month", "Status", "Revenue", "Contribution", "Operating profit", "Net margin"]}>
+          <DataTable headers={["Month", "Status", "Revenue", "Contribution", "Operating profit", "Operating margin"]}>
             {[...trend].reverse().map((row) => (
               <tr key={row.month}>
                 <td className="finance-strong">{monthLabel(row.month)}</td>

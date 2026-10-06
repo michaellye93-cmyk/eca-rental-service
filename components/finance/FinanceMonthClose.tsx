@@ -31,7 +31,7 @@ export function readableIssue(issue: QualityIssue) {
     SIMILAR_PLATE:
       "Vehicle Master plates that differ only by two swapped characters. Check each one for a typo.",
     UNMATCHED_PLATE:
-      "Vehicle plates need to be added or corrected in Settings.",
+      "Vehicle plates need to be added or corrected in Records → Vehicle Master.",
     MISSING_PLATE: "An E-Hailing payment needs a vehicle assignment.",
     MISSING_DRIVER: "An E-Hailing payment needs its driver details checked.",
     COST_WITHOUT_REVENUE:
@@ -41,7 +41,7 @@ export function readableIssue(issue: QualityIssue) {
     HISTORICAL_ATTRIBUTION_CHANGED:
       "Vehicle assignments changed since the previous refresh. Check the affected payments.",
     BANK_MATCH_CHANGED:
-      "An existing bank match needs review in Reconciliation Tools.",
+      "An existing bank match needs review on the Reconcile tab.",
     UNCLASSIFIED_RECURRING_COST:
       "Choose a cost type for the monthly costs awaiting classification.",
     SOURCE_COUNT_MISMATCH:
@@ -438,7 +438,7 @@ export default function FinanceMonthClose(p: Props) {
         </ul>
         {(!activeCosts || !activeInsurance) && (
           <p>
-            Check Settings for any missing monthly costs or insurance before
+            Check Records for any missing monthly costs or insurance before
             acknowledging the month.
           </p>
         )}
