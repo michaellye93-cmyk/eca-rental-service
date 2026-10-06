@@ -14,7 +14,7 @@ import {
 } from "../../services/finance/bankStatements";
 import { postBankStatement, reviewBankMatch } from "../../services/finance/api";
 import { unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
-import { applySureMatches, bankLinesForPayment, matchRow, paymentCheck, suggestAcrossStatements } from "../../services/finance/reconcileQueue";
+import { applySureMatches, bankLinesForPayment, matchRow, moneyInOnly, paymentCheck, suggestAcrossStatements } from "../../services/finance/reconcileQueue";
 
 const vehicleCategories = [
   "Road Tax",
@@ -49,6 +49,8 @@ type LoadedStatement = BankStatementPreview & {
   file: File;
   headers: string[];
   mapping: Record<string, string | undefined>;
+  /** Money-out lines left out of the review (money in only). */
+  skipped?: { count: number; amount: number };
 };
 const matchedPaymentIds = (rows: BankReviewRow[]) =>
   rows.filter((row) => row.decision === "MATCHED" && row.matched_kind === "payment" && row.matched_id).map((row) => row.matched_id as string);
@@ -71,6 +73,8 @@ export default function BankStatementPanel({
 }) {
   const [statements, setStatements] = useState<LoadedStatement[]>([]);
   const [active, setActive] = useState(0);
+  // The rent check needs money in only, so money-out lines are skipped when a file is read (on by default).
+  const [moneyIn, setMoneyIn] = useState(true);
   const preview = statements[active] ?? null;
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState<
@@ -118,6 +122,10 @@ export default function BankStatementPanel({
     setReviewing(null);
   }, [month]);
   const readStatement = async (file: File, mapping: Record<string, string | undefined> = {}): Promise<LoadedStatement> => {
+    const statement = await readWholeStatement(file, mapping);
+    return moneyIn ? { ...statement, ...moneyInOnly(statement.rows) } : statement;
+  };
+  const readWholeStatement = async (file: File, mapping: Record<string, string | undefined> = {}): Promise<LoadedStatement> => {
     if (!input) throw new Error("Finance data is not loaded yet.");
     const original = await file.arrayBuffer();
     const source_hash = await sha256Buffer(original);
@@ -290,6 +298,10 @@ export default function BankStatementPanel({
             className="ml-2 text-sm"
           />
         </label>
+        <label className="text-sm">
+          <input type="checkbox" checked={moneyIn} disabled={busy} onChange={(e) => setMoneyIn(e.target.checked)} className="mr-1" />
+          Money in only (skip money-out lines)
+        </label>
         {busy && <span className="text-sm text-slate-500">Working…</span>}
       </div>
       {statements.length > 0 && (
@@ -350,9 +362,10 @@ export default function BankStatementPanel({
                 className="ml-2 rounded border p-1.5"
               />
             </label>
-            <span>Debits: <b>{money(preview.total_debits)}</b></span>
-            <span>Credits: <b>{money(preview.total_credits)}</b></span>
+            <span>Money out in file: <b>{money(preview.total_debits)}</b></span>
+            <span>Money in: <b>{money(preview.total_credits)}</b></span>
             <span>{preview.rows.length} lines</span>
+            {preview.skipped && preview.skipped.count > 0 && <span className="text-slate-500">Money out skipped: {preview.skipped.count} {preview.skipped.count === 1 ? "line" : "lines"} ({money(preview.skipped.amount)})</span>}
           </div>
           {(autoMatched > 0 || suggestions.size > 0) && (
             <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-emerald-900">

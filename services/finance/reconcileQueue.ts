@@ -68,3 +68,12 @@ export function bankLinesForPayment(payment: EhailingPayment, statements: BankRe
       .map((row) => ({ statement, row, days: Math.abs(day(row.transaction_date) - day(payment.payment_date)) })))
     .sort((a, b) => a.days - b.days || a.statement - b.statement || a.row.source_row - b.row.source_row);
 }
+
+/**
+ * The rent check needs money in only: money-out lines (payouts, loans, bills already kept in Records) are left out of
+ * the review. Their count and total are kept so the screen can say what was skipped. Row numbers stay as in the file.
+ */
+export function moneyInOnly(rows: BankReviewRow[]): { rows: BankReviewRow[]; skipped: { count: number; amount: number } } {
+  const out = rows.filter((row) => !(row.credit > 0));
+  return { rows: rows.filter((row) => row.credit > 0), skipped: { count: out.length, amount: Math.round(out.reduce((sum, row) => sum + row.debit, 0) * 100) / 100 } };
+}

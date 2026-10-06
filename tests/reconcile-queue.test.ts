@@ -56,3 +56,11 @@ test('for an unsolved payment, open bank lines with the same amount are listed n
   const lines = bankLinesForPayment(payment('p3', '2026-08-03', 300, 'C', 'XAC3003'), [bankA, bankB]);
   assert.deepEqual(lines.map((line) => [line.statement, line.row.source_row]), [[0, 2], [1, 2], [0, 1]]);
 });
+
+test('money in only: money-out lines are left out of the review, and how many were skipped is kept', async () => {
+  const { moneyInOnly } = await import('../services/finance/reconcileQueue.ts');
+  const out = { ...credit(2, '2026-08-02', 0, 'RFLX INSTANT TRF DR FIXTURE OWNER'), debit: 120.5 };
+  const kept = moneyInOnly([credit(1, '2026-08-01', 400, 'RPP INWARD'), out, credit(3, '2026-08-03', 200, 'IBG CREDIT')]);
+  assert.deepEqual(kept.rows.map((row) => row.source_row), [1, 3]);
+  assert.deepEqual(kept.skipped, { count: 1, amount: 120.5 });
+});
