@@ -54,3 +54,9 @@ test('the agreement reads like a formal agreement: parties paragraph, letterhead
   // The company name heads every page
   assert.equal(text.split('Fixture Rentals Sdn Bhd').length - 1 >= doc.getNumberOfPages(), true);
 });
+
+test('the short Sewa Biasa fits its terms on one page: four pages in all', () => {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawAgreement(doc, defaultTemplate('SEWA_BIASA'), {});
+  assert.equal(doc.getNumberOfPages(), 4);
+});

@@ -149,27 +149,25 @@ const BELI_TERMS = para(
   general(10),
 );
 
+// Sewa Biasa: the short version (owner's request of 2026-10-09), its terms on one page.
 const BIASA_TERMS = para(
   '1. THE RENTAL',
-  '1.1 Rental only. The Lessor rents the Vehicle in Section D to the Lessee from the Start Date for the Rental Period in Section A. The Lessee never owns the Vehicle, and rent paid does not count towards buying it.',
-  '1.2 After the Rental Period. If the Vehicle is not returned at the end of the Rental Period, the rental continues on the same terms, {{rental_cycle}} by {{rental_cycle}}, until either party ends it under clause 7.',
-  '1.3 Condition at handover. The Lessee accepts the Vehicle in the condition recorded at handover (odometer, fuel and photos), apart from any defect reported at handover.',
-  '1.4 Inspection. The Lessor may inspect the Vehicle on reasonable notice, or at once for safety, insurance, default or recovery reasons.',
-  '2. RENT AND PAYMENT',
-  ...rentClauses(2),
+  '1.1 Rental only. The Lessee rents the Vehicle in Section D for the Rental Period in Section A, in the condition recorded at handover (odometer, fuel and photos), and never owns it. If the Vehicle is not returned at the end, the rental continues {{rental_cycle}} by {{rental_cycle}} on the same terms until ended under clause 5.',
+  '2. RENT',
+  '2.1 Rent. The Lessee pays {{rent_amount}} per {{rental_cycle}} on or before the due day in Section A, into the payment account in Section A, without any deduction.',
+  '2.2 Late charge. Overdue rent carries a late charge of 18% a year (1.5% a month), counted daily from the second day after the due day until paid.',
+  '2.3 Records and review. The Lessor\'s payment records are conclusive unless they contain an obvious error. The Lessor may review the rent once a year by giving 30 days\' written notice.',
   '3. DEPOSIT',
-  '3.1 Refundable deposit. The Lessee pays the deposit in Section A before handover. It is not rent and may not be used as the last rent payment unless the Lessor agrees in writing.',
-  '3.2 Refund. Within 14 days after the Vehicle is returned and checked, the Lessor refunds the deposit less any unpaid rent, late charges, summonses, damage, cleaning, missing items and recovery costs, with a list of any deductions.',
-  '3.3 Forfeit. The deposit is forfeited if the Lessee returns the Vehicle without the notice in clause 7.1, abandons it, or the Lessor has to recover it because of the Lessee\'s default. This does not limit the Lessor\'s claim for any larger amount owed.',
-  useOfVehicle(4, 8),
-  services(5),
-  accidents(6),
-  '7. ENDING THE RENTAL',
-  '7.1 By the Lessee. The Lessee may end the rental by giving two weeks\' written notice, returning the Vehicle and paying all sums due.',
-  '7.2 By the Lessor. The Lessor may end the rental by giving two weeks\' written notice, or under clause 8 if the Lessee is in default.',
-  '7.3 Return condition. The Vehicle, keys, documents and accessories must be returned in the condition recorded at handover, apart from fair wear and tear, with the same fuel level.',
-  ...defaultAndRecovery(8, 'DEFAULT AND RECOVERY'),
-  general(9),
+  '3.1 Refund or forfeit. The deposit is not rent. Within 14 days after the Vehicle is returned and checked, the Lessor refunds it less anything owed (rent, late charges, summonses, damage, cleaning, missing items and recovery costs). It is forfeited if the Vehicle is returned without the notice in clause 5.1, abandoned, or recovered for default.',
+  '4. USE AND CARE',
+  '4.1 Lawful use. Use the Vehicle only for lawful e-hailing work and personal use, keep all licences and platform approvals valid, and let no one else drive it without the Lessor\'s written approval. No sub-letting ("sewa atas sewa").',
+  '4.2 No tampering. Do not modify the Vehicle or tamper with the odometer or GPS tracker. The Lessee consents to GPS tracking and to its use to recover the Vehicle.',
+  '4.3 Costs. The Lessee pays tolls, fuel, parking, summonses and fines incurred during the rental. The Lessor renews road tax and insurance and arranges approved servicing; the Lessee brings the Vehicle in when asked.',
+  '4.4 Accidents. Tell the Lessor at once, make a police report within 24 hours, and do not admit fault or arrange repairs without approval. The Lessee pays the insurance excess and any damage caused by negligence or misuse, and rent continues while the Vehicle is off the road for those reasons.',
+  '5. ENDING, RECOVERY AND GENERAL',
+  '5.1 Ending. Either party may end the rental with two weeks\' written notice. The Vehicle, keys and documents must be returned in the handover condition, apart from fair wear and tear.',
+  '5.2 Default and recovery. If rent is 14 days overdue or the Lessee breaks this agreement, the Lessor sends a written notice giving 7 days to put it right. If it is not put right, the Lessor may end the rental, recover the Vehicle by lawful means and claim arrears and recovery costs. If the Vehicle is abandoned, used illegally or held by a third party, the Lessor may recover it at once.',
+  '5.3 General. Notices may be given by hand, email or WhatsApp. The Lessor may use the Lessee\'s personal and GPS data to run this agreement. Any change must be in writing and signed by both parties. Malaysian law applies.',
 );
 
 const schedule = (kind: AgreementKind): AgreementSection => ({
