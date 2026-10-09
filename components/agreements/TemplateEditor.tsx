@@ -22,7 +22,7 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 const HINTS: Record<SectionLayout, string> = {
   clauses: 'One paragraph per clause; leave an empty line between clauses. Start with a number (1., 1.1, (a)) to hang the text after it.',
   table: 'One row per line: Label | value. A line with no bar prints as a heading row.',
-  signature: 'One signature box per line: Party | Name | ID.',
+  signature: 'One signature box per line: Party | Name | ID | Date. Leave the date out to write it by hand. A line with no bar is printed as wording.',
 };
 
 /** Admins change each agreement type's sections and the company details here. */

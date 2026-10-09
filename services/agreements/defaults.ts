@@ -42,9 +42,9 @@ const signature: AgreementSection = {
   layout: 'signature',
   body: rows(
     'IN WITNESS WHEREOF the parties have signed this Agreement on the date first written above.',
-    'The Lessee | {{customer_name}} | {{customer_nric}}',
-    'For and on behalf of the Lessor | {{company_rep_name}} | {{company_rep_id}}',
-    'Witness | {{witness_name}} | {{witness_id}}',
+    'The Lessee | {{customer_name}} | {{customer_nric}} | {{agreement_date}}',
+    'For and on behalf of the Lessor | {{company_name}} | {{company_reg_no}} | {{agreement_date}}',
+    'Witness | {{witness_name}} | {{witness_id}} | {{agreement_date}}',
   ),
 };
 

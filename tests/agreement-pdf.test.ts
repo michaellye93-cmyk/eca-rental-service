@@ -60,3 +60,14 @@ test('the short Sewa Biasa fits its terms on one page: four pages in all', () =>
   drawAgreement(doc, defaultTemplate('SEWA_BIASA'), {});
   assert.equal(doc.getNumberOfPages(), 4);
 });
+
+test('the Lessor signs as the company (name and company no.), and every box carries the agreement date', () => {
+  const sig = defaultTemplate('SEWABELI').sections.find(s => s.layout === 'signature')!;
+  assert.match(sig.body, /For and on behalf of the Lessor \| \{\{company_name\}\} \| \{\{company_reg_no\}\} \| \{\{agreement_date\}\}/);
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawAgreement(doc, { title: 'T', sections: [sig] }, { company_name: 'Fixture Rentals Sdn Bhd', company_reg_no: '000000-X', customer_name: 'Fixture Driver One', agreement_date: '9 October 2026' });
+  const text = doc.output();
+  assert.ok(text.includes('Name: Fixture Rentals Sdn Bhd'));
+  assert.ok(text.includes('NRIC / Co. No.: 000000-X'));
+  assert.equal(text.split('Date: 9 October 2026').length - 1, 3, 'Lessee, Lessor and Witness');
+});

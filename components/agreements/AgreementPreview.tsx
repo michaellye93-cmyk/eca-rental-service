@@ -86,7 +86,7 @@ export default function AgreementPreview({ template, values }: AgreementPreviewP
                       <p className="text-[10px] italic text-gray-500">Signature</p>
                       <p>Name: <Filled text={cells[1] ?? ''} values={values} /></p>
                       <p>NRIC / Co. No.: <Filled text={cells[2] ?? ''} values={values} /></p>
-                      <p>Date: ____________</p>
+                      <p>Date: {cells[3] ? <Filled text={cells[3]} values={values} /> : '____________'}</p>
                     </div>
                   </div>
                 ))}

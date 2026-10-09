@@ -217,7 +217,7 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
           doc.text(name, x + 3, y + 36, { lineHeightFactor: 1.2 });
           const below = y + 36 + name.length * 4.3;
           doc.text(wrap(`NRIC / Co. No.: ${fill(cells[2] ?? '') || BLANK}`, boxW - 6)[0], x + 3, below);
-          doc.text(`Date: ${BLANK}`, x + 3, below + 4.8);
+          doc.text(`Date: ${fill(cells[3] ?? '') || BLANK}`, x + 3, below + 4.8);
         });
         y += boxH + 6;
       }

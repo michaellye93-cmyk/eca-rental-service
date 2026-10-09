@@ -4,7 +4,7 @@ import { DEFAULT_SECTIONS } from './defaults.ts';
 export type AgreementKind = 'SEWA_BIASA' | 'SEWABELI';
 /**
  * How a section prints. clauses: paragraphs, one per blank-line-separated block. table: one row per line, "Label | value".
- * signature: one signature box per line, "Party | Name | ID".
+ * signature: one signature box per line, "Party | Name | ID | Date" (the date may be left out to write by hand).
  */
 export type SectionLayout = 'clauses' | 'table' | 'signature';
 
@@ -25,7 +25,7 @@ export interface AgreementTemplate {
 }
 
 export const KIND_LABELS: Record<AgreementKind, string> = { SEWA_BIASA: 'Sewa Biasa', SEWABELI: 'Sewa Beli' };
-export const LAYOUT_LABELS: Record<SectionLayout, string> = { clauses: 'Clauses', table: 'Table (Label | value)', signature: 'Signatures (Party | Name | ID)' };
+export const LAYOUT_LABELS: Record<SectionLayout, string> = { clauses: 'Clauses', table: 'Table (Label | value)', signature: 'Signatures (Party | Name | ID | Date)' };
 
 /** The company details printed on every agreement; saved once, edited on the Agreements page. */
 export interface CompanyDetails {
