@@ -34,7 +34,10 @@ export interface CompanyDetails {
   company_address: string;
   company_phone: string;
   company_email: string;
+  /** An older single account (before 2026-10-09); used only when the type's own account is empty. */
   company_bank_account: string;
+  company_bank_account_sewabeli: string;
+  company_bank_account_sewabiasa: string;
   company_rep_name: string;
   company_rep_id: string;
 }
@@ -44,12 +47,13 @@ export const COMPANY_FIELDS: { key: keyof CompanyDetails; label: string }[] = [
   { key: 'company_address', label: 'Company address' },
   { key: 'company_phone', label: 'Company phone' },
   { key: 'company_email', label: 'Company email' },
-  { key: 'company_bank_account', label: 'Bank account for payments' },
+  { key: 'company_bank_account_sewabeli', label: 'Payment account for Sewa Beli' },
+  { key: 'company_bank_account_sewabiasa', label: 'Payment account for Sewa Biasa' },
   { key: 'company_rep_name', label: 'Signing on behalf of the company' },
   { key: 'company_rep_id', label: 'Their NRIC' },
 ];
 export const emptyCompany = (): CompanyDetails => ({
-  company_name: '', company_reg_no: '', company_address: '', company_phone: '', company_email: '', company_bank_account: '', company_rep_name: '', company_rep_id: '',
+  company_name: '', company_reg_no: '', company_address: '', company_phone: '', company_email: '', company_bank_account: '', company_bank_account_sewabeli: '', company_bank_account_sewabiasa: '', company_rep_name: '', company_rep_id: '',
 });
 
 /** Everything one agreement is filled from. Dates are YYYY-MM-DD; amounts and duration are typed text. */
@@ -125,6 +129,11 @@ export const contractEndDate = (startDate: string, cycle: 'WEEKLY' | 'MONTHLY', 
 /** Every placeholder the form fills: its label (for the "missing" list) and its value. */
 const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => string }> = {
   ...Object.fromEntries(COMPANY_FIELDS.map(({ key, label }) => [key, { label, value: (input: AgreementInput) => input.company[key] }])),
+  // The account printed on an agreement: the one set for its type (Sewa Beli and Sewa Biasa are paid to different accounts)
+  company_bank_account: {
+    label: 'Payment account',
+    value: i => (i.kind === 'SEWABELI' ? i.company.company_bank_account_sewabeli : i.company.company_bank_account_sewabiasa) || i.company.company_bank_account,
+  },
   customer_name: { label: 'Customer name', value: i => i.customer.name },
   customer_nric: { label: 'Customer NRIC', value: i => i.customer.nric },
   customer_phone: { label: 'Customer phone', value: i => i.customer.phone },
@@ -278,6 +287,6 @@ export const templateFromStored = (kind: AgreementKind, stored: unknown): Agreem
 export const companyFromStored = (stored: unknown): CompanyDetails => {
   const value = (stored ?? {}) as Record<string, unknown>;
   const company = emptyCompany();
-  for (const { key } of COMPANY_FIELDS) if (typeof value[key] === 'string') company[key] = value[key] as string;
+  for (const key of Object.keys(company) as (keyof CompanyDetails)[]) if (typeof value[key] === 'string') company[key] = value[key] as string;
   return company;
 };

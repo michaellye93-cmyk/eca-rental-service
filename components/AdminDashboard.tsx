@@ -373,6 +373,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const [formData, setFormData] = useState(initialFormState);
+  // A delisted driver with the NRIC being typed: a returning driver, whose old record and balance stay where they are
+  const returningFrom = useMemo(() => (driverWithNric(drivers.filter(d => !d.isDelisted), formData.nric) ? undefined
+    : driverWithNric(drivers.filter(d => d.isDelisted), formData.nric)), [drivers, formData.nric]);
+  const returningOwed = returningFrom ? Math.max(0, calculateDriverMetrics(returningFrom).totalOutstanding) : 0;
   const [tagInput, setTagInput] = useState('');
   
   // Payment Form State
@@ -855,9 +859,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (!originalDriver) return;
         await onUpdateDriver({ ...originalDriver, ...submissionData });
       } else {
-        const existing = driverWithNric(drivers, formData.nric);
+        // One active driver per NRIC; a returning driver (old record delisted) gets a new record for the new car
+        const existing = driverWithNric(drivers.filter(d => !d.isDelisted), formData.nric);
         if (existing) {
-          setDriverFormError(`This NRIC already belongs to ${existing.name} (${existing.carPlate}${existing.isDelisted ? ', under Delisted / Returned' : ''}). Edit that driver instead of adding a new one.`);
+          setDriverFormError(`This NRIC already belongs to ${existing.name} (${existing.carPlate}), who is still active. Edit that driver, or delist the old contract first.`);
           return;
         }
         await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
@@ -1515,6 +1520,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div>
                 <label htmlFor="driver-nric" className="block text-sm font-bold text-gray-700 mb-1">NRIC</label>
                 <input id="driver-nric" required type="text" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.nric} onChange={e => setFormData({...formData, nric: formatNric(e.target.value)})} placeholder="NRIC Number" />
+                {!editingId && returningFrom && (
+                  <p role="status" className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2 mt-1">
+                    Returning driver: the old record ({returningFrom.carPlate}) stays under Delisted / Returned
+                    {returningOwed > 0 ? <>, with <b>{formatCurrency(returningOwed)}</b> still owed there</> : ', fully settled'}. This creates a new record for the new contract.
+                  </p>
+                )}
               </div>
               <div>
                 <label htmlFor="driver-plate" className="block text-sm font-bold text-gray-700 mb-1">Plate Number</label>
