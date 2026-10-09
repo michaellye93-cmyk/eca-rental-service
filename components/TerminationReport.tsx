@@ -163,8 +163,9 @@ export default function TerminationReport() {
       try {
         const { data } = await supabase.from('driver_deposits').select('driver_id,kind,entry,amount').in('driver_id', drivers.map((d) => d.id)).abortSignal(controller.signal);
         deposits = new Map();
-        for (const row of (data ?? []) as Array<{ driver_id: string; kind: string; entry: string; amount: number }>) {
-          const current = deposits.get(row.driver_id) ?? { held: 0, kind: row.kind === 'DOWNPAYMENT' ? 'Downpayment' : 'Deposit' };
+        // Only the refundable deposit is held; a Sewa Beli downpayment (which may sit beside a security deposit) is not
+        for (const row of ((data ?? []) as Array<{ driver_id: string; kind: string; entry: string; amount: number }>).filter((r) => r.kind === 'DEPOSIT')) {
+          const current = deposits.get(row.driver_id) ?? { held: 0, kind: 'Deposit' };
           current.held = Math.round((current.held + (row.entry === 'RECEIVED' ? 1 : -1) * Number(row.amount)) * 100) / 100;
           deposits.set(row.driver_id, current);
         }

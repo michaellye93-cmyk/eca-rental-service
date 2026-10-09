@@ -5,7 +5,8 @@
 --
 -- driver_agreements: when staff download an agreement, a copy of what it says (the template and the filled-in values,
 -- a few KB of text, never the PDF) is kept against the driver. Staff and admins add and read them; nobody edits or
--- deletes one. The newest copy is what the driver sees on their phone page.
+-- deletes one (they go only when the driver record itself is deleted). The newest copy is what the driver sees on
+-- their phone page.
 --
 -- driver_portal_record (the driver's own record behind sign-in and "keep me signed in") gains one key, 'agreement':
 -- the newest copy, or null. Everything else it returns is unchanged.

@@ -80,7 +80,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const [driverId, setDriverId] = useState(initialDriverId);
   const [agreementDate, setAgreementDate] = useState(today);
   const [extra, setExtra] = useState<Record<string, string>>({});
-  const [deposits, setDeposits] = useState<{ driverId: string; received: { DEPOSIT: number; DOWNPAYMENT: number } } | null>(null);
+  const [deposits, setDeposits] = useState<{ driverId: string; received: { DEPOSIT: number; DOWNPAYMENT: number } | null; problem?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const busy = useRef(false);
@@ -100,7 +100,12 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (initialDriverId) setDriverId(initialDriverId); }, [initialDriverId]);
+  useEffect(() => {
+    if (!initialDriverId) return;
+    setDriverId(initialDriverId);
+    setExtra({});
+    setAgreementDate(today);
+  }, [initialDriverId, today]);
 
   // The chosen driver's deposit and downpayment, from their Deposits panel
   useEffect(() => {
@@ -108,7 +113,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     let live = true;
     loadDeposits(driverId)
       .then(rows => { if (live) setDeposits({ driverId, received: receivedByKind(rows) }); })
-      .catch(() => { if (live) setDeposits({ driverId, received: { DEPOSIT: 0, DOWNPAYMENT: 0 } }); });
+      .catch(err => { if (live) setDeposits({ driverId, received: null, problem: reason(err) }); });
     return () => { live = false; };
   }, [driverId]);
 
@@ -151,7 +156,9 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const car = driver ? carForPlate(cars, driver.carPlate) : undefined;
   const carDetails = car ? details.get(car.id) ?? emptyDetails(car.id) : null;
   const base = driver ? fromDriver(driver, blankInput('SEWABELI', today)) : blankInput('SEWABELI', today);
-  const received = deposits && deposits.driverId === driverId ? deposits.received : { DEPOSIT: 0, DOWNPAYMENT: 0 };
+  const depositsReady = !!deposits && deposits.driverId === driverId && !!deposits.received;
+  const depositsProblem = deposits && deposits.driverId === driverId ? deposits.problem : undefined;
+  const received = (depositsReady && deposits?.received) || { DEPOSIT: 0, DOWNPAYMENT: 0 };
   const input: AgreementInput = {
     ...withDeposits(base, received),
     terms: { ...withDeposits(base, received).terms, agreementDate },
@@ -169,7 +176,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const typeLabel = KIND_LABELS[input.kind];
 
   const download = async () => {
-    if (!driver || busy.current) return;
+    if (!driver || !depositsReady || busy.current) return;
     busy.current = true;
     setDownloading(true);
     setResult(null);
@@ -217,7 +224,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
               </button>
             )}
           >
-            <SearchPick id="agreement-driver" value={driverId} onChange={id => { setDriverId(id); setResult(null); }}
+            <SearchPick id="agreement-driver" value={driverId} onChange={id => { setDriverId(id); setResult(null); setExtra({}); setAgreementDate(today); }}
               placeholder="Search a driver's name or plate" options={activeDrivers.map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}` }))} />
             {!driver ? (
               <p className="text-sm text-gray-500">New customer? Add them first with <b>Add Driver</b> and record their deposit or downpayment, then choose them here.</p>
@@ -301,8 +308,10 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             {!settings.company.company_name && isAdmin && (
               <p className="text-sm text-gray-600">Company details are empty: add them under <button type="button" className="font-semibold text-blue-700 underline" onClick={() => setEditing(true)}>Edit templates</button>.</p>
             )}
+            {driver && depositsProblem && <p role="alert" className="text-sm text-rose-700">The deposit and downpayment couldn't be read ({depositsProblem}), so the agreement can't be made yet. Try again shortly.</p>}
+            {driver && !depositsReady && !depositsProblem && <p role="status" className="text-sm text-gray-500">Reading the deposit and downpayment…</p>}
             {result && <p role={result.ok ? 'status' : 'alert'} className={`text-sm ${result.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{result.text}</p>}
-            <button type="button" onClick={() => void download()} disabled={downloading || !driver}
+            <button type="button" onClick={() => void download()} disabled={downloading || !driver || !depositsReady}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold py-2.5 rounded-lg shadow-sm flex items-center justify-center gap-2">
               <Download className="w-4 h-4" aria-hidden="true" /> {downloading ? 'Making the PDF…' : 'Download PDF'}
             </button>

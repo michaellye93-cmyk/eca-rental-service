@@ -717,9 +717,9 @@ export default function FinanceView(props: MoneyProps = {}) {
               onError={setError}
               onMarkCash={props.onMarkPaymentCash ? (paymentId) => invoke(async () => { await props.onMarkPaymentCash!(paymentId); return refreshPayments(month); }, "Payment marked as paid in cash.") : undefined}
               depositKindOf={(driverId) => depositKindFor(props.drivers?.find((d) => d.id === driverId)?.category)}
-              onRecordDeposit={async (driverId, amount, date) => {
+              onRecordDeposit={async (driverId, amount, date, chosen) => {
                 let id: string | undefined;
-                const kind = depositKindFor(props.drivers?.find((d) => d.id === driverId)?.category);
+                const kind = chosen ?? depositKindFor(props.drivers?.find((d) => d.id === driverId)?.category);
                 await invoke(async () => {
                   const saved = await addDeposit({ driver_id: driverId, kind, entry: "RECEIVED", entry_date: date, amount, note: "Recorded from Reconcile" });
                   id = saved.id;

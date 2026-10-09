@@ -84,7 +84,7 @@ export default function BankStatementPanel({
   /** Deposit (Sewa Biasa) or downpayment (Sewa Beli) for a driver. */
   depositKindOf?: (driverId: string) => "DEPOSIT" | "DOWNPAYMENT";
   /** Records a deposit or downpayment received and reloads the month; resolves with its id. */
-  onRecordDeposit?: (driverId: string, amount: number, date: string) => Promise<string | undefined>;
+  onRecordDeposit?: (driverId: string, amount: number, date: string, kind?: "DEPOSIT" | "DOWNPAYMENT") => Promise<string | undefined>;
 }) {
   const [statements, setStatements] = useState<LoadedStatement[]>([]);
   const [active, setActive] = useState(0);
@@ -619,7 +619,7 @@ function BankLines({ rows, input, suggestions, usedPaymentIds, usedDepositIds, d
   usedPaymentIds: Set<string>;
   usedDepositIds: Set<string>;
   depositKindOf?: (driverId: string) => "DEPOSIT" | "DOWNPAYMENT";
-  onRecordDeposit?: (driverId: string, amount: number, date: string) => Promise<string | undefined>;
+  onRecordDeposit?: (driverId: string, amount: number, date: string, kind?: "DEPOSIT" | "DOWNPAYMENT") => Promise<string | undefined>;
   matchLabel: (row: BankReviewRow) => string;
   paymentLabel: (id: string) => string;
   disabled: boolean;
@@ -715,7 +715,7 @@ function PaymentPicker({ row, input, usedPaymentIds, usedDepositIds, depositKind
   usedPaymentIds: Set<string>;
   usedDepositIds: Set<string>;
   depositKindOf?: (driverId: string) => "DEPOSIT" | "DOWNPAYMENT";
-  onRecordDeposit?: (driverId: string, amount: number, date: string) => Promise<string | undefined>;
+  onRecordDeposit?: (driverId: string, amount: number, date: string, kind?: "DEPOSIT" | "DOWNPAYMENT") => Promise<string | undefined>;
   onPick: (paymentIds: string[], depositIds: string[], note: string) => void;
   onCancel: () => void;
 }) {
@@ -747,12 +747,15 @@ function PaymentPicker({ row, input, usedPaymentIds, usedDepositIds, depositKind
   // What is left after the ticked rent can be recorded as the same driver's deposit or downpayment, then matched.
   const firstDriver = selected.length ? input?.ehailing.find((p) => p.source_payment_id === selected[0])?.driver_id ?? null : null;
   const leftoverKind = firstDriver && depositKindOf ? depositKindOf(firstDriver) : "DEPOSIT";
-  const leftoverLabel = leftoverKind === "DOWNPAYMENT" ? "downpayment" : "deposit";
-  const recordLeftover = async () => {
+  // A Sewa Beli driver may pay a downpayment, a refundable security deposit, or both: staff say which this is
+  const leftoverChoices: { kind: "DEPOSIT" | "DOWNPAYMENT"; label: string }[] = leftoverKind === "DOWNPAYMENT"
+    ? [{ kind: "DOWNPAYMENT", label: "downpayment" }, { kind: "DEPOSIT", label: "security deposit" }]
+    : [{ kind: "DEPOSIT", label: "deposit" }];
+  const recordLeftover = async (kind: "DEPOSIT" | "DOWNPAYMENT") => {
     if (!firstDriver || !onRecordDeposit || left <= 0) return;
     setRecording(true);
     try {
-      const id = await onRecordDeposit(firstDriver, left / 100, row.transaction_date);
+      const id = await onRecordDeposit(firstDriver, left / 100, row.transaction_date, kind);
       if (id) onPick(selected, [...selectedDeposits, id], selectedDeposits.length || selected.length ? "Rent and deposit in one transfer" : "Deposit or downpayment");
     } finally {
       setRecording(false);
@@ -790,9 +793,11 @@ function PaymentPicker({ row, input, usedPaymentIds, usedDepositIds, depositKind
         <button type="button" onClick={onCancel}>Cancel</button>
       </div>
       {onRecordDeposit && firstDriver && left > 0 && (
-        <button type="button" className="reconcile-picker-leftover" disabled={recording} onClick={() => void recordLeftover()}>
-          {recording ? "Recording…" : `Record the ${money(left / 100)} left as ${input?.ehailing.find((p) => p.source_payment_id === selected[0])?.driver_name_snapshot ?? "the driver"}'s ${leftoverLabel} and match`}
+        leftoverChoices.map((choice) => (
+        <button key={choice.kind} type="button" className="reconcile-picker-leftover" disabled={recording} onClick={() => void recordLeftover(choice.kind)}>
+          {recording ? "Recording…" : `Record the ${money(left / 100)} left as ${input?.ehailing.find((p) => p.source_payment_id === selected[0])?.driver_name_snapshot ?? "the driver"}'s ${choice.label} and match`}
         </button>
+        ))
       )}
     </div>
   );

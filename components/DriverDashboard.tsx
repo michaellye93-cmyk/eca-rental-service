@@ -48,13 +48,17 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, agreement = n
   const t = portalText(lang);
   const [showAgreement, setShowAgreement] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [agreementFailed, setAgreementFailed] = useState(false);
   const downloadAgreement = async () => {
     if (!agreement || preparing) return;
     setPreparing(true);
+    setAgreementFailed(false);
     try {
       // The PDF is made on the phone, from the same text staff downloaded
       await downloadAgreementPdf(agreement.template, agreement.values,
         agreementFileName(KIND_LABELS[agreement.kind], agreement.values.vehicle_plate ?? '', agreement.values.customer_name ?? ''));
+    } catch {
+      setAgreementFailed(true);
     } finally {
       setPreparing(false);
     }
@@ -234,6 +238,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, agreement = n
                 <Download className="w-4 h-4" aria-hidden="true" /> {preparing ? t.downloading : t.downloadAgreement}
               </button>
             </div>
+            {agreementFailed && <p role="alert" className="text-xs text-rose-700 mt-2">{t.refreshFailed}</p>}
           </section>
         )}
         {agreement && showAgreement && (
