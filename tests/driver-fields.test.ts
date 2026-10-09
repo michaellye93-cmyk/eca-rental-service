@@ -81,3 +81,12 @@ test('the emergency contact and approved driver are saved only when set or being
     emergency_contact_name: 'Fixture Contact', emergency_contact_phone: null, approved_driver: 'None' });
   assert.deepEqual([read.emergencyContactName, read.emergencyContactPhone, read.approvedDriver], ['Fixture Contact', undefined, 'None']);
 });
+
+test('an NRIC already on a driver is found whatever the dashes or spaces, delisted drivers included', async () => {
+  const { driverWithNric } = await import('../utils.ts');
+  const drivers = [{ id: 'a', nric: '900101011234', name: 'Fixture Driver A', carPlate: 'XAA1001', isDelisted: true }, { id: 'b', nric: '900101-01-5678', name: 'Fixture Driver B', carPlate: 'XAA1002' }];
+  assert.equal(driverWithNric(drivers, '900101-01-1234')?.id, 'a');
+  assert.equal(driverWithNric(drivers, '900101 01 5678')?.id, 'b');
+  assert.equal(driverWithNric(drivers, '900101-01-9999'), undefined);
+  assert.equal(driverWithNric(drivers, ''), undefined);
+});

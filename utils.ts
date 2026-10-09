@@ -440,6 +440,12 @@ export const formatNric = (value: string): string => {
   return digits;
 };
 
+/** The driver (active or delisted) whose NRIC has the same digits, ignoring dashes and spaces. */
+export const driverWithNric = <T extends { nric: string }>(drivers: T[], nric: string): T | undefined => {
+  const digits = (nric || '').replace(/\D/g, '');
+  return digits ? drivers.find(d => (d.nric || '').replace(/\D/g, '') === digits) : undefined;
+};
+
 /** A row of the payments table (only the columns the app reads). */
 export interface PaymentRow {
   id: string;

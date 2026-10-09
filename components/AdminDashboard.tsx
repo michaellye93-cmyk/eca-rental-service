@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus } from '../types';
-import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
+import { driverWithNric, buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const FleetView = React.lazy(() => import('./fleet/FleetView'));
 const AgreementsView = React.lazy(() => import('./agreements/AgreementsView'));
@@ -855,7 +855,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (!originalDriver) return;
         await onUpdateDriver({ ...originalDriver, ...submissionData });
       } else {
-        if (drivers.some(d => d.nric === formData.nric)) { setDriverFormError('A driver with this NRIC already exists.'); return; }
+        const existing = driverWithNric(drivers, formData.nric);
+        if (existing) {
+          setDriverFormError(`This NRIC already belongs to ${existing.name} (${existing.carPlate}${existing.isDelisted ? ', under Delisted / Returned' : ''}). Edit that driver instead of adding a new one.`);
+          return;
+        }
         await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
       }
       // The save handlers reload the list themselves
