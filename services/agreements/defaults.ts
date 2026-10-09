@@ -8,12 +8,6 @@ import type { AgreementKind, AgreementSection } from './template.ts';
 const para = (...lines: string[]) => lines.join('\n\n');
 const rows = (...lines: string[]) => lines.join('\n');
 
-const lessorRows = [
-  'THE LESSOR',
-  'Company | {{company_name}} ({{company_reg_no}})',
-  'Address | {{company_address}}',
-  'Contact | {{company_phone}}  {{company_email}}',
-];
 const lesseeRows = [
   'THE LESSEE',
   'Name | {{customer_name}}',
@@ -47,6 +41,7 @@ const signature: AgreementSection = {
   title: 'Signature',
   layout: 'signature',
   body: rows(
+    'IN WITNESS WHEREOF the parties have signed this Agreement on the date first written above.',
     'The Lessee | {{customer_name}} | {{customer_nric}}',
     'For and on behalf of the Lessor | {{company_rep_name}} | {{company_rep_id}}',
     'Witness | {{witness_name}} | {{witness_id}}',
@@ -184,7 +179,6 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
   body: rows(
     'Agreement ref. | {{agreement_ref}}',
     'Agreement date | {{agreement_date}}',
-    ...lessorRows,
     ...lesseeRows,
     kind === 'SEWABELI' ? 'THE LEASE' : 'THE RENTAL',
     'Vehicle | {{vehicle_make}} {{vehicle_model}}, {{vehicle_plate}} (details in Section D)',
@@ -203,13 +197,20 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
   ),
 });
 
-export const DEFAULT_SECTIONS: Record<AgreementKind, { title: string; sections: AgreementSection[] }> = {
+const preamble = (verb: string) => para(
+  'THIS AGREEMENT is made on {{agreement_date}} BETWEEN {{company_name}} (Company No. {{company_reg_no}}) of {{company_address}} (the "Lessor") AND {{customer_name}} (NRIC No. {{customer_nric}}) of {{customer_address}} (the "Lessee").',
+  `The Lessor agrees to ${verb} the vehicle described in Section D (the "Vehicle") to the Lessee, and the Lessee agrees to take it, on the terms set out in Sections A to D of this Agreement.`,
+);
+
+export const DEFAULT_SECTIONS: Record<AgreementKind, { title: string; preamble: string; sections: AgreementSection[] }> = {
   SEWABELI: {
     title: 'Vehicle Leasing Agreement (Sewa Beli)',
+    preamble: preamble('lease'),
     sections: [schedule('SEWABELI'), { id: 'terms', title: 'General terms', layout: 'clauses', body: BELI_TERMS }, signature, vehicle],
   },
   SEWA_BIASA: {
     title: 'Vehicle Rental Agreement (Sewa Biasa)',
+    preamble: preamble('rent'),
     sections: [schedule('SEWA_BIASA'), { id: 'terms', title: 'General terms', layout: 'clauses', body: BIASA_TERMS }, signature, vehicle],
   },
 };

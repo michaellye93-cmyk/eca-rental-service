@@ -19,6 +19,8 @@ export interface AgreementSection {
 
 export interface AgreementTemplate {
   title: string;
+  /** The opening paragraph(s) under the title, naming the parties ("THIS AGREEMENT is made on ..."). */
+  preamble?: string;
   sections: AgreementSection[];
 }
 
@@ -219,7 +221,7 @@ export const fillText = (text: string, values: Record<string, string>): string =
   text.replace(PLACEHOLDER, (_, key: string) => values[key] || BLANK);
 
 const templatePlaceholders = (template: AgreementTemplate) =>
-  [...new Set(template.sections.flatMap(section => placeholdersIn(`${section.title}\n${section.body}`)))];
+  [...new Set([template.preamble ?? '', ...template.sections.map(section => `${section.title}\n${section.body}`)].flatMap(placeholdersIn))];
 
 /** Placeholders the form doesn't fill: the generator asks for them as extra fields. */
 export const extraPlaceholders = (template: AgreementTemplate): string[] =>
@@ -252,6 +254,7 @@ export const parseParagraphs = (body: string): string[] =>
 /** The built-in draft for a type: a fresh copy, safe to edit. */
 export const defaultTemplate = (kind: AgreementKind): AgreementTemplate => ({
   title: DEFAULT_SECTIONS[kind].title,
+  preamble: DEFAULT_SECTIONS[kind].preamble,
   sections: DEFAULT_SECTIONS[kind].sections.map(section => ({ ...section })),
 });
 
@@ -259,12 +262,13 @@ const isLayout = (value: unknown): value is SectionLayout => value === 'clauses'
 
 /** A saved template when it has the right shape, else the built-in draft. */
 export const templateFromStored = (kind: AgreementKind, stored: unknown): AgreementTemplate => {
-  const value = stored as { title?: unknown; sections?: unknown } | null;
+  const value = stored as { title?: unknown; preamble?: unknown; sections?: unknown } | null;
   if (!value || typeof value.title !== 'string' || !Array.isArray(value.sections)) return defaultTemplate(kind);
   const sections = value.sections.filter((s): s is AgreementSection =>
     !!s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.body === 'string' && isLayout(s.layout)
     && (s.keepWithPrevious === undefined || typeof s.keepWithPrevious === 'boolean'));
-  return sections.length === value.sections.length ? { title: value.title, sections } : defaultTemplate(kind);
+  if (sections.length !== value.sections.length) return defaultTemplate(kind);
+  return typeof value.preamble === 'string' ? { title: value.title, preamble: value.preamble, sections } : { title: value.title, sections };
 };
 
 /** Saved company details, with any missing field empty. */

@@ -136,6 +136,9 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <label htmlFor="agreement-title" className={labelLook}>Agreement title</label>
             <input id="agreement-title" className={inputLook} value={template.title} onChange={event => setTemplate({ ...template, title: event.target.value })} />
+            <label htmlFor="agreement-preamble" className={`${labelLook} mt-3`}>Opening paragraph (names the parties, printed under the title)</label>
+            <textarea id="agreement-preamble" rows={5} className={`${inputLook} font-mono text-[13px]`} value={template.preamble ?? ''}
+              onChange={event => setTemplate({ ...template, preamble: event.target.value })} />
           </div>
           {template.sections.map((section, index) => (
             <div key={section.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">

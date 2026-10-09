@@ -108,3 +108,9 @@ test('a Sewa Beli downpayment and security deposit are both optional and print "
   // A Sewa Biasa deposit is required: left empty, it is listed as missing
   assert.ok(missingFields(defaultTemplate('SEWA_BIASA'), { ...input, terms: { ...input.terms, deposit: '' } }).includes('Deposit'));
 });
+
+test('a saved opening paragraph is kept; a template saved without one gets none', () => {
+  assert.equal(templateFromStored('SEWA_BIASA', { title: 'T', preamble: 'Opening {{customer_name}}', sections: [] }).preamble, 'Opening {{customer_name}}');
+  assert.equal(templateFromStored('SEWA_BIASA', { title: 'T', sections: [] }).preamble, undefined);
+  assert.match(defaultTemplate('SEWABELI').preamble ?? '', /THIS AGREEMENT is made on \{\{agreement_date\}\}/);
+});
