@@ -494,6 +494,9 @@ export interface DriverRow {
   delist_date?: string | null;
   tags?: string[] | null;
   whatsapp_group?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  approved_driver?: string | null;
 }
 
 /** The profile and contract columns written when a driver is created or edited. */
@@ -513,6 +516,9 @@ export const toDriverRow = (driver: Driver) => ({
   // Written only when set or being cleared, so saving a driver never depends on these columns otherwise
   ...(driver.phone !== undefined ? { phone: driver.phone || null } : {}),
   ...(driver.whatsappGroup !== undefined ? { whatsapp_group: driver.whatsappGroup.trim() || null } : {}),
+  ...(driver.emergencyContactName !== undefined ? { emergency_contact_name: driver.emergencyContactName.trim() || null } : {}),
+  ...(driver.emergencyContactPhone !== undefined ? { emergency_contact_phone: driver.emergencyContactPhone.trim() || null } : {}),
+  ...(driver.approvedDriver !== undefined ? { approved_driver: driver.approvedDriver.trim() || null } : {}),
 });
 
 /** A drivers row as the app's driver profile; payments and totals are attached by the caller. */
@@ -534,6 +540,9 @@ export const fromDriverRow = (row: DriverRow): Omit<Driver, 'totalAmountPaid' | 
   tags: row.tags || [],
   ...(row.phone ? { phone: row.phone } : {}),
   ...(row.whatsapp_group ? { whatsappGroup: row.whatsapp_group } : {}),
+  ...(row.emergency_contact_name ? { emergencyContactName: row.emergency_contact_name } : {}),
+  ...(row.emergency_contact_phone ? { emergencyContactPhone: row.emergency_contact_phone } : {}),
+  ...(row.approved_driver ? { approvedDriver: row.approved_driver } : {}),
 });
 
 /**

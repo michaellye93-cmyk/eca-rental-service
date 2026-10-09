@@ -1,5 +1,6 @@
 import type { Driver } from '../types.ts';
 import { fromDriverRow, paymentFromRow, withPayments } from '../utils.ts';
+import { copyFromStored, type AgreementCopy } from './agreements/api.ts';
 
 /** The Supabase rpc call, passed in so this file can be tested without a database. */
 export type PortalRpc = (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>;
@@ -8,6 +9,8 @@ export type PortalStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export interface PortalSignIn {
   driver: Driver;
+  /** The newest agreement staff downloaded for this driver, or null. */
+  agreement: (AgreementCopy & { createdAt: string }) | null;
 }
 
 /** Why a driver sign-in failed, for the login page to word in the driver's language. */
@@ -19,8 +22,10 @@ const KEY = 'eca.driverSession';
 const isMissingFunction = (error: { message: string; code?: string }) =>
   error.code === 'PGRST202' || error.code === '42883' || /could not find the function|does not exist/i.test(error.message);
 
-const toDriver = (data: any, nric: string): Driver =>
-  withPayments(fromDriverRow({ ...data.driver, nric, email: null, address: null, tags: [] }), (data.payments ?? []).map(paymentFromRow));
+const toSignIn = (data: any, nric: string): PortalSignIn => ({
+  driver: withPayments(fromDriverRow({ ...data.driver, nric, email: null, address: null, tags: [] }), (data.payments ?? []).map(paymentFromRow)),
+  agreement: copyFromStored(data.agreement),
+});
 
 /**
  * Driver sign-in on the phone. With "keep me signed in" the server returns a 30-day token, kept in this browser (the
@@ -61,13 +66,13 @@ export function driverPortalSession(rpc: PortalRpc, storage: PortalStorage | nul
           const result = data as any;
           if (!result?.driver) return null;
           if (result.session?.token && result.session?.expires_at) write({ token: result.session.token, expiresAt: result.session.expires_at });
-          return { driver: toDriver(result, nric) };
+          return toSignIn(result, nric);
         }
         if (!isMissingFunction(error)) fail(error.message);
       }
       const { data, error } = await rpc('driver_portal_login', { p_nric: nric });
       if (error) fail(error.message);
-      return (data as any)?.driver ? { driver: toDriver(data, nric) } : null;
+      return (data as any)?.driver ? toSignIn(data, nric) : null;
     },
 
     /**
@@ -95,7 +100,7 @@ export function driverPortalSession(rpc: PortalRpc, storage: PortalStorage | nul
         forget();
         return null;
       }
-      return { driver: toDriver(data, '') };
+      return toSignIn(data, '');
     },
 
     /** True while this phone holds a remembered sign-in. */

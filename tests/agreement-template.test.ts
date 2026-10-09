@@ -9,14 +9,15 @@ const input: AgreementInput = {
   kind: 'SEWA_BIASA',
   company: { company_name: 'Fixture Rentals Sdn Bhd', company_reg_no: '000000-X', company_address: '1 Fixture Road', company_phone: '60300000000',
     company_email: 'fixture@example.test', company_bank_account: 'Fixture Bank 0000000000', company_rep_name: 'Fixture Director', company_rep_id: '700101-00-0001' },
-  customer: { name: 'Fixture Driver One', nric: '900101-00-0001', phone: '60120000001', address: '2 Fixture Lane' },
+  customer: { name: 'Fixture Driver One', nric: '900101-00-0001', phone: '60120000001', address: '2 Fixture Lane',
+    emergencyName: 'Fixture Contact', emergencyPhone: '60120000009', approvedDriver: 'None' },
   terms: { agreementDate: '2026-10-09', startDate: '2026-10-10', cycle: 'WEEKLY', duration: '52', rent: '350', deposit: '1000', downpayment: '', endDate: '' },
   car: { plateNumber: 'XAA1001', make: 'PERODUA', model: 'BEZZA' },
   details: { chassisNo: 'FIXTURECHASSIS1', registeredDate: '2024-01-15', colour: 'WHITE', ownerName: 'Fixture Owner', ownerId: '000000-00-0000' },
-  extra: { agreement_ref: 'FIX-001', emergency_contact_name: 'Fixture Contact', emergency_contact_phone: '60120000009', approved_driver: 'None',
+  extra: { agreement_ref: 'FIX-001',
     witness_name: 'Fixture Witness', witness_id: '800101-00-0001', vehicle_location: 'Fixture Town', odometer_km: '12000', fuel_level: 'Half' },
 };
-const DRAFT_EXTRAS = ['agreement_ref', 'emergency_contact_name', 'emergency_contact_phone', 'approved_driver', 'witness_name', 'witness_id', 'vehicle_location', 'odometer_km', 'fuel_level'];
+const DRAFT_EXTRAS = ['agreement_ref', 'witness_name', 'witness_id', 'vehicle_location', 'odometer_km', 'fuel_level'];
 
 test('placeholders are replaced with formatted values; unknown or empty ones become a blank line', () => {
   const values = agreementValues(input);
@@ -113,4 +114,23 @@ test('a saved opening paragraph is kept; a template saved without one gets none'
   assert.equal(templateFromStored('SEWA_BIASA', { title: 'T', preamble: 'Opening {{customer_name}}', sections: [] }).preamble, 'Opening {{customer_name}}');
   assert.equal(templateFromStored('SEWA_BIASA', { title: 'T', sections: [] }).preamble, undefined);
   assert.match(defaultTemplate('SEWABELI').preamble ?? '', /THIS AGREEMENT is made on \{\{agreement_date\}\}/);
+});
+
+test('the driver profile fills the emergency contact and approved driver; the Deposits panel fills the amounts', async () => {
+  const { blankInput, fromDriver, withDeposits } = await import('../services/agreements/prefill.ts');
+  const { receivedByKind } = await import('../services/depositTotals.ts');
+  const driver = { id: 'd1', nric: '900101-00-0001', name: 'Fixture Driver One', carPlate: 'XAA1001', contractStartDate: '2026-10-10', category: 'SEWABELI' as const,
+    rentalCycle: 'WEEKLY' as const, contractDuration: 156, rentalRate: 350, totalAmountPaid: 0, paymentHistory: [],
+    emergencyContactName: 'Fixture Contact', emergencyContactPhone: '60120000009', approvedDriver: 'None' };
+  const rows = [
+    { kind: 'DOWNPAYMENT' as const, entry: 'RECEIVED' as const, amount: 1500 },
+    { kind: 'DOWNPAYMENT' as const, entry: 'RECEIVED' as const, amount: 500 },
+    { kind: 'DEPOSIT' as const, entry: 'RECEIVED' as const, amount: 1000 },
+    { kind: 'DEPOSIT' as const, entry: 'REFUNDED' as const, amount: 1000 },
+  ];
+  const filled = withDeposits(fromDriver(driver, blankInput('SEWABELI', '2026-10-09')), receivedByKind(rows));
+  assert.deepEqual([filled.customer.emergencyName, filled.customer.approvedDriver, filled.terms.downpayment, filled.terms.deposit],
+    ['Fixture Contact', 'None', '2000', '1000']);
+  const none = withDeposits(fromDriver(driver, blankInput('SEWABELI', '2026-10-09')), receivedByKind([]));
+  assert.deepEqual([agreementValues({ ...input, ...none, kind: 'SEWABELI' }).downpayment_amount, agreementValues({ ...input, ...none, kind: 'SEWABELI' }).deposit_amount], ['None', 'None']);
 });

@@ -5,7 +5,7 @@ import AdminDashboard from './components/AdminDashboard';
 import CollectionsDataPage from './components/CollectionsDataPage';
 import type { Driver, PaymentTransaction } from './types';
 import { kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
-import { driverPortalSession } from './services/driverPortalSession';
+import { driverPortalSession, type PortalSignIn } from './services/driverPortalSession';
 import { loadPortalLang, savePortalLang, type PortalLang } from './services/portalText';
 import { supabase } from './supabaseClient';
 import { Database, UploadCloud, RefreshCw } from 'lucide-react';
@@ -32,7 +32,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'LOGIN' | 'DRIVER' | 'ADMIN'>('LOGIN');
   // A signed-in driver's own record, from the driver sign-in (never the driver list). The NRIC typed this visit is kept
   // in memory only, for Refresh; a remembered phone holds a 30-day token instead.
-  const [portal, setPortal] = useState<{ driver: Driver; nric: string; loadedAt: Date } | null>(null);
+  const [portal, setPortal] = useState<{ driver: Driver; agreement: PortalSignIn['agreement']; nric: string; loadedAt: Date } | null>(null);
   const portalSession = useMemo(() => driverPortalSession((name, args) => supabase.rpc(name, args), browserStorage()), []);
   const [portalLang, setPortalLang] = useState<PortalLang>(() => loadPortalLang(browserStorage()));
   const changePortalLang = useCallback((lang: PortalLang) => {
@@ -176,7 +176,7 @@ const App: React.FC = () => {
         const resumed = await portalSession.resume().catch(() => null);
         if (!isActive || generation !== authGeneration.current) return;
         if (resumed) {
-          setPortal({ driver: resumed.driver, nric: '', loadedAt: new Date() });
+          setPortal({ driver: resumed.driver, agreement: resumed.agreement, nric: '', loadedAt: new Date() });
           setCurrentView('DRIVER');
         }
         setIsAuthChecking(false);
@@ -243,7 +243,7 @@ const App: React.FC = () => {
   const handleDriverLogin = async (nric: string, remember: boolean): Promise<boolean> => {
     const signedIn = await portalSession.signIn(nric, remember);
     if (!signedIn) return false;
-    setPortal({ driver: signedIn.driver, nric, loadedAt: new Date() });
+    setPortal({ driver: signedIn.driver, agreement: signedIn.agreement, nric, loadedAt: new Date() });
     setCurrentView('DRIVER');
     return true;
   };
@@ -262,8 +262,8 @@ const App: React.FC = () => {
       setCurrentView('LOGIN');
       return;
     }
-    const { driver } = reloaded;
-    setPortal(current => ({ driver, nric: current?.nric ?? '', loadedAt: new Date() }));
+    const { driver, agreement } = reloaded;
+    setPortal(current => ({ driver, agreement, nric: current?.nric ?? '', loadedAt: new Date() }));
   };
 
   const handleAdminLogin = async (accessId: string) => {
@@ -461,6 +461,7 @@ const App: React.FC = () => {
     return (
       <DriverDashboard
         driver={portal.driver}
+        agreement={portal.agreement}
         lang={portalLang}
         onLangChange={changePortalLang}
         loadedAt={portal.loadedAt}

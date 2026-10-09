@@ -2,14 +2,21 @@ import React, { useState } from 'react';
 import { Driver } from '../types';
 import { calculateDriverMetrics, formatCurrency, generateDriverInvoices, getNextDueDate, isSewaBiasa, kualaLumpurNow, parseDate, portalPenalty } from '../utils';
 import { driverPortalView, type PortalTone } from '../services/driverPortal';
+import type { PortalSignIn } from '../services/driverPortalSession';
+import { agreementFileName, downloadAgreementPdf } from '../services/agreements/pdf';
+import { KIND_LABELS } from '../services/agreements/template';
+import Dialog from './Dialog';
+const AgreementPreview = React.lazy(() => import('./agreements/AgreementPreview'));
 import { portalDate, portalText, portalTime, type PortalLang } from '../services/portalText';
-import { Calendar, CheckCircle2, ChevronDown, FileText, Info, LogOut, Receipt, RefreshCw, TrendingUp, WalletCards } from 'lucide-react';
+import { Calendar, CheckCircle2, ChevronDown, Download, Eye, FileSignature, FileText, Info, LogOut, Receipt, RefreshCw, TrendingUp, WalletCards } from 'lucide-react';
 import { PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import LanguageSwitch from './LanguageSwitch';
 import InstallTip from './InstallTip';
 
 interface DriverDashboardProps {
   driver: Driver;
+  /** The agreement staff prepared for this driver, or null (the card is then hidden). */
+  agreement?: PortalSignIn['agreement'];
   lang: PortalLang;
   onLangChange: (lang: PortalLang) => void;
   /** When the figures on screen were loaded. */
@@ -37,8 +44,21 @@ const TONE: Record<PortalTone, { card: string; icon: React.ReactNode }> = {
  * penalty while rent is owed, when and where to pay, contract progress and details, and recent payments with thanks
  * for the latest.
  */
-const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, lang, onLangChange, loadedAt, onRefresh, onLogout }) => {
+const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, agreement = null, lang, onLangChange, loadedAt, onRefresh, onLogout }) => {
   const t = portalText(lang);
+  const [showAgreement, setShowAgreement] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const downloadAgreement = async () => {
+    if (!agreement || preparing) return;
+    setPreparing(true);
+    try {
+      // The PDF is made on the phone, from the same text staff downloaded
+      await downloadAgreementPdf(agreement.template, agreement.values,
+        agreementFileName(KIND_LABELS[agreement.kind], agreement.values.vehicle_plate ?? '', agreement.values.customer_name ?? ''));
+    } finally {
+      setPreparing(false);
+    }
+  };
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -198,6 +218,33 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, lang, onLangC
             ))}
           </dl>
         </details>
+
+        {/* My agreement: the one staff prepared, to read again or download */}
+        {agreement && (
+          <section aria-labelledby="agreement-title" className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 ${enter(5).className}`} style={enter(5).style}>
+            <h2 id="agreement-title" className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <FileSignature className="w-4 h-4 text-gray-600" aria-hidden="true" /> {t.myAgreement}
+            </h2>
+            <p className="text-xs text-gray-600 mt-1">{t.agreementMade(portalDate(agreement.createdAt || new Date(), lang))}</p>
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <button type="button" onClick={() => setShowAgreement(true)} className="min-h-11 rounded-lg border border-gray-300 text-sm font-semibold text-gray-800 flex items-center justify-center gap-2">
+                <Eye className="w-4 h-4" aria-hidden="true" /> {t.viewAgreement}
+              </button>
+              <button type="button" onClick={() => void downloadAgreement()} disabled={preparing} className="min-h-11 rounded-lg bg-blue-600 disabled:opacity-60 text-sm font-semibold text-white flex items-center justify-center gap-2">
+                <Download className="w-4 h-4" aria-hidden="true" /> {preparing ? t.downloading : t.downloadAgreement}
+              </button>
+            </div>
+          </section>
+        )}
+        {agreement && showAgreement && (
+          <Dialog title={t.myAgreement} onClose={() => setShowAgreement(false)} size="lg">
+            <div className="p-2 sm:p-4 bg-gray-100">
+              <React.Suspense fallback={<p className="p-4 text-sm text-gray-500">…</p>}>
+                <AgreementPreview template={agreement.template} values={agreement.values} />
+              </React.Suspense>
+            </div>
+          </Dialog>
+        )}
 
         {/* Recent payments */}
         <section aria-labelledby="recent-title" className={`bg-white p-4 rounded-xl shadow-sm border border-gray-200 ${enter(6).className}`} style={enter(6).style}>

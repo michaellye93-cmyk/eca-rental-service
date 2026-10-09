@@ -80,6 +80,11 @@ type Text = {
   ownTitle: string;
   rentalTitle: string;
   myContract: string;
+  myAgreement: string;
+  agreementMade: (date: string) => string;
+  viewAgreement: string;
+  downloadAgreement: string;
+  downloading: string;
   recent: string;
   noPayments: string;
   logOut: string;
@@ -153,6 +158,11 @@ const en: Text = {
   ownTitle: 'On the way to owning this car',
   rentalTitle: 'Rental progress',
   myContract: 'My contract',
+  myAgreement: 'My agreement',
+  agreementMade: date => `Prepared by the office on ${date}.`,
+  viewAgreement: 'View',
+  downloadAgreement: 'Download PDF',
+  downloading: 'Preparing…',
   recent: 'Recent payments',
   noPayments: 'No payments recorded yet.',
   logOut: 'Log out',
@@ -222,6 +232,11 @@ const ms: Text = {
   ownTitle: 'Menuju pemilikan kereta ini',
   rentalTitle: 'Kemajuan sewaan',
   myContract: 'Kontrak saya',
+  myAgreement: 'Perjanjian saya',
+  agreementMade: date => `Disediakan oleh pejabat pada ${date}.`,
+  viewAgreement: 'Lihat',
+  downloadAgreement: 'Muat turun PDF',
+  downloading: 'Sedang disediakan…',
   recent: 'Bayaran terkini',
   noPayments: 'Belum ada bayaran direkodkan.',
   logOut: 'Log keluar',
@@ -291,6 +306,11 @@ const zh: Text = {
   ownTitle: '离拥有这辆车越来越近',
   rentalTitle: '租赁进度',
   myContract: '我的合约',
+  myAgreement: '我的协议',
+  agreementMade: date => `办公室于 ${date} 准备。`,
+  viewAgreement: '查看',
+  downloadAgreement: '下载 PDF',
+  downloading: '准备中…',
   recent: '最近付款',
   noPayments: '暂无付款记录。',
   logOut: '退出登录',

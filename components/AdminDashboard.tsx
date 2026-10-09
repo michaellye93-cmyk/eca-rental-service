@@ -256,6 +256,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try { return localStorage.getItem('eca_admin_section'); } catch { return null; }
   });
   const [section, setSection] = usePersistedState<Section>('eca_admin_section', sectionFromStored(legacyView) ?? 'DRIVERS', sectionFromStored);
+  // The driver a card's Agreement button opens the Agreements page with
+  const [agreementDriverId, setAgreementDriverId] = useState('');
+  const openAgreement = (driver: Driver) => { setAgreementDriverId(driver.id); setSection('AGREEMENTS'); };
   const [moneyPage, setMoneyPage] = usePersistedState<MoneyPage>(
     'eca_admin_money_page',
     MONEY_PAGE_FROM_STORED[storedSection ?? ''] ?? MONEY_PAGE_FROM_STORED[legacyView ?? ''] ?? 'cash',
@@ -354,6 +357,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     phone: '',
     whatsappGroup: '',
     address: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    approvedDriver: '',
     nric: '',
     // contactNumber removed
     carPlate: '',
@@ -790,6 +796,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       phone: driver.phone ? formatPhone(driver.phone) : '',
       whatsappGroup: driver.whatsappGroup || '',
       address: driver.address || '',
+      emergencyContactName: driver.emergencyContactName || '',
+      emergencyContactPhone: driver.emergencyContactPhone || '',
+      approvedDriver: driver.approvedDriver || '',
       nric: driver.nric,
       // contactNumber removed
       carPlate: driver.carPlate,
@@ -830,7 +839,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // AUTOMATED LOGIC: Sync Duration if End Date is set
     const finalDuration = contractCyclesBetween(formData.contractStartDate, formData.contractEndDate, formData.rentalCycle) ?? formData.contractDuration;
 
-    const submissionData = { ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined), whatsappGroup: whatsappGroup || (originalGroup ? '' : undefined) };
+    // The agreement details are written when typed, and cleared only when one was set before
+    const original = editingId ? drivers.find(d => d.id === editingId) : undefined;
+    const keepOrClear = (typed: string, before: string | undefined) => typed.trim() || (before ? '' : undefined);
+    const submissionData = {
+      ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined), whatsappGroup: whatsappGroup || (originalGroup ? '' : undefined),
+      emergencyContactName: keepOrClear(formData.emergencyContactName, original?.emergencyContactName),
+      emergencyContactPhone: keepOrClear(formData.emergencyContactPhone, original?.emergencyContactPhone),
+      approvedDriver: keepOrClear(formData.approvedDriver, original?.approvedDriver),
+    };
 
     try {
       if (editingId) {
@@ -1379,6 +1396,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <span className="font-bold text-xs">RM</span> Payment
                                 </button>
                                 <button type="button" onClick={() => setStatementDriver(driver)} aria-label={`WhatsApp statement for ${driver.name}`} title="WhatsApp statement" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-emerald-800 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"><MessageSquareText className="w-4 h-4" aria-hidden="true" /></button>
+                                <button type="button" onClick={() => openAgreement(driver)} aria-label={`Agreement for ${driver.name}`} title="Agreement" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"><FileSignature className="w-4 h-4" aria-hidden="true" /></button>
                                 <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-4 h-4" aria-hidden="true" /></button>
                                 {driverScope === 'ACTIVE'
                                   ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><UserMinus className="w-4 h-4" aria-hidden="true" /></button>
@@ -1411,7 +1429,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <section aria-label="Agreements" className="min-h-[500px]">
             <ScreenLoadBoundary>
               <React.Suspense fallback={<div className="p-6">Loading Agreements…</div>}>
-                <AgreementsView drivers={drivers} isAdmin={userRole === 'admin'} today={todayStr} />
+                <AgreementsView drivers={drivers} isAdmin={userRole === 'admin'} today={todayStr} initialDriverId={agreementDriverId} onEditDriver={handleOpenEditModal} />
               </React.Suspense>
             </ScreenLoadBoundary>
           </section>
@@ -1474,6 +1492,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <label htmlFor="driver-address" className="block text-sm font-bold text-gray-700 mb-1">Address</label>
               <textarea id="driver-address" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={2} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Driver Address"></textarea>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="driver-emergency-name" className="block text-sm font-bold text-gray-700 mb-1">Emergency contact</label>
+                <input id="driver-emergency-name" type="text" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.emergencyContactName} onChange={e => setFormData({...formData, emergencyContactName: e.target.value})} placeholder="Name (for the agreement)" />
+              </div>
+              <div>
+                <label htmlFor="driver-emergency-phone" className="block text-sm font-bold text-gray-700 mb-1">Emergency phone</label>
+                <input id="driver-emergency-phone" type="tel" inputMode="tel" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.emergencyContactPhone} onChange={e => setFormData({...formData, emergencyContactPhone: e.target.value})} placeholder="e.g. 012-345 6789" />
+              </div>
+              <div>
+                <label htmlFor="driver-approved" className="block text-sm font-bold text-gray-700 mb-1">Approved other driver</label>
+                <input id="driver-approved" type="text" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.approvedDriver} onChange={e => setFormData({...formData, approvedDriver: e.target.value})} placeholder="Name, or None" />
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

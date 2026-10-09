@@ -56,7 +56,7 @@ export const emptyCompany = (): CompanyDetails => ({
 export interface AgreementInput {
   kind: AgreementKind;
   company: CompanyDetails;
-  customer: { name: string; nric: string; phone: string; address: string };
+  customer: { name: string; nric: string; phone: string; address: string; emergencyName: string; emergencyPhone: string; approvedDriver: string };
   terms: {
     agreementDate: string;
     startDate: string;
@@ -129,6 +129,9 @@ const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => 
   customer_nric: { label: 'Customer NRIC', value: i => i.customer.nric },
   customer_phone: { label: 'Customer phone', value: i => i.customer.phone },
   customer_address: { label: 'Customer address', value: i => i.customer.address },
+  emergency_contact_name: { label: 'Emergency contact (driver profile)', value: i => i.customer.emergencyName },
+  emergency_contact_phone: { label: 'Emergency phone (driver profile)', value: i => i.customer.emergencyPhone },
+  approved_driver: { label: 'Approved other driver (driver profile)', value: i => i.customer.approvedDriver },
   agreement_type: { label: 'Agreement type', value: i => KIND_LABELS[i.kind] },
   agreement_date: { label: 'Agreement date', value: i => longDate(i.terms.agreementDate) },
   start_date: { label: 'Start date', value: i => longDate(i.terms.startDate) },
@@ -188,9 +191,6 @@ const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => 
 /** Friendlier names for the extra boxes the built-in drafts ask for (typed per agreement, not stored). */
 export const EXTRA_LABELS: Record<string, string> = {
   agreement_ref: 'Agreement reference no.',
-  emergency_contact_name: 'Emergency contact name',
-  emergency_contact_phone: 'Emergency contact phone',
-  approved_driver: 'Approved other driver (or "None")',
   vehicle_location: 'Normal vehicle location',
   odometer_km: 'Odometer at handover (km)',
   fuel_level: 'Fuel level at handover',
@@ -260,16 +260,19 @@ export const defaultTemplate = (kind: AgreementKind): AgreementTemplate => ({
 
 const isLayout = (value: unknown): value is SectionLayout => value === 'clauses' || value === 'table' || value === 'signature';
 
-/** A saved template when it has the right shape, else the built-in draft. */
-export const templateFromStored = (kind: AgreementKind, stored: unknown): AgreementTemplate => {
+/** A saved template when it has the right shape, else null. */
+export const soundTemplate = (stored: unknown): AgreementTemplate | null => {
   const value = stored as { title?: unknown; preamble?: unknown; sections?: unknown } | null;
-  if (!value || typeof value.title !== 'string' || !Array.isArray(value.sections)) return defaultTemplate(kind);
+  if (!value || typeof value.title !== 'string' || !Array.isArray(value.sections)) return null;
   const sections = value.sections.filter((s): s is AgreementSection =>
     !!s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.body === 'string' && isLayout(s.layout)
     && (s.keepWithPrevious === undefined || typeof s.keepWithPrevious === 'boolean'));
-  if (sections.length !== value.sections.length) return defaultTemplate(kind);
+  if (sections.length !== value.sections.length) return null;
   return typeof value.preamble === 'string' ? { title: value.title, preamble: value.preamble, sections } : { title: value.title, sections };
 };
+
+/** A saved template when it has the right shape, else the built-in draft. */
+export const templateFromStored = (kind: AgreementKind, stored: unknown): AgreementTemplate => soundTemplate(stored) ?? defaultTemplate(kind);
 
 /** Saved company details, with any missing field empty. */
 export const companyFromStored = (stored: unknown): CompanyDetails => {

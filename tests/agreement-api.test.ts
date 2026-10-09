@@ -45,3 +45,12 @@ test('a refusal from the database is reported in its own words', async () => {
   const refused = fakeClient({ data: null, error: { message: 'new row violates row-level security policy' } });
   await assert.rejects(agreementApi(refused.client).saveCompany(emptyCompany()), /row-level security/);
 });
+
+test('a downloaded agreement is kept as a copy against the driver', async () => {
+  const saved = fakeClient({ data: null, error: null });
+  const copy = { kind: 'SEWABELI' as const, template: defaultTemplate('SEWABELI'), values: { customer_name: 'Fixture Driver One' } };
+  await agreementApi(saved.client).saveCopy('d1', copy);
+  assert.deepEqual(saved.calls.map(c => c.method), ['from', 'insert']);
+  assert.deepEqual(saved.calls[0].args, ['driver_agreements']);
+  assert.deepEqual(saved.calls[1].args[0], { driver_id: 'd1', kind: 'SEWABELI', content: copy });
+});

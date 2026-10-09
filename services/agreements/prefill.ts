@@ -1,11 +1,12 @@
 import type { Driver } from '../../types.ts';
+import type { DepositKind } from '../depositsApi.ts';
 import { normalizePlate } from '../../utils.ts';
 import type { AgreementInput, AgreementKind } from './template.ts';
 
 /** A blank agreement of this type, dated `today` (YYYY-MM-DD). */
 export const blankInput = (kind: AgreementKind, today: string): Omit<AgreementInput, 'company'> => ({
   kind,
-  customer: { name: '', nric: '', phone: '', address: '' },
+  customer: { name: '', nric: '', phone: '', address: '', emergencyName: '', emergencyPhone: '', approvedDriver: '' },
   terms: { agreementDate: today, startDate: '', endDate: '', cycle: 'WEEKLY', duration: '', rent: '', deposit: '', downpayment: '' },
   car: { plateNumber: '', make: '', model: '' },
   details: { chassisNo: '', registeredDate: '', colour: '', ownerName: '', ownerId: '' },
@@ -19,7 +20,10 @@ export const blankInput = (kind: AgreementKind, today: string): Omit<AgreementIn
 export const fromDriver = (driver: Driver, current: Omit<AgreementInput, 'company'>): Omit<AgreementInput, 'company'> => ({
   ...current,
   kind: (driver.category || '').toUpperCase().replace(/\s+/g, '_') === 'SEWA_BIASA' ? 'SEWA_BIASA' : 'SEWABELI',
-  customer: { name: driver.name || '', nric: driver.nric || '', phone: driver.phone || '', address: driver.address || '' },
+  customer: {
+    name: driver.name || '', nric: driver.nric || '', phone: driver.phone || '', address: driver.address || '',
+    emergencyName: driver.emergencyContactName || '', emergencyPhone: driver.emergencyContactPhone || '', approvedDriver: driver.approvedDriver || '',
+  },
   terms: {
     ...current.terms,
     startDate: driver.contractStartDate || '',
@@ -27,6 +31,16 @@ export const fromDriver = (driver: Driver, current: Omit<AgreementInput, 'compan
     cycle: driver.rentalCycle === 'MONTHLY' ? 'MONTHLY' : 'WEEKLY',
     duration: driver.contractDuration ? String(driver.contractDuration) : '',
     rent: driver.rentalRate ? String(driver.rentalRate) : '',
+  },
+});
+
+/** The deposit and downpayment received, as recorded in the driver's Deposits panel; nothing recorded leaves them empty. */
+export const withDeposits = <T extends Pick<AgreementInput, 'terms'>>(input: T, received: Record<DepositKind, number>): T => ({
+  ...input,
+  terms: {
+    ...input.terms,
+    deposit: received.DEPOSIT > 0 ? String(received.DEPOSIT) : '',
+    downpayment: received.DOWNPAYMENT > 0 ? String(received.DOWNPAYMENT) : '',
   },
 });
 

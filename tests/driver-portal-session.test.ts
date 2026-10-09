@@ -117,3 +117,16 @@ test('a new sign-in replaces any phone memory left by someone else, ticked or no
   assert.equal(session.isRemembered(), false);
   assert.deepEqual(calls.find(c => c[0] === 'driver_portal_forget'), ['driver_portal_forget', { p_token: OLD }]);
 });
+
+test("the driver's newest agreement copy comes with the sign-in; a missing or broken one is none", async () => {
+  const { copyFromStored } = await import('../services/agreements/api.ts');
+  const content = { kind: 'SEWABELI', template: { title: 'Fixture', sections: [] }, values: { customer_name: 'Fixture Driver A', bad: 5 }, created_at: '2026-10-09T06:00:00Z' };
+  assert.deepEqual(copyFromStored(content), { kind: 'SEWABELI', template: { title: 'Fixture', sections: [] }, values: { customer_name: 'Fixture Driver A' }, createdAt: '2026-10-09T06:00:00Z' });
+  assert.equal(copyFromStored(null), null);
+  assert.equal(copyFromStored({ kind: 'OTHER', template: {}, values: {} }), null);
+  const record = { driver: { id: 'd1', name: 'Fixture Driver A', car_plate: 'XAA1001', contract_start_date: '2026-08-03', contract_duration_weeks: 52, rental_rate: 400 }, payments: [], agreement: content };
+  const signedIn = await driverPortalSession(async () => ({ data: record, error: null }), memoryStorage()).signIn('900101011234', false);
+  assert.equal(signedIn?.agreement?.values.customer_name, 'Fixture Driver A');
+  const without = await driverPortalSession(async () => ({ data: { ...record, agreement: undefined }, error: null }), memoryStorage()).signIn('900101011234', false);
+  assert.equal(without?.agreement, null);
+});
