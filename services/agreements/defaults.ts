@@ -53,8 +53,8 @@ const signature: AgreementSection = {
   ),
 };
 
-// Clauses both types share: using the vehicle, services, accidents and the general terms.
-const useOfVehicle = (n: number) => para(
+// Clauses both types share: using the vehicle, services, accidents, default and recovery, and the general terms.
+const useOfVehicle = (n: number, recoveryClause: number) => para(
   `${n}. USING THE VEHICLE`,
   `${n}.1 Lawful use. Use the Vehicle carefully and only for lawful e-hailing work and the Lessee's own personal use. Keep your driving licence, PSV licence, e-hailing registration and platform approvals valid at all times.`,
   `${n}.2 Approved drivers only. Only the Lessee, or another driver the Lessor approves in writing, may drive or keep the Vehicle.`,
@@ -62,7 +62,7 @@ const useOfVehicle = (n: number) => para(
   `${n}.4 Safe driving. Do not drive carelessly or while affected by alcohol, drugs, tiredness or illness.`,
   `${n}.5 No changes. Do not modify the Vehicle, remove parts, or tamper with the odometer, GPS tracker or safety equipment.`,
   `${n}.6 Charges from use. The Lessee pays all tolls, parking, fuel, summonses, compounds and fines incurred while the Vehicle is with the Lessee, even if the notice arrives later.`,
-  `${n}.7 GPS. The Lessee agrees to GPS monitoring of the Vehicle for safety, servicing, protecting the Vehicle and lawful recovery.`,
+  `${n}.7 GPS and recovery. The Lessee consents to the Vehicle being tracked by GPS at all times for safety, servicing and protecting the Vehicle, and to the Lessor using that location to recover the Vehicle under clause ${recoveryClause}.`,
   `${n}.8 Report changes. Tell the Lessor promptly of any warning light, defect, breakdown, lost key or document, and any change of phone number, address or where the Vehicle is normally kept.`,
 );
 
@@ -83,6 +83,24 @@ const accidents = (n: number) => para(
   `${n}.5 Rent continues. Rent remains payable while the Vehicle is off the road because of the Lessee's accident, negligence, misuse or missed servicing.`,
 );
 
+/** Rent: payment, late charge, no deductions, records and statements, yearly review. */
+const rentClauses = (n: number) => [
+  `${n}.1 Rent. The Lessee pays {{rent_amount}} per {{rental_cycle}}, on or before the due day in Section A, into the payment account in Section A. A payment counts when the money reaches the Lessor and can be matched to this agreement.`,
+  `${n}.2 Late charge. On rent not paid by the due day, a late charge of 18% a year (1.5% a month) is added on the overdue amount, counted daily from the second day after the due day until it is paid. The due day does not change.`,
+  `${n}.3 No deductions. The Lessee may not hold back or reduce rent because of a repair, claim or dispute unless the Lessor agrees in writing.`,
+  `${n}.4 Records and statements. The Lessee keeps proof of every payment. The Lessor's payment records are conclusive unless they contain an obvious error. The Lessor sends the Lessee a payment statement at least every six months. Any dispute must be raised in writing within 14 days of receiving a statement; after that the statement is final.`,
+  `${n}.5 Yearly rent review. Once a year, the Lessor may adjust the rent to reflect changes in insurance, road tax or maintenance costs by giving 30 days' written notice.`,
+];
+
+/** Default, written notice, recovery with a record of each step, and immediate recovery in serious cases. */
+const defaultAndRecovery = (n: number, title: string) => [
+  `${n}. ${title}`,
+  `${n}.1 Default. Default includes rent unpaid for 14 days after its due day, false information, abandoning the Vehicle, illegal use, losing a required licence or e-hailing approval, letting a third party use the Vehicle, or tampering with the tracker.`,
+  `${n}.2 Default notice. The Lessor sends a written default notice stating the breach and giving at least 7 days to put it right, or any longer period the law requires.`,
+  `${n}.3 Recovery. If the default is not put right in time, the Lessor may end this agreement, recover the Vehicle by lawful means and claim arrears and reasonable recovery, towing, storage and repair costs. The Lessor keeps a record of each notice and step taken.`,
+  `${n}.4 Serious cases. If the Vehicle is abandoned, used illegally, held by a third party or at risk of loss, the Lessor may recover it at once and then notify the Lessee.`,
+];
+
 const general = (n: number) => para(
   `${n}. GENERAL`,
   `${n}.1 Notices. Notices may be given by hand, post, email or WhatsApp to the latest contact details given. Each party keeps its contact details up to date.`,
@@ -91,47 +109,48 @@ const general = (n: number) => para(
   `${n}.4 Whole agreement. This agreement is the whole agreement. Any change or waiver must be in writing and signed by both parties. Do not rely on any promise that is not written here.`,
   `${n}.5 Transfer. The Lessee may not transfer this agreement. The Lessor may transfer its rights to a financier or related company by written notice.`,
   `${n}.6 Electronic signing. This agreement may be signed electronically where the method identifies the signer and keeps a reliable record.`,
-  `${n}.7 Law. Malaysian law applies. If any term cannot be enforced, the rest of the agreement still applies. Any right the law gives the Lessee that cannot be excluded still applies.`,
+  `${n}.7 Language. The key points in clause 1 are also given in Bahasa Malaysia. If the two versions differ, the English version applies.`,
+  `${n}.8 Law. Malaysian law applies. If any term cannot be enforced, the rest of the agreement still applies. Any right the law gives the Lessee that cannot be excluded still applies.`,
 );
 
+const INITIALS = "Lessee's initials: ____________";
+
 const BELI_TERMS = para(
-  '1. KEY POINTS',
-  '1.1 This is a lease. The Lessee rents and uses the Vehicle during the Lease Period. The Lessee does not own the Vehicle, and the rent is not a purchase instalment.',
-  '1.2 Ownership Reward. If the Lessee completes the full Lease Period and meets the payment standard in clause 6, the Lessor transfers the Vehicle to the Lessee as an Ownership Reward.',
-  '1.3 Paying everything late is not enough. Settling all money in the end does not by itself earn the Ownership Reward. Payments must also be On-Time as clause 6 requires.',
-  '1.4 Early termination, repossession for non-payment or another serious breach ends the right to the Ownership Reward.',
+  '1. KEY POINTS / PERKARA UTAMA',
+  `1.1 Rental only. The rent is market rent for using the Vehicle and the services in this agreement. No equity or ownership builds up, and nothing is refunded if the Ownership Reward is not earned.\nSewaan sahaja. Sewa ialah bayaran untuk menggunakan Kenderaan dan perkhidmatan dalam perjanjian ini. Tiada ekuiti atau hak milik terkumpul, dan tiada bayaran dikembalikan jika Ganjaran Pemilikan tidak diperoleh.\n${INITIALS}`,
+  `1.2 Ownership Reward. If the Lessee meets every condition in clause 6, the Lessor gives the Lessee an option to buy the Vehicle for RM1 by a separate Completion Letter. Until then, the Lessor owes the Lessee nothing beyond the rental.\nGanjaran Pemilikan. Jika Penyewa memenuhi setiap syarat dalam klausa 6, Pemberi Sewa memberi Penyewa opsyen untuk membeli Kenderaan dengan harga RM1 melalui Surat Penyelesaian yang berasingan. Sehingga itu, Pemberi Sewa tidak berhutang apa-apa kepada Penyewa selain sewaan.\n${INITIALS}`,
+  `1.3 Paying everything late is not enough. Settling all money in the end does not by itself earn the Ownership Reward. Payments must also be On-Time as clause 6 requires.\nMembayar semua secara lewat tidak mencukupi. Bayaran mesti dibuat Tepat Pada Masa seperti yang dikehendaki oleh klausa 6.\n${INITIALS}`,
+  `1.4 Losing the reward. Ending early, repossession for non-payment or another serious breach ends the right to the Ownership Reward. Ending early also carries the fee in clause 9.6.\nKehilangan ganjaran. Penamatan awal, penarikan balik kenderaan kerana tidak membayar atau pelanggaran serius lain menamatkan hak kepada Ganjaran Pemilikan. Penamatan awal juga dikenakan fi dalam klausa 9.6.\n${INITIALS}`,
   '2. THE LEASE',
   '2.1 Fixed period. The Lessor leases the Vehicle in Section D to the Lessee from the Commencement Date for the Lease Period in Section A. The lease ends on the Scheduled Maturity Date unless it ends earlier. Any extension must be in writing.',
-  '2.2 Ownership stays with the owner. The Vehicle belongs to the registered owner or financier until it is transferred under clause 7. The Lessee may not sell or pledge it.',
+  '2.2 Ownership stays with the owner. The Vehicle belongs to the registered owner or financier unless and until it is sold to the Lessee under clause 7. The Lessee may not sell or pledge it.',
   '2.3 Condition at handover. The Lessee accepts the Vehicle in the condition recorded at handover (odometer, fuel and photos), apart from any defect reported at handover.',
   '2.4 Inspection. The Lessor may inspect the Vehicle on reasonable notice, or at once for safety, insurance, default or recovery reasons.',
   '3. RENT AND PAYMENT',
-  '3.1 Rent. The Lessee pays {{rent_amount}} per {{rental_cycle}}, on or before the due day in Section A, into the payment account in Section A. A payment counts when the money reaches the Lessor and can be matched to this agreement.',
-  '3.2 Late charge. On rent not paid by the due day, a late charge of 18% a year (1.5% a month) is added on the overdue amount, counted daily from the second day after the due day until it is paid. The due day does not change.',
-  '3.3 No deductions. The Lessee may not hold back or reduce rent because of a repair, claim or dispute unless the Lessor agrees in writing.',
-  '3.4 Records. The Lessee keeps proof of every payment. The Lessor\'s payment records apply unless reliable evidence shows a mistake. The Lessee may ask for a payment statement at any time and should raise any dispute within 14 days of receiving it.',
-  '3.5 Downpayment. Any downpayment in Section A is paid before handover. It is not rent, not a security deposit and not refundable.',
-  '3.6 Security deposit. Any security deposit in Section A may be used for unpaid sums, loss or damage. Any balance is settled at the final account.',
-  useOfVehicle(4),
+  ...rentClauses(3),
+  '3.6 Downpayment. Any downpayment in Section A is paid before handover. It is not rent, not a security deposit and not refundable.',
+  '3.7 Security deposit. Any security deposit in Section A may be used for unpaid sums, loss or damage. Any balance is settled at the final account.',
+  useOfVehicle(4, 9),
   services(5),
   '6. PAYMENT PERFORMANCE AND OWNERSHIP REWARD',
   '6.1 On-Time Payment. A rent payment is On-Time if it is received on the due day or within three days after it.',
   '6.2 Serious Late Payment. A rent payment still unpaid 14 days after its due day.',
-  '6.3 Earning the Ownership Reward. The Lessee earns the Ownership Reward only when the Lessee: (a) completes the full Lease Period; (b) pays all rent and other sums by the Scheduled Maturity Date or within 30 days after it; (c) has at least {{min_on_time_rentals}} of the {{duration}} rent payments On-Time; (d) has no Chronic Late Payment under clause 6.4 and no unresolved default; (e) has not let a third party use the Vehicle, used it illegally, abandoned it, tampered with the odometer or tracker, or damaged it on purpose; and (f) returns the Vehicle for a final inspection and provides the transfer documents and costs.',
+  '6.3 Earning the Ownership Reward. The Lessee earns the Ownership Reward only when the Lessee: (a) completes the full Lease Period; (b) pays all rent and other sums by the Scheduled Maturity Date or within 30 days after it; (c) has at least {{min_on_time_rentals}} of the {{duration}} rent payments On-Time; (d) has no Chronic Late Payment under clause 6.4 and no unresolved default; (e) has not let a third party use the Vehicle, used it illegally, abandoned it, tampered with the odometer or tracker, or damaged it on purpose; (f) has no unpaid summons, compound or fine, and any insurance claim from the Lessee\'s use is settled; and (g) returns the Vehicle for a final inspection, which it passes apart from fair wear and tear.',
   '6.4 Chronic Late Payment. Any one of these: fewer than {{min_on_time_rentals}} On-Time payments; three or more Serious Late Payments in any 12 months; six or more Serious Late Payments in the Lease Period; arrears unpaid for more than 30 days in a row on two or more occasions; or repossession or termination for non-payment.',
   '6.5 Warning first. Except for serious misconduct, the Lessor gives written notice of a breach that puts the Ownership Reward at risk, with at least seven days to put it right. Paying arrears clears the debt but does not change the payment record.',
   '6.6 Payment plan. Near the end of the lease the Lessor may, at its choice, agree a written payment plan of up to 180 days for temporary arrears and say in writing whether the Ownership Reward is kept. A plan payment more than seven days late ends that protection.',
-  '7. TRANSFER OF THE VEHICLE',
-  '7.1 Confirmation. When the Lessee has earned the Ownership Reward, the Lessor confirms it in writing and arranges any settlement with the financier and the legal transfer of the Vehicle to the Lessee.',
-  '7.2 Costs. The Lessor pays any outstanding finance on the Vehicle. The Lessee pays JPJ, PUSPAKOM, inspection, registration, insurance-change and other official transfer costs.',
-  '7.3 Timing. The Lessor starts the transfer within 14 days after the confirmation and receipt of the Lessee\'s documents and costs, and aims to complete it within 90 days.',
-  '7.4 Replacement vehicle. If the Vehicle cannot be transferred for a reason that is not the Lessee\'s fault, or the Lessor replaces it during the lease, the Lessee\'s payment record carries over to a reasonably equivalent vehicle.',
+  '7. OWNERSHIP REWARD: OPTION TO BUY',
+  '7.1 Completion Letter. When the Lessee has earned the Ownership Reward, the Lessor issues a Completion Letter giving the Lessee the option to buy the Vehicle for RM1. The option stays open for 60 days from the letter.',
+  '7.2 Buying the Vehicle. The Lessee takes up the option by signing the Completion Letter and paying RM1 and the transfer costs in clause 7.3. The Lessor then settles any finance on the Vehicle and arranges the legal transfer.',
+  '7.3 Costs. The Lessor pays any outstanding finance on the Vehicle. The Lessee pays JPJ, PUSPAKOM, inspection, registration, insurance-change and other official transfer costs.',
+  '7.4 Timing. The Lessor starts the transfer within 14 days after the option is taken up and the Lessee\'s documents and costs are received, and aims to complete it within 90 days.',
+  '7.5 Replacement vehicle. If the Vehicle cannot be transferred for a reason that is not the Lessee\'s fault, or the Lessor replaces it during the lease, the Lessee\'s payment record carries over to a reasonably equivalent vehicle.',
+  '7.6 No cash value. The Ownership Reward has no cash value, cannot be exchanged for money and cannot be transferred to anyone else.',
   accidents(8),
-  '9. DEFAULT, RECOVERY AND ENDING THE LEASE',
-  '9.1 Default. Default includes a Serious Late Payment, false information, abandoning the Vehicle, illegal use, losing a required licence or e-hailing approval, letting a third party use the Vehicle, or tampering with the tracker.',
-  '9.2 Lessor\'s action. After any required notice, the Lessor may demand payment or return of the Vehicle, end this agreement, recover the Vehicle through lawful means, and claim arrears and reasonable recovery, towing, storage and repair costs.',
-  '9.3 Ending early. The Lessee may end the lease with one month\'s written notice by returning the Vehicle, paying all sums due and completing the return inspection. Ending early ends the Ownership Reward, and rent already paid is not refunded.',
-  '9.4 Return condition. The Vehicle, keys, documents and accessories must be returned in the condition recorded at handover, apart from fair wear and tear.',
+  ...defaultAndRecovery(9, 'DEFAULT, RECOVERY AND ENDING THE LEASE'),
+  '9.5 Ending early. The Lessee may end the lease with one month\'s written notice by returning the Vehicle, paying all sums due and completing the return inspection. Ending early ends the Ownership Reward, and rent already paid is not refunded.',
+  '9.6 Early-termination fee. A Lessee who ends the lease early, or whose lease the Lessor ends for default, pays an early-termination fee of four weeks\' rent. The parties agree this is a genuine estimate of the Lessor\'s loss from a long-term lease ending early (finding a new driver, the Vehicle standing idle and administration).',
+  '9.7 Return condition. The Vehicle, keys, documents and accessories must be returned in the condition recorded at handover, apart from fair wear and tear.',
   general(10),
 );
 
@@ -142,24 +161,19 @@ const BIASA_TERMS = para(
   '1.3 Condition at handover. The Lessee accepts the Vehicle in the condition recorded at handover (odometer, fuel and photos), apart from any defect reported at handover.',
   '1.4 Inspection. The Lessor may inspect the Vehicle on reasonable notice, or at once for safety, insurance, default or recovery reasons.',
   '2. RENT AND PAYMENT',
-  '2.1 Rent. The Lessee pays {{rent_amount}} per {{rental_cycle}}, on or before the due day in Section A, into the payment account in Section A. A payment counts when the money reaches the Lessor and can be matched to this agreement.',
-  '2.2 Late charge. On rent not paid by the due day, a late charge of 18% a year (1.5% a month) is added on the overdue amount, counted daily from the second day after the due day until it is paid. The due day does not change.',
-  '2.3 No deductions. The Lessee may not hold back or reduce rent because of a repair, claim or dispute unless the Lessor agrees in writing.',
-  '2.4 Records. The Lessee keeps proof of every payment. The Lessor\'s payment records apply unless reliable evidence shows a mistake.',
+  ...rentClauses(2),
   '3. DEPOSIT',
   '3.1 Refundable deposit. The Lessee pays the deposit in Section A before handover. It is not rent and may not be used as the last rent payment unless the Lessor agrees in writing.',
   '3.2 Refund. Within 14 days after the Vehicle is returned and checked, the Lessor refunds the deposit less any unpaid rent, late charges, summonses, damage, cleaning, missing items and recovery costs, with a list of any deductions.',
   '3.3 Forfeit. The deposit is forfeited if the Lessee returns the Vehicle without the notice in clause 7.1, abandons it, or the Lessor has to recover it because of the Lessee\'s default. This does not limit the Lessor\'s claim for any larger amount owed.',
-  useOfVehicle(4),
+  useOfVehicle(4, 8),
   services(5),
   accidents(6),
   '7. ENDING THE RENTAL',
   '7.1 By the Lessee. The Lessee may end the rental by giving two weeks\' written notice, returning the Vehicle and paying all sums due.',
-  '7.2 By the Lessor. The Lessor may end the rental by giving two weeks\' written notice, or at once if the Lessee is in default under clause 8.',
+  '7.2 By the Lessor. The Lessor may end the rental by giving two weeks\' written notice, or under clause 8 if the Lessee is in default.',
   '7.3 Return condition. The Vehicle, keys, documents and accessories must be returned in the condition recorded at handover, apart from fair wear and tear, with the same fuel level.',
-  '8. DEFAULT AND RECOVERY',
-  '8.1 Default. Default includes rent unpaid for 14 days after its due day, false information, abandoning the Vehicle, illegal use, losing a required licence or e-hailing approval, letting a third party use the Vehicle, or tampering with the tracker.',
-  '8.2 Lessor\'s action. After any required notice, the Lessor may demand payment or return of the Vehicle, end this agreement, recover the Vehicle through lawful means, and claim arrears and reasonable recovery, towing, storage and repair costs.',
+  ...defaultAndRecovery(8, 'DEFAULT AND RECOVERY'),
   general(9),
 );
 
@@ -181,7 +195,8 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
     `${kind === 'SEWABELI' ? 'Scheduled maturity date' : 'End date'} | {{end_date}}`,
     ...(kind === 'SEWABELI'
       ? ['Total scheduled rent | {{aggregate_rental}}', 'Downpayment | {{downpayment_amount}}', 'Security deposit | {{deposit_amount}}',
-        'Ownership Reward standard | At least {{min_on_time_rentals}} of the {{duration}} rent payments On-Time (Section B, clause 6)']
+        'Ownership Reward | Option to buy the Vehicle for RM1 if at least {{min_on_time_rentals}} of the {{duration}} rent payments are On-Time and the other conditions in Section B, clause 6 are met',
+        "Early-termination fee | Four weeks' rent (Section B, clause 9.6)"]
       : ['Deposit (refundable) | {{deposit_amount}}']),
     'Permitted use | E-hailing and the Lessee\'s personal use',
     'Payment account | {{company_bank_account}}',
