@@ -15,6 +15,8 @@ Claude owns this project end to end. Finish approved work with minimal process, 
 ## 3. Project map
 - React 19 + Vite SPA. `App.tsx` owns data loading and auth; admin screens live in `components/`; the Finance module lives in `components/finance/` and `services/finance/`.
 - The Fleet page (road tax, insurance and inspection reminders for every car, both businesses) lives in `components/fleet/` and `services/fleet/`; it reads and writes `public.cars`, which the retired Eca Guardian app used before.
+- The driver profile (Add / Edit Driver) is the one master input. Agreements (`components/agreements/`, `services/agreements/`) read the driver, Fleet's `public.car_details` and `driver_deposits`; only signing-day details are typed. The PDF is made in the browser (jsPDF, A4) and never stored; a text copy goes to `public.driver_agreements` for the driver's phone page. Clause drafts live in `services/agreements/defaults.ts`; company details and payment account numbers live only in `public.agreement_settings`.
+- One driver record per contract: a returning driver gets a new record; the database allows one active driver per 12-digit NRIC.
 - **Rent rules have one home:** `buildRentSchedule` in `utils.ts`, used by `calculateDriverMetrics`, `generateDriverInvoices`, `getNextDueDate` and `latestInvoices`. Never add another schedule or payment-allocation copy. The termination report (`terminationReport.ts`) is a deliberate independent snapshot that must follow the same rules.
 - Agreed rent rule: with no contract end date, rent keeps accruing past the recorded contract length until an end date or delist.
 - Supabase: SQL in `supabase/migrations/`, Edge Functions in `supabase/functions/`.
