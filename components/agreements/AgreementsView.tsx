@@ -3,7 +3,7 @@ import { AlertTriangle, Download, FileText, Settings2 } from 'lucide-react';
 import type { Driver } from '../../types';
 import { supabase } from '../../supabaseClient';
 import { fleet } from '../../services/fleet/client';
-import { detailsFromRow, emptyDetails, type Car, type VehicleDetails } from '../../services/fleet/rules';
+import { detailsChanged, detailsFromRow, emptyDetails, type Car, type VehicleDetails } from '../../services/fleet/rules';
 import { agreementApi, type AgreementSettings } from '../../services/agreements/api';
 import { blankInput, carForPlate, fromDriver } from '../../services/agreements/prefill';
 import { agreementFileName, downloadAgreementPdf } from '../../services/agreements/pdf';
@@ -149,8 +149,7 @@ export default function AgreementsView({ drivers, isAdmin, today }: AgreementsVi
   };
   const autoEnd = longDate(contractEndDate(form.terms.startDate, form.terms.cycle, Number(form.terms.duration)));
   const savedDetails = details.get(carId);
-  const detailsEdited = !!carId && JSON.stringify(Object.values(form.details)) !== JSON.stringify(savedDetails
-    ? [savedDetails.chassisNo, savedDetails.registeredDate, savedDetails.colour, savedDetails.ownerName, savedDetails.ownerId] : ['', '', '', '', '']);
+  const detailsEdited = !!carId && detailsChanged(savedDetails ?? emptyDetails(carId), { carId, ...form.details });
 
   const saveDetailsToFleet = async () => {
     setSavingDetails('saving');

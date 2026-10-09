@@ -46,7 +46,8 @@ export default function CarFormDialog({ car, cars, details, detailsAvailable, on
     try {
       await onSave(form, { ...extra, carId: form.id });
     } catch (err) {
-      setError(`Car not saved: ${err instanceof Error ? err.message : String(err)}`);
+      const text = err instanceof Error ? err.message : String(err);
+      setError(text.startsWith('The car is saved,') ? `${text} Press Save to try again.` : `Car not saved: ${text}`);
       setSaving(false);
     }
   };

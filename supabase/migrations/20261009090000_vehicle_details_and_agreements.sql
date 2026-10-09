@@ -57,3 +57,17 @@ drop policy if exists "Admins manage agreement settings" on public.agreement_set
 create policy "Admins manage agreement settings" on public.agreement_settings for all to authenticated
   using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role = 'admin'))
   with check (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role = 'admin'));
+
+-- Who changed a row last, and when (an upsert from the app would otherwise keep the first writer).
+create or replace function public.touch_changed_by() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  new.updated_at := now();
+  new.updated_by := auth.uid();
+  return new;
+end $$;
+revoke all on function public.touch_changed_by() from public, anon, authenticated;
+drop trigger if exists car_details_touch on public.car_details;
+create trigger car_details_touch before insert or update on public.car_details for each row execute function public.touch_changed_by();
+drop trigger if exists agreement_settings_touch on public.agreement_settings;
+create trigger agreement_settings_touch before insert or update on public.agreement_settings for each row execute function public.touch_changed_by();

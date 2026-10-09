@@ -49,13 +49,15 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
   y += 4;
 
   template.sections.forEach((section, index) => {
-    room(18);
     // Section heading on a light band
-    doc.setFillColor(235, 238, 243);
-    doc.rect(MARGIN, y, WIDTH, 7.5, 'F');
     font('bold', 10.5);
-    doc.text(sectionHeading(index, fill(section.title)), MARGIN + 2.5, y + 5.1);
-    y += 11;
+    const heading = wrap(sectionHeading(index, fill(section.title)), WIDTH - 5);
+    const band = 3 + heading.length * 4.5;
+    room(band + 12);
+    doc.setFillColor(235, 238, 243);
+    doc.rect(MARGIN, y, WIDTH, band, 'F');
+    doc.text(heading, MARGIN + 2.5, y + 5.1, { lineHeightFactor: 1.2 });
+    y += band + 3.5;
 
     if (section.layout === 'clauses') {
       for (const paragraph of parseParagraphs(fill(section.body))) {
@@ -108,7 +110,7 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
       // Signatures: two boxes a row, each with room to sign, then party, name, ID and date
       const rows = parseRows(section.body);
       const boxW = (WIDTH - 10) / 2;
-      const boxH = 44;
+      const boxH = 49;
       room(Math.ceil(rows.length / 2) * (boxH + 4)); // keep the signatures together on one page
       for (let i = 0; i < rows.length; i += 2) {
         room(boxH + 4);
@@ -119,9 +121,11 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
           font('bold', 9.5);
           doc.text(wrap(fill(cells[0] ?? ''), boxW - 6)[0] ?? '', x, y + 25);
           font('normal', 9.3);
-          doc.text(`Name: ${fill(cells[1] ?? '') || BLANK}`, x, y + 30.5, { maxWidth: boxW - 6 });
-          doc.text(`ID: ${fill(cells[2] ?? '') || BLANK}`, x, y + 35.5, { maxWidth: boxW - 6 });
-          doc.text(`Date: ${BLANK}`, x, y + 40.5);
+          const name = wrap(`Name: ${fill(cells[1] ?? '') || BLANK}`, boxW - 6).slice(0, 2);
+          doc.text(name, x, y + 30.5, { lineHeightFactor: 1.2 });
+          const below = y + 30.5 + name.length * 4.6;
+          doc.text(wrap(`ID: ${fill(cells[2] ?? '') || BLANK}`, boxW - 6)[0], x, below);
+          doc.text(`Date: ${BLANK}`, x, below + 5);
         });
         y += boxH + 4;
       }

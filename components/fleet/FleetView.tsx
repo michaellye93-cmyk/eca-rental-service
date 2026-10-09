@@ -15,6 +15,8 @@ interface FleetViewProps {
 }
 
 const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
+/** Starts the message when the car itself was saved and only its registration details failed. */
+const CAR_SAVED = 'The car is saved,';
 
 /** The Fleet page: loads the car list, and lets staff and admins add, edit and delete cars. */
 export default function FleetView({ today, onCarsChange }: FleetViewProps) {
@@ -56,9 +58,19 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
   // A failed save keeps the form open with the reason (CarFormDialog shows it); the list reloads either way.
   const saveCar = async (car: Car, carDetails: VehicleDetails) => {
     try {
-      if (editing === 'new') await fleet.addCar(car);
-      else await fleet.updateCar(car);
-      if (!detailsProblem && detailsChanged(details.get(car.id) ?? emptyDetails(car.id), carDetails)) await fleet.saveDetails(carDetails);
+      if (editing === 'new') {
+        await fleet.addCar(car);
+        setEditing(car); // a retry now edits the saved car instead of adding it twice
+      } else {
+        await fleet.updateCar(car);
+      }
+      if (!detailsProblem && detailsChanged(details.get(car.id) ?? emptyDetails(car.id), carDetails)) {
+        try {
+          await fleet.saveDetails(carDetails);
+        } catch (err) {
+          throw new Error(`${CAR_SAVED} but its registration details are not: ${reason(err)}`);
+        }
+      }
     } finally {
       void reload();
     }

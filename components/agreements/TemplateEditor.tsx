@@ -33,7 +33,14 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  // What is saved now, to tell which drafts changed
+  const [saved, setSaved] = useState({ templates, company });
   const template = drafts[kind];
+  const KINDS = ['SEWABELI', 'SEWA_BIASA'] as const;
+  const changedKinds = KINDS.filter(id => JSON.stringify(drafts[id]) !== JSON.stringify(saved.templates[id]));
+  const companyChanged = JSON.stringify(companyDraft) !== JSON.stringify(saved.company);
+  const unsaved = changedKinds.length > 0 || companyChanged;
 
   const setTemplate = (next: AgreementTemplate) => setDrafts(current => ({ ...current, [kind]: next }));
   const setSection = (index: number, change: Partial<AgreementSection>) =>
@@ -54,26 +61,50 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
       await action();
       setMessage({ ok: true, text: done });
     } catch (err) {
-      setMessage({ ok: false, text: `Not saved: ${reason(err)}` });
+      setMessage({ ok: false, text: reason(err) });
     } finally {
       setBusy(false);
     }
   };
+  /** Saves every changed type and the company details, one at a time, and says exactly which were saved. */
   const save = () => {
-    if (!template.title.trim() || template.sections.some(section => !section.title.trim())) {
-      setMessage({ ok: false, text: 'Give the agreement and every section a title.' });
+    const untitled = KINDS.find(id => !drafts[id].title.trim() || drafts[id].sections.some(section => !section.title.trim()));
+    if (untitled) {
+      setMessage({ ok: false, text: `Give the ${KIND_LABELS[untitled]} agreement and every section a title.` });
       return;
     }
+    if (!unsaved) {
+      setMessage({ ok: true, text: 'Nothing to save: no changes.' });
+      return;
+    }
+    const done: string[] = [];
     void run(async () => {
-      await onSaveTemplate(kind, template);
-      await onSaveCompany(companyDraft);
-    }, `${KIND_LABELS[kind]} template and company details saved.`);
+      try {
+        for (const id of changedKinds) {
+          await onSaveTemplate(id, drafts[id]);
+          setSaved(current => ({ ...current, templates: { ...current.templates, [id]: drafts[id] } }));
+          done.push(`${KIND_LABELS[id]} template`);
+        }
+        if (companyChanged) {
+          await onSaveCompany(companyDraft);
+          setSaved(current => ({ ...current, company: companyDraft }));
+          done.push('company details');
+        }
+      } catch (err) {
+        throw new Error(`${done.length ? `Saved: ${done.join(', ')}. ` : ''}Not saved: ${reason(err)}`);
+      }
+    }, `Saved: ${[...changedKinds.map(id => `${KIND_LABELS[id]} template`), ...(companyChanged ? ['company details'] : [])].join(', ')}.`);
   };
   const reset = () => {
     setConfirmReset(false);
     void run(async () => {
-      await onResetTemplate(kind);
+      try {
+        await onResetTemplate(kind);
+      } catch (err) {
+        throw new Error(`Not reset: ${reason(err)}`);
+      }
       setTemplate(defaultTemplate(kind));
+      setSaved(current => ({ ...current, templates: { ...current.templates, [kind]: defaultTemplate(kind) } }));
     }, `${KIND_LABELS[kind]} is back to the built-in draft.`);
   };
 
@@ -84,7 +115,7 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
           {(['SEWABELI', 'SEWA_BIASA'] as const).map(id => (
             <button key={id} type="button" aria-pressed={kind === id} onClick={() => setKind(id)}
               className={`px-4 py-1.5 text-sm font-semibold rounded-md ${kind === id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-              {KIND_LABELS[id]}
+              {KIND_LABELS[id]}{changedKinds.includes(id) && <span className="ml-1" title="Unsaved changes">•</span>}
             </button>
           ))}
         </div>
@@ -92,7 +123,7 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
           <button type="button" onClick={() => setConfirmReset(true)} disabled={busy} className="px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-1.5">
             <RotateCcw className="w-4 h-4" aria-hidden="true" /> Use built-in draft
           </button>
-          <button type="button" onClick={onDone} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg">Back</button>
+          <button type="button" onClick={() => (unsaved ? setConfirmLeave(true) : onDone())} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg">Back</button>
           <button type="button" onClick={save} disabled={busy} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold rounded-lg shadow-sm">
             {busy ? 'Saving…' : 'Save'}
           </button>
@@ -157,6 +188,11 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
           </details>
         </aside>
       </div>
+      {confirmLeave && (
+        <ConfirmDialog title="Leave without saving" confirmLabel="Leave without saving" onConfirm={onDone} onCancel={() => setConfirmLeave(false)}>
+          <p>You have unsaved changes{changedKinds.length ? ` to ${changedKinds.map(id => KIND_LABELS[id]).join(' and ')}` : ''}{companyChanged ? `${changedKinds.length ? ' and' : ' to'} the company details` : ''}. Leave and lose them?</p>
+        </ConfirmDialog>
+      )}
       {confirmReset && (
         <ConfirmDialog title="Use the built-in draft" confirmLabel="Use built-in draft" onConfirm={reset} onCancel={() => setConfirmReset(false)}>
           <p>Replace the saved {KIND_LABELS[kind]} sections with the built-in draft? Your changes to this type are lost. Company details stay.</p>

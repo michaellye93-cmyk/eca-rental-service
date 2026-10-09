@@ -42,6 +42,8 @@ test('the total rent, due day and on-time count follow the terms', () => {
   assert.equal(values.payment_due, 'Every Saturday', '10 October 2026 is a Saturday');
   assert.equal(agreementValues({ ...input, terms: { ...input.terms, cycle: 'MONTHLY', startDate: '2026-10-02' } }).payment_due, 'The 2nd of every month');
   assert.equal(agreementValues({ ...input, terms: { ...input.terms, duration: '156' } }).min_on_time_rentals, '125');
+  assert.equal(agreementValues({ ...input, terms: { ...input.terms, cycle: 'MONTHLY', startDate: '2026-01-31' } }).payment_due,
+    'The 31st of every month (the last day in a shorter month)');
 });
 
 test('sections are lettered in order', () => {

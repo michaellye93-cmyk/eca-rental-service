@@ -31,6 +31,9 @@ test("staff add, read and change a car's details, and admins see them", async ()
     await asUser(db, ADMIN_ID);
     const rows = await db.query<{ owner_name: string; registered_date: string }>(`select owner_name, registered_date::text from public.car_details`);
     assert.deepEqual(rows.rows, [{ owner_name: 'Fixture Owner', registered_date: '2024-01-15' }]);
+    await db.query(`insert into public.car_details(car_id, colour) values ('car-1', 'SILVER') on conflict (car_id) do update set colour = excluded.colour`);
+    const by = await db.query<{ updated_by: string }>('select updated_by::text from public.car_details');
+    assert.equal(by.rows[0].updated_by, ADMIN_ID, 'the last person to change the row is recorded');
   } finally { await db.close(); }
 });
 

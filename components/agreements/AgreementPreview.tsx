@@ -38,7 +38,7 @@ export default function AgreementPreview({ template, values }: AgreementPreviewP
           <h4 className="bg-slate-100 px-2.5 py-1.5 font-bold text-[13px] mb-3">{sectionHeading(index, fillText(section.title, values))}</h4>
           {section.layout === 'clauses' && (
             <div className="space-y-2">
-              {parseParagraphs(section.body).map((paragraph, i) => (
+              {parseParagraphs(fillText(section.body, values)).map((paragraph, i) => (
                 <p key={i} className={`whitespace-pre-line ${isClauseHeading(paragraph) ? 'font-bold pt-2' : ''}`}><Filled text={paragraph} values={values} /></p>
               ))}
             </div>

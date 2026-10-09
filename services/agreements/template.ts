@@ -145,7 +145,10 @@ const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => 
     value: i => {
       const start = isoParts(i.terms.startDate);
       if (!start) return '';
-      return i.terms.cycle === 'WEEKLY' ? `Every ${WEEKDAYS[start.getUTCDay()]}` : `The ${ordinal(start.getUTCDate())} of every month`;
+      if (i.terms.cycle === 'WEEKLY') return `Every ${WEEKDAYS[start.getUTCDay()]}`;
+      const day = start.getUTCDate();
+      // Rent falls on the month's last day when the month is shorter (the rent schedule's rule)
+      return day >= 29 ? `The ${ordinal(day)} of every month (the last day in a shorter month)` : `The ${ordinal(day)} of every month`;
     },
   },
   rent_amount: { label: 'Rent amount', value: i => ringgit(amount(i.terms.rent)) },
