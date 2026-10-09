@@ -233,7 +233,12 @@ export default function AgreementsView({ drivers, isAdmin, today }: AgreementsVi
               <Field id="agreement-rent" label="Rent (RM)">
                 <input id="agreement-rent" inputMode="decimal" className={inputLook} value={form.terms.rent} onChange={setTerm('rent')} />
               </Field>
-              <Field id="agreement-deposit" label={form.kind === 'SEWABELI' ? 'Security deposit (RM)' : 'Deposit (RM)'}>
+              {form.kind === 'SEWABELI' && (
+                <Field id="agreement-down" label="Downpayment (RM, if any)">
+                  <input id="agreement-down" inputMode="decimal" className={inputLook} value={form.terms.downpayment} onChange={setTerm('downpayment')} />
+                </Field>
+              )}
+              <Field id="agreement-deposit" label={form.kind === 'SEWABELI' ? 'Security deposit (RM, if any)' : 'Deposit (RM)'}>
                 <input id="agreement-deposit" inputMode="decimal" className={inputLook} value={form.terms.deposit} onChange={setTerm('deposit')} />
               </Field>
               <Field id="agreement-end" label="End date">

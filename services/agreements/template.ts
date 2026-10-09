@@ -61,8 +61,10 @@ export interface AgreementInput {
     cycle: 'WEEKLY' | 'MONTHLY';
     duration: string;
     rent: string;
-    /** Sewa Biasa: refundable deposit. Sewa Beli: security deposit. */
+    /** Sewa Biasa: refundable deposit (required). Sewa Beli: security deposit (optional). */
     deposit: string;
+    /** Sewa Beli only, optional. */
+    downpayment: string;
   };
   car: { plateNumber: string; make: string; model: string };
   details: { chassisNo: string; registeredDate: string; colour: string; ownerName: string; ownerId: string };
@@ -152,7 +154,9 @@ const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => 
     },
   },
   rent_amount: { label: 'Rent amount', value: i => ringgit(amount(i.terms.rent)) },
-  deposit_amount: { label: 'Deposit', value: i => ringgit(amount(i.terms.deposit)) },
+  // Sewa Beli may take a downpayment, a security deposit, both or neither: one not taken prints "None"
+  deposit_amount: { label: 'Deposit', value: i => ringgit(amount(i.terms.deposit)) || (i.kind === 'SEWABELI' ? 'None' : '') },
+  downpayment_amount: { label: 'Downpayment', value: i => ringgit(amount(i.terms.downpayment)) || 'None' },
   aggregate_rental: {
     label: 'Total rent for the period',
     value: i => {

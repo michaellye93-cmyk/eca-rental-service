@@ -10,7 +10,7 @@ const input: AgreementInput = {
   company: { company_name: 'Fixture Rentals Sdn Bhd', company_reg_no: '000000-X', company_address: '1 Fixture Road', company_phone: '60300000000',
     company_email: 'fixture@example.test', company_bank_account: 'Fixture Bank 0000000000', company_rep_name: 'Fixture Director', company_rep_id: '700101-00-0001' },
   customer: { name: 'Fixture Driver One', nric: '900101-00-0001', phone: '60120000001', address: '2 Fixture Lane' },
-  terms: { agreementDate: '2026-10-09', startDate: '2026-10-10', cycle: 'WEEKLY', duration: '52', rent: '350', deposit: '1000', endDate: '' },
+  terms: { agreementDate: '2026-10-09', startDate: '2026-10-10', cycle: 'WEEKLY', duration: '52', rent: '350', deposit: '1000', downpayment: '', endDate: '' },
   car: { plateNumber: 'XAA1001', make: 'PERODUA', model: 'BEZZA' },
   details: { chassisNo: 'FIXTURECHASSIS1', registeredDate: '2024-01-15', colour: 'WHITE', ownerName: 'Fixture Owner', ownerId: '000000-00-0000' },
   extra: { agreement_ref: 'FIX-001', emergency_contact_name: 'Fixture Contact', emergency_contact_phone: '60120000009', approved_driver: 'None',
@@ -97,4 +97,14 @@ test('an existing driver fills the customer and rent terms, and the car is found
   assert.deepEqual([filled.customer.name, filled.terms.cycle, filled.terms.duration, filled.terms.rent, filled.terms.agreementDate],
     ['Fixture Driver One', 'MONTHLY', '12', '1400', '2026-10-09']);
   assert.equal(carForPlate([{ plateNumber: 'XAA 1002' }, { plateNumber: 'xaa 1001' }], 'XAA1001')?.plateNumber, 'xaa 1001');
+});
+
+test('a Sewa Beli downpayment and security deposit are both optional and print "None" when not taken', () => {
+  const beli = { ...input, kind: 'SEWABELI' as const, terms: { ...input.terms, deposit: '', downpayment: '' } };
+  const values = agreementValues(beli);
+  assert.deepEqual([values.downpayment_amount, values.deposit_amount], ['None', 'None']);
+  assert.ok(!missingFields(defaultTemplate('SEWABELI'), beli).some(label => /deposit|downpayment/i.test(label)));
+  assert.equal(agreementValues({ ...beli, terms: { ...beli.terms, downpayment: '2000' } }).downpayment_amount, 'RM 2,000.00');
+  // A Sewa Biasa deposit is required: left empty, it is listed as missing
+  assert.ok(missingFields(defaultTemplate('SEWA_BIASA'), { ...input, terms: { ...input.terms, deposit: '' } }).includes('Deposit'));
 });

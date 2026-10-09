@@ -6,7 +6,7 @@ import type { AgreementInput, AgreementKind } from './template.ts';
 export const blankInput = (kind: AgreementKind, today: string): Omit<AgreementInput, 'company'> => ({
   kind,
   customer: { name: '', nric: '', phone: '', address: '' },
-  terms: { agreementDate: today, startDate: '', endDate: '', cycle: 'WEEKLY', duration: '', rent: '', deposit: '' },
+  terms: { agreementDate: today, startDate: '', endDate: '', cycle: 'WEEKLY', duration: '', rent: '', deposit: '', downpayment: '' },
   car: { plateNumber: '', make: '', model: '' },
   details: { chassisNo: '', registeredDate: '', colour: '', ownerName: '', ownerId: '' },
   extra: {},
