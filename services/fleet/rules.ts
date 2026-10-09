@@ -165,3 +165,56 @@ export const newCar = (): Car => ({
   id: crypto.randomUUID(), make: '', model: '', plateNumber: '', roadtaxExpiry: '', insuranceExpiry: '',
   inspectionExpiry: '', notes: '', ownership: 'Own Fleet',
 });
+
+/** A car's details for the vehicle info card and agreements. Dates are YYYY-MM-DD or ''. */
+export interface VehicleDetails {
+  carId: string;
+  chassisNo: string;
+  registeredDate: string;
+  colour: string;
+  ownerName: string;
+  ownerId: string;
+}
+
+/** A row of public.car_details. */
+export interface VehicleDetailsRow {
+  car_id: string;
+  chassis_no?: string | null;
+  registered_date?: string | null;
+  colour?: string | null;
+  owner_name?: string | null;
+  owner_id?: string | null;
+}
+
+export const emptyDetails = (carId: string): VehicleDetails => ({ carId, chassisNo: '', registeredDate: '', colour: '', ownerName: '', ownerId: '' });
+
+/** True when no detail is filled in. */
+export const detailsEmpty = (details: VehicleDetails): boolean =>
+  [details.chassisNo, details.registeredDate, details.colour, details.ownerName, details.ownerId].every(value => !text(value));
+
+/** True when the details changed (ignoring surrounding spaces and letter case where they are kept in capitals). */
+export const detailsChanged = (before: VehicleDetails, after: VehicleDetails): boolean =>
+  JSON.stringify(detailsToRow(before)) !== JSON.stringify(detailsToRow(after));
+
+/** Why these details can't be saved, or null. Only a filled registration date is checked. */
+export const detailsError = (details: VehicleDetails): string | null =>
+  text(details.registeredDate) && dayNumber(text(details.registeredDate)) === null ? 'Choose a valid registration date, or leave it empty.' : null;
+
+export const detailsFromRow = (row: VehicleDetailsRow): VehicleDetails => ({
+  carId: String(row.car_id),
+  chassisNo: text(row.chassis_no),
+  registeredDate: text(row.registered_date),
+  colour: text(row.colour),
+  ownerName: text(row.owner_name),
+  ownerId: text(row.owner_id),
+});
+
+/** Chassis number and colour are kept in capitals, as on the registration card. */
+export const detailsToRow = (details: VehicleDetails) => ({
+  car_id: details.carId,
+  chassis_no: text(details.chassisNo).toUpperCase(),
+  registered_date: text(details.registeredDate) || null,
+  colour: text(details.colour).toUpperCase(),
+  owner_name: text(details.ownerName),
+  owner_id: text(details.ownerId),
+});

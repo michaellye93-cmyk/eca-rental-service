@@ -4,6 +4,7 @@ import { Driver, DriverMetrics, DriverStatus } from '../types';
 import { buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const FleetView = React.lazy(() => import('./fleet/FleetView'));
+const AgreementsView = React.lazy(() => import('./agreements/AgreementsView'));
 const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
 import CashLine from './money/CashLine';
@@ -39,6 +40,7 @@ import {
   Clock,
   MessageCircle,
   MessageSquareText,
+  FileSignature,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
@@ -111,12 +113,13 @@ class ScreenLoadBoundary extends React.Component<{ children: React.ReactNode }, 
   }
 }
 
-type Section = 'DRIVERS' | 'FLEET' | 'MONEY';
+type Section = 'DRIVERS' | 'FLEET' | 'AGREEMENTS' | 'MONEY';
 
 /** Saved tab values, including the ones used before the Drivers section existed. */
 const SECTION_FROM_STORED: Record<string, Section> = {
   DRIVERS: 'DRIVERS',
   FLEET: 'FLEET',
+  AGREEMENTS: 'AGREEMENTS',
   ACTIVE: 'DRIVERS',
   DELISTED: 'DRIVERS',
   DRIVER_LIST: 'DRIVERS',
@@ -134,6 +137,7 @@ const sectionFromStored = (stored: string | null): Section | null =>
 const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'DRIVERS', label: 'Drivers', Icon: Users },
   { id: 'FLEET', label: 'Fleet', Icon: CarFront },
+  { id: 'AGREEMENTS', label: 'Agreements', Icon: FileSignature },
   { id: 'MONEY', label: 'Finance', Icon: DollarSign },
 ];
 
@@ -1403,6 +1407,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </section>
           </>
+        ) : activeSection === 'AGREEMENTS' ? (
+          <section aria-label="Agreements" className="min-h-[500px]">
+            <ScreenLoadBoundary>
+              <React.Suspense fallback={<div className="p-6">Loading Agreements…</div>}>
+                <AgreementsView drivers={drivers} isAdmin={userRole === 'admin'} today={todayStr} />
+              </React.Suspense>
+            </ScreenLoadBoundary>
+          </section>
         ) : activeSection === 'FLEET' ? (
           <section aria-label="Fleet" className="min-h-[500px]">
             <ScreenLoadBoundary>

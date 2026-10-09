@@ -1,24 +1,37 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import Dialog from '../Dialog';
-import { carFormError, newCar, type Car, type Ownership } from '../../services/fleet/rules';
+import { carFormError, detailsError, emptyDetails, newCar, type Car, type Ownership, type VehicleDetails } from '../../services/fleet/rules';
 
 interface CarFormDialogProps {
   /** The car to edit, or null to add a new one. */
   car: Car | null;
   /** Every car, for the duplicate-plate check. */
   cars: Car[];
-  /** Saves the car; a rejected promise keeps the form open and shows why. */
-  onSave: (car: Car) => Promise<void>;
+  /** The car's saved details (chassis, registration, owner), or null when none are saved. */
+  details: VehicleDetails | null;
+  /** False when the details can't be saved yet (the database file isn't run): the fields are hidden. */
+  detailsAvailable: boolean;
+  /** Saves the car and its details; a rejected promise keeps the form open and shows why. */
+  onSave: (car: Car, details: VehicleDetails) => Promise<void>;
   onClose: () => void;
 }
 
 type TextField = 'make' | 'model' | 'plateNumber' | 'roadtaxExpiry' | 'insuranceExpiry' | 'inspectionExpiry' | 'notes';
+type DetailField = 'chassisNo' | 'registeredDate' | 'colour' | 'ownerName' | 'ownerId';
+const DETAIL_INPUTS: { field: DetailField; label: string; type?: string; placeholder?: string }[] = [
+  { field: 'chassisNo', label: 'Chassis no.' },
+  { field: 'registeredDate', label: 'Registration date', type: 'date' },
+  { field: 'colour', label: 'Colour', placeholder: 'e.g. White' },
+  { field: 'ownerName', label: 'Registered owner' },
+  { field: 'ownerId', label: "Owner's NRIC or company no." },
+];
 const labelLook = 'block text-sm font-bold text-gray-700 mb-1';
 const inputLook = 'w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none';
 
 /** Add or edit one car. Road tax and insurance dates are required; inspection may stay empty. */
-export default function CarFormDialog({ car, cars, onSave, onClose }: CarFormDialogProps) {
+export default function CarFormDialog({ car, cars, details, detailsAvailable, onSave, onClose }: CarFormDialogProps) {
   const [form, setForm] = useState<Car>(() => car ?? newCar());
+  const [extra, setExtra] = useState<VehicleDetails>(() => details ?? emptyDetails(form.id));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const change = (field: TextField) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -26,12 +39,12 @@ export default function CarFormDialog({ car, cars, onSave, onClose }: CarFormDia
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const problem = carFormError(form, cars);
+    const problem = carFormError(form, cars) ?? (detailsAvailable ? detailsError(extra) : null);
     if (problem) { setError(problem); return; }
     setError(null);
     setSaving(true);
     try {
-      await onSave(form);
+      await onSave(form, { ...extra, carId: form.id });
     } catch (err) {
       setError(`Car not saved: ${err instanceof Error ? err.message : String(err)}`);
       setSaving(false);
@@ -79,6 +92,20 @@ export default function CarFormDialog({ car, cars, onSave, onClose }: CarFormDia
             <p id="fleet-inspection-hint" className="text-xs text-gray-500 mt-1">Leave empty if this car doesn't need inspection.</p>
           </div>
         </div>
+        {detailsAvailable && (
+          <fieldset className="border border-gray-200 rounded-lg p-4">
+            <legend className="px-1 text-sm font-bold text-gray-700">Registration details <span className="font-normal text-gray-500">(for agreements, optional)</span></legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {DETAIL_INPUTS.map(({ field, label, type, placeholder }) => (
+                <div key={field}>
+                  <label htmlFor={`fleet-${field}`} className={labelLook}>{label}</label>
+                  <input id={`fleet-${field}`} type={type ?? 'text'} className={inputLook} value={extra[field]} placeholder={placeholder}
+                    onChange={event => setExtra(current => ({ ...current, [field]: event.target.value }))} />
+                </div>
+              ))}
+            </div>
+          </fieldset>
+        )}
         <div>
           <label htmlFor="fleet-notes" className={labelLook}>Notes</label>
           <textarea id="fleet-notes" rows={2} className={inputLook} value={form.notes} onChange={change('notes')} />

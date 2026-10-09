@@ -56,3 +56,16 @@ test('deleting removes that one car by id; a refusal from the database is report
   const refused = fakeClient({ data: null, error: { message: 'permission denied for table cars' } });
   await assert.rejects(fleetApi(refused.client).deleteCar('car-1'), { message: 'permission denied for table cars' });
 });
+
+test('details are read from car_details and saved by car, chassis and colour in capitals', async () => {
+  const read = fakeClient({ data: [{ car_id: 'car-1', chassis_no: 'FIXTURECHASSIS1', registered_date: '2024-01-15', colour: 'WHITE', owner_name: 'Fixture Owner', owner_id: null }], error: null });
+  const details = await fleetApi(read.client).listDetails();
+  assert.deepEqual(read.calls, [{ method: 'from', args: ['car_details'] }, { method: 'select', args: ['*'] }]);
+  assert.deepEqual(details, [{ carId: 'car-1', chassisNo: 'FIXTURECHASSIS1', registeredDate: '2024-01-15', colour: 'WHITE', ownerName: 'Fixture Owner', ownerId: '' }]);
+  const saved = fakeClient({ data: null, error: null });
+  await fleetApi(saved.client).saveDetails({ carId: 'car-1', chassisNo: ' fixturechassis1 ', registeredDate: '', colour: 'white', ownerName: 'Fixture Owner', ownerId: '000000-00-0000' });
+  assert.deepEqual(saved.calls.map(c => c.method), ['from', 'upsert']);
+  const row = saved.calls[1].args[0] as Record<string, unknown>;
+  assert.deepEqual([row.car_id, row.chassis_no, row.registered_date, row.colour], ['car-1', 'FIXTURECHASSIS1', null, 'WHITE']);
+  assert.deepEqual(saved.calls[1].args[1], { onConflict: 'car_id' });
+});

@@ -1,8 +1,8 @@
-import { carFromRow, carToRow, type Car, type CarRow } from './rules.ts';
+import { carFromRow, carToRow, detailsFromRow, detailsToRow, type Car, type CarRow, type VehicleDetails, type VehicleDetailsRow } from './rules.ts';
 
 /** The part of the Supabase client the Fleet page uses. */
 export interface FleetClient {
-  from(table: 'cars'): any;
+  from(table: 'cars' | 'car_details'): any;
 }
 
 /** Shown when a save or delete finds no car with that id: someone else deleted it meanwhile. */
@@ -32,6 +32,14 @@ export function fleetApi(client: FleetClient) {
     async deleteCar(id: string): Promise<void> {
       const rows = check<{ id: string }[]>(await cars().delete().eq('id', id).select('id'));
       if (!rows?.length) throw new Error(CAR_GONE);
+    },
+    /** Every car's details (chassis, registration, owner) for the info card and agreements. */
+    async listDetails(): Promise<VehicleDetails[]> {
+      return (check<VehicleDetailsRow[]>(await client.from('car_details').select('*')) ?? []).map(detailsFromRow);
+    },
+    /** Adds or replaces one car's details. */
+    async saveDetails(details: VehicleDetails): Promise<void> {
+      check(await client.from('car_details').upsert({ ...detailsToRow(details), updated_at: new Date().toISOString() }, { onConflict: 'car_id' }));
     },
   };
 }

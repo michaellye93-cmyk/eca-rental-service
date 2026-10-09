@@ -22,11 +22,13 @@ interface FleetListProps {
   onQueryChange: (query: string) => void;
   onAdd: () => void;
   onEdit: (car: Car) => void;
+  /** Opens the car's vehicle details card (from its plate). */
+  onOpen: (car: Car) => void;
   onDelete: (car: Car) => void;
 }
 
 /** The Fleet page's tiles, search and car cards; FleetView loads and saves around it. */
-export default function FleetList({ cars, today, filter, onFilterChange, query, onQueryChange, onAdd, onEdit, onDelete }: FleetListProps) {
+export default function FleetList({ cars, today, filter, onFilterChange, query, onQueryChange, onAdd, onEdit, onOpen, onDelete }: FleetListProps) {
   const tiles: { id: FleetFilter; label: string; count: number; Icon: typeof CarFront; look: string }[] = [
     { id: 'ALL', label: 'All cars', count: cars.length, Icon: CarFront, look: 'text-gray-900' },
     { id: 'ATTENTION', label: 'Needs attention', count: attentionCount(cars, today), Icon: AlertTriangle, look: 'text-rose-600' },
@@ -101,7 +103,10 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
                   <div className="min-w-0">
                     <h3 className="font-bold text-gray-900 truncate">{car.make} {car.model}</h3>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs">
-                      <span className="font-mono font-semibold bg-gray-100 text-gray-800 px-2 py-0.5 rounded">{car.plateNumber}</span>
+                      <button type="button" onClick={() => onOpen(car)} title="Vehicle details" aria-label={`${car.plateNumber}: vehicle details`}
+                        className="font-mono font-semibold bg-gray-100 text-gray-800 px-2 py-0.5 rounded underline decoration-dotted decoration-gray-400 underline-offset-2 hover:bg-blue-50 hover:text-blue-700">
+                        {car.plateNumber}
+                      </button>
                       <span className={`px-2 py-0.5 rounded border font-medium ${car.ownership === 'Others' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{car.ownership}</span>
                     </div>
                     {car.notes && (

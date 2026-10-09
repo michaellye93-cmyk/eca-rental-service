@@ -3,8 +3,9 @@ import Notice, { type NoticeMessage } from '../Notice';
 import { ConfirmDialog } from '../Dialog';
 import FleetList, { type FleetFilter } from './FleetList';
 import CarFormDialog from './CarFormDialog';
+import VehicleInfoCard from './VehicleInfoCard';
 import { fleet } from '../../services/fleet/client';
-import type { Car } from '../../services/fleet/rules';
+import { detailsChanged, emptyDetails, type Car, type VehicleDetails } from '../../services/fleet/rules';
 
 interface FleetViewProps {
   /** Kuala Lumpur's date, YYYY-MM-DD. */
@@ -23,6 +24,10 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Car | 'new' | null>(null);
   const [deleting, setDeleting] = useState<Car | null>(null);
+  const [viewing, setViewing] = useState<Car | null>(null);
+  // Each car's details by car id, and why they can't be read (e.g. the database file isn't run yet)
+  const [details, setDetails] = useState<Map<string, VehicleDetails>>(new Map());
+  const [detailsProblem, setDetailsProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
   const dismissNotice = useCallback(() => setNotice(null), []);
   // The latest callback, so a new function from the dashboard doesn't reload the list
@@ -38,15 +43,22 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
     } catch (err) {
       setLoadError(reason(err));
     }
+    try {
+      setDetails(new Map((await fleet.listDetails()).map(item => [item.carId, item])));
+      setDetailsProblem(null);
+    } catch (err) {
+      setDetailsProblem(`Vehicle details can't be read yet: ${reason(err)}`);
+    }
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
 
   // A failed save keeps the form open with the reason (CarFormDialog shows it); the list reloads either way.
-  const saveCar = async (car: Car) => {
+  const saveCar = async (car: Car, carDetails: VehicleDetails) => {
     try {
       if (editing === 'new') await fleet.addCar(car);
       else await fleet.updateCar(car);
+      if (!detailsProblem && detailsChanged(details.get(car.id) ?? emptyDetails(car.id), carDetails)) await fleet.saveDetails(carDetails);
     } finally {
       void reload();
     }
@@ -90,9 +102,17 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
         onQueryChange={setQuery}
         onAdd={() => setEditing('new')}
         onEdit={setEditing}
+        onOpen={setViewing}
         onDelete={setDeleting}
       />
-      {editing && <CarFormDialog car={editing === 'new' ? null : editing} cars={cars} onSave={saveCar} onClose={() => setEditing(null)} />}
+      {viewing && (
+        <VehicleInfoCard car={viewing} details={details.get(viewing.id) ?? null} detailsProblem={detailsProblem}
+          onEdit={() => { setEditing(viewing); setViewing(null); }} onClose={() => setViewing(null)} />
+      )}
+      {editing && (
+        <CarFormDialog car={editing === 'new' ? null : editing} cars={cars} details={editing === 'new' ? null : details.get(editing.id) ?? null}
+          detailsAvailable={!detailsProblem} onSave={saveCar} onClose={() => setEditing(null)} />
+      )}
       {deleting && (
         <ConfirmDialog title="Delete car" confirmLabel="Delete car" onConfirm={() => void confirmDelete()} onCancel={() => setDeleting(null)}>
           <p>Delete <strong>{deleting.make} {deleting.model} ({deleting.plateNumber})</strong> from the Fleet list?</p>
