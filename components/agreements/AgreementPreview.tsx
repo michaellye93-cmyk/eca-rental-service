@@ -1,4 +1,4 @@
-import { BLANK, fillText, isClauseHeading, parseParagraphs, parseRows, sectionHeading, type AgreementTemplate } from '../../services/agreements/template';
+import { BLANK, fillText, isClauseHeading, parseParagraphs, parseRows, sectionHeading, startsNewPage, type AgreementTemplate } from '../../services/agreements/template';
 
 interface AgreementPreviewProps {
   template: AgreementTemplate;
@@ -35,6 +35,11 @@ export default function AgreementPreview({ template, values }: AgreementPreviewP
       </header>
       {template.sections.map((section, index) => (
         <section key={section.id} className="mb-6">
+          {startsNewPage(section, index) && (
+            <p className="flex items-center gap-2 text-[11px] text-gray-400 my-4" aria-hidden="true">
+              <span className="flex-1 border-t border-dashed border-gray-300" />New page<span className="flex-1 border-t border-dashed border-gray-300" />
+            </p>
+          )}
           <h4 className="bg-slate-100 px-2.5 py-1.5 font-bold text-[13px] mb-3">{sectionHeading(index, fillText(section.title, values))}</h4>
           {section.layout === 'clauses' && (
             <div className="space-y-2">

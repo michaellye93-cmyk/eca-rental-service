@@ -1,5 +1,5 @@
 import type { jsPDF } from 'jspdf';
-import { BLANK, fillText, isClauseHeading, parseParagraphs, parseRows, sectionHeading, type AgreementTemplate } from './template.ts';
+import { BLANK, fillText, isClauseHeading, parseParagraphs, parseRows, sectionHeading, startsNewPage, type AgreementTemplate } from './template.ts';
 
 // A4 in millimetres
 const PAGE_W = 210;
@@ -49,6 +49,10 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
   y += 4;
 
   template.sections.forEach((section, index) => {
+    if (startsNewPage(section, index) && y > MARGIN) {
+      doc.addPage();
+      y = MARGIN;
+    }
     // Section heading on a light band
     font('bold', 10.5);
     const heading = wrap(sectionHeading(index, fill(section.title)), WIDTH - 5);

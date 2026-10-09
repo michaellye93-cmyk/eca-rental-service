@@ -28,3 +28,18 @@ test('a long section flows onto more pages, each numbered', () => {
 test('file names drop characters Windows refuses', () => {
   assert.equal(agreementFileName('Sewa Beli', 'XAA1001', 'Fixture/Driver: One'), 'Agreement Sewa Beli XAA1001 Fixture Driver  One.pdf');
 });
+
+test('every section after the first starts on a new page unless it is set to follow on', async () => {
+  const { startsNewPage } = await import('../services/agreements/template.ts');
+  const template = defaultTemplate('SEWA_BIASA');
+  template.sections = template.sections.map(s => ({ ...s, body: s.layout === 'clauses' ? '1. Short.' : s.body }));
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawAgreement(doc, template, {});
+  assert.equal(doc.getNumberOfPages(), 4, 'sections A, B, C and D each on their own page');
+  assert.equal(startsNewPage(template.sections[0], 0), false);
+  assert.equal(startsNewPage({ ...template.sections[2], keepWithPrevious: true }, 2), false);
+  const together = { ...template, sections: template.sections.map(s => ({ ...s, keepWithPrevious: true })) };
+  const one = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawAgreement(one, together, {});
+  assert.ok(one.getNumberOfPages() < 4);
+});

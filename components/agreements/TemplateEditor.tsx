@@ -156,6 +156,12 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
                   <button type="button" onClick={() => remove(index)} aria-label={`Remove ${section.title}`} className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
                 </div>
               </div>
+              {index > 0 && (
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={!section.keepWithPrevious} onChange={event => setSection(index, { keepWithPrevious: !event.target.checked })} />
+                  Start on a new page
+                </label>
+              )}
               <textarea aria-label={`${section.title} text`} rows={Math.min(24, Math.max(5, section.body.split('\n').length + 1))} className={`${inputLook} font-mono text-[13px]`}
                 value={section.body} onChange={event => setSection(index, { body: event.target.value })} />
               <p className="text-xs text-gray-500">{HINTS[section.layout]}</p>

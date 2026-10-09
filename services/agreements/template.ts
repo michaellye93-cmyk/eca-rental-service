@@ -13,6 +13,8 @@ export interface AgreementSection {
   title: string;
   layout: SectionLayout;
   body: string;
+  /** Print straight after the previous section instead of starting a new page. */
+  keepWithPrevious?: boolean;
 }
 
 export interface AgreementTemplate {
@@ -233,6 +235,9 @@ export const missingFields = (template: AgreementTemplate, input: AgreementInput
 export const sectionHeading = (index: number, title: string): string =>
   `SECTION ${String.fromCharCode(65 + index)} - ${title.trim().toUpperCase()}`;
 
+/** Every section but the first starts on a new page, unless it is set to follow on from the one before. */
+export const startsNewPage = (section: AgreementSection, index: number): boolean => index > 0 && !section.keepWithPrevious;
+
 /** A table or signature body as rows of cells, split on "|"; blank lines dropped. */
 export const parseRows = (body: string): string[][] =>
   body.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => line.split('|').map(cell => cell.trim()));
@@ -257,7 +262,8 @@ export const templateFromStored = (kind: AgreementKind, stored: unknown): Agreem
   const value = stored as { title?: unknown; sections?: unknown } | null;
   if (!value || typeof value.title !== 'string' || !Array.isArray(value.sections)) return defaultTemplate(kind);
   const sections = value.sections.filter((s): s is AgreementSection =>
-    !!s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.body === 'string' && isLayout(s.layout));
+    !!s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.body === 'string' && isLayout(s.layout)
+    && (s.keepWithPrevious === undefined || typeof s.keepWithPrevious === 'boolean'));
   return sections.length === value.sections.length ? { title: value.title, sections } : defaultTemplate(kind);
 };
 
