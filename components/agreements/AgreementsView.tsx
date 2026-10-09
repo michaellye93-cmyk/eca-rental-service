@@ -12,6 +12,7 @@ import {
 } from '../../services/agreements/template';
 import AgreementPreview from './AgreementPreview';
 import TemplateEditor from './TemplateEditor';
+import SearchPick from './SearchPick';
 
 interface AgreementsViewProps {
   drivers: Driver[];
@@ -94,7 +95,7 @@ export default function AgreementsView({ drivers, isAdmin, today }: AgreementsVi
     }));
   };
   const chooseDriver = (id: string) => {
-    setDriverId(id);
+    setDriverId(id); // clearing keeps what was typed; only picking a driver fills the form
     const driver = activeDrivers.find(d => d.id === id);
     if (!driver) return;
     setForm(current => fromDriver(driver, current));
@@ -205,10 +206,8 @@ export default function AgreementsView({ drivers, isAdmin, today }: AgreementsVi
 
           <Step number={2} title="Customer and terms">
             <Field id="agreement-driver" label="Fill from an existing driver (optional)">
-              <select id="agreement-driver" className={inputLook} value={driverId} onChange={event => chooseDriver(event.target.value)}>
-                <option value="">New customer</option>
-                {activeDrivers.map(d => <option key={d.id} value={d.id}>{d.name} · {d.carPlate}</option>)}
-              </select>
+              <SearchPick id="agreement-driver" value={driverId} onChange={chooseDriver} placeholder="Search a driver's name or plate, or leave empty for a new customer"
+                options={activeDrivers.map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}` }))} />
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field id="agreement-name" label="Full name (as in NRIC)"><input id="agreement-name" className={inputLook} value={form.customer.name} onChange={setCustomer('name')} /></Field>
@@ -251,11 +250,9 @@ export default function AgreementsView({ drivers, isAdmin, today }: AgreementsVi
           </Step>
 
           <Step number={3} title="Vehicle">
-            <Field id="agreement-car" label="Car">
-              <select id="agreement-car" className={inputLook} value={carId} onChange={event => chooseCar(event.target.value)}>
-                <option value="">Choose a car</option>
-                {cars.map(car => <option key={car.id} value={car.id}>{car.plateNumber} · {car.make} {car.model}</option>)}
-              </select>
+            <Field id="agreement-car" label="Car (from Fleet)">
+              <SearchPick id="agreement-car" value={carId} onChange={chooseCar} placeholder="Search plate, make or model"
+                options={cars.map(car => ({ id: car.id, label: `${car.plateNumber} · ${car.make} ${car.model}` }))} />
             </Field>
             {carId && (
               <>
