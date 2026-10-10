@@ -26,7 +26,7 @@ export default function AgreementPreview({ template, values }: AgreementPreviewP
     <article className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 sm:p-10 text-[13px] leading-relaxed text-gray-900 max-w-3xl mx-auto">
       {/* Letterhead, as printed at the top of every page */}
       <header className="flex items-center gap-3 border-b-2 border-[#C5A059] pb-3 mb-6">
-        <img src="/logo.svg" alt="" className="w-10 h-10" />
+        <img src="/agreement-logo.png" alt="" className="w-10 h-10 object-contain" onError={event => { event.currentTarget.src = '/logo.svg'; }} />
         <div className="min-w-0">
           <p className="font-bold text-[#1E3A5F]">{values.company_name || 'Company name'}</p>
           <p className="text-[11px] text-gray-500">

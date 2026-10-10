@@ -52,8 +52,14 @@ function drawLogo(doc: jsPDF, x: number, y: number, size: number) {
   doc.setLineJoin('miter');
 }
 
-/** Draws the filled agreement into an empty jsPDF document (A4, millimetres). */
-export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: Record<string, string>) {
+/** The company logo printed in the letterhead (public/agreement-logo.png); the drawn mark is used if it can't load. */
+export const LOGO_URL = '/agreement-logo.png';
+
+/**
+ * Draws the filled agreement into an empty jsPDF document (A4, millimetres). `logo` is the company logo as a PNG data
+ * URL; without it a drawn mark stands in.
+ */
+export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: Record<string, string>, logo?: string) {
   let y = TOP;
   const fill = (text: string) => fillText(text, values);
   const newPage = () => {
@@ -233,7 +239,8 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
   const ref = values.agreement_ref ? `Ref. ${values.agreement_ref}` : '';
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page);
-    drawLogo(doc, MARGIN, 11, 15);
+    if (logo) doc.addImage(logo, 'PNG', MARGIN, 10, 16, 16, 'agreement-logo', 'FAST');
+    else drawLogo(doc, MARGIN, 11, 15);
     const textX = MARGIN + 19;
     font('bold', 11, NAVY);
     if (company) doc.text(company, textX, 16);
@@ -263,10 +270,27 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
 export const agreementFileName = (kindLabel: string, plate: string, customer: string): string =>
   `${['Agreement', kindLabel, plate, customer].map(part => (part || '').replace(/[\\/:*?"<>|]+/g, ' ').trim()).filter(Boolean).join(' ')}.pdf`;
 
+/** The company logo as a data URL, or undefined when it can't be fetched (the PDF then uses the drawn mark). */
+async function loadLogo(): Promise<string | undefined> {
+  try {
+    const response = await fetch(LOGO_URL);
+    if (!response.ok) return undefined;
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 /** Builds the PDF in the browser and downloads it. Nothing is uploaded or stored. jsPDF loads only when used. */
 export async function downloadAgreementPdf(template: AgreementTemplate, values: Record<string, string>, fileName: string) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  drawAgreement(doc, template, values);
+  drawAgreement(doc, template, values, await loadLogo());
   doc.save(fileName);
 }

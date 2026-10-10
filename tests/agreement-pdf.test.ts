@@ -71,3 +71,14 @@ test('the Lessor signs as the company (name and company no.), and every box carr
   assert.ok(text.includes('NRIC / Co. No.: 000000-X'));
   assert.equal(text.split('Date: 9 October 2026').length - 1, 3, 'Lessee, Lessor and Witness');
 });
+
+test('the company logo image heads every page when given; without it the drawn mark is used', async () => {
+  const { readFileSync } = await import('node:fs');
+  const png = `data:image/png;base64,${readFileSync(new URL('../public/agreement-logo.png', import.meta.url)).toString('base64')}`;
+  const withLogo = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawAgreement(withLogo, defaultTemplate('SEWA_BIASA'), {}, png);
+  assert.ok(withLogo.output().includes('/Subtype /Image'));
+  const without = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawAgreement(without, defaultTemplate('SEWA_BIASA'), {});
+  assert.ok(!without.output().includes('/Subtype /Image'));
+});
