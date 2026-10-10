@@ -8,7 +8,7 @@ import {
 const input: AgreementInput = {
   kind: 'SEWA_BIASA',
   company: { company_name: 'Fixture Rentals Sdn Bhd', company_reg_no: '000000-X', company_address: '1 Fixture Road', company_phone: '60300000000',
-    company_email: 'fixture@example.test', company_bank_account: 'Fixture Bank 0000000000', company_bank_account_sewabeli: '', company_bank_account_sewabiasa: '', company_rep_name: 'Fixture Director', company_rep_id: '700101-00-0001' },
+    company_email: 'fixture@example.test', company_bank_account_sewabeli: 'Fixture Bank 1111', company_bank_account_sewabiasa: 'Fixture Bank 2222' },
   customer: { name: 'Fixture Driver One', nric: '900101-00-0001', phone: '60120000001', address: '2 Fixture Lane',
     emergencyName: 'Fixture Contact', emergencyPhone: '60120000009' },
   terms: { agreementDate: '2026-10-09', startDate: '2026-10-10', cycle: 'WEEKLY', duration: '52', rent: '350', deposit: '1000', downpayment: '', endDate: '' },
@@ -135,12 +135,10 @@ test('the driver profile fills the emergency contact and approved driver; the De
   assert.deepEqual([agreementValues({ ...input, ...none, kind: 'SEWABELI' }).downpayment_amount, agreementValues({ ...input, ...none, kind: 'SEWABELI' }).deposit_amount], ['None', 'None']);
 });
 
-test('the payment account follows the agreement type; an older single account still fills both', () => {
-  const company = { ...input.company, company_bank_account: '', company_bank_account_sewabeli: 'Fixture Bank 1111', company_bank_account_sewabiasa: 'Fixture Bank 2222' };
+test('the payment account follows the agreement type', () => {
+  const company = { ...input.company, company_bank_account_sewabeli: 'Fixture Bank 1111', company_bank_account_sewabiasa: 'Fixture Bank 2222' };
   assert.equal(agreementValues({ ...input, kind: 'SEWABELI', company }).company_bank_account, 'Fixture Bank 1111');
   assert.equal(agreementValues({ ...input, kind: 'SEWA_BIASA', company }).company_bank_account, 'Fixture Bank 2222');
-  const older = { ...input.company, company_bank_account: 'Fixture Bank 0000', company_bank_account_sewabeli: '', company_bank_account_sewabiasa: '' };
-  assert.equal(agreementValues({ ...input, kind: 'SEWABELI', company: older }).company_bank_account, 'Fixture Bank 0000');
 });
 
 test('Sewa Biasa: one week\'s notice to end, and default once rent is 3 days overdue', () => {

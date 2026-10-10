@@ -87,3 +87,16 @@ test('the file can safely run twice', async () => {
     assert.equal((await login(db, NRIC_A)).driver.name, 'Fixture Driver A');
   } finally { await db.close(); }
 });
+
+test('the later clean-up drops the unused approved-driver column and nothing else, and can run twice', async () => {
+  const db = await setup();
+  try {
+    await migrate(db, '20261010090000_drop_approved_driver.sql');
+    await migrate(db, '20261010090000_drop_approved_driver.sql');
+    const cols = (await db.query<{ column_name: string }>(`select column_name from information_schema.columns where table_schema='public' and table_name='drivers'`)).rows.map(r => r.column_name);
+    assert.ok(!cols.includes('approved_driver'));
+    assert.ok(cols.includes('emergency_contact_name') && cols.includes('emergency_contact_phone'));
+    await asAnon(db);
+    assert.equal((await login(db, NRIC_A)).driver.name, 'Fixture Driver A');
+  } finally { await db.close(); }
+});
