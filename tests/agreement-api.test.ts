@@ -54,3 +54,15 @@ test('a downloaded agreement is kept as a copy against the driver', async () => 
   assert.deepEqual(saved.calls[0].args, ['driver_agreements']);
   assert.deepEqual(saved.calls[1].args[0], { driver_id: 'd1', kind: 'SEWABELI', content: copy });
 });
+
+test("the driver's newest saved copy is read back with its signing-day details", async () => {
+  const content = { kind: 'SEWA_BIASA', template: { title: 'T', sections: [] }, values: { agreement_ref: 'FIX-9' },
+    signing: { agreementDate: '2026-10-10', extra: { agreement_ref: 'FIX-9', witness_name: 'Fixture Witness' } } };
+  const read = fakeClient({ data: [{ content, created_at: '2026-10-10T07:00:00Z' }], error: null });
+  const copy = await agreementApi(read.client).latestCopy('d1');
+  assert.deepEqual(read.calls.map(c => c.method), ['from', 'select', 'eq', 'order', 'limit']);
+  assert.deepEqual(read.calls[2].args, ['driver_id', 'd1']);
+  assert.deepEqual(copy?.signing, { agreementDate: '2026-10-10', extra: { agreement_ref: 'FIX-9', witness_name: 'Fixture Witness' } });
+  assert.equal(copy?.createdAt, '2026-10-10T07:00:00Z');
+  assert.equal(await agreementApi(fakeClient({ data: [], error: null }).client).latestCopy('d1'), null);
+});

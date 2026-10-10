@@ -101,11 +101,26 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    if (!initialDriverId) return;
-    setDriverId(initialDriverId);
+    if (initialDriverId) setDriverId(initialDriverId);
+  }, [initialDriverId]);
+
+  // Choosing a driver starts the signing-day details afresh, then fills them from the agreement last saved for them
+  const [lastSaved, setLastSaved] = useState('');
+  useEffect(() => {
     setExtra({});
     setAgreementDate(today);
-  }, [initialDriverId, today]);
+    setLastSaved('');
+    if (!driverId) return;
+    let live = true;
+    api.latestCopy(driverId).then(copy => {
+      if (!live || !copy) return;
+      const extraKeys = (keys: Record<string, string>) => Object.fromEntries(Object.entries(keys).filter(([key]) => SIGNING_FIELDS.includes(key)));
+      setExtra(copy.signing?.extra ?? extraKeys(copy.values));
+      if (copy.signing?.agreementDate) setAgreementDate(copy.signing.agreementDate);
+      setLastSaved(copy.createdAt);
+    }).catch(() => { /* no copy readable: start blank */ });
+    return () => { live = false; };
+  }, [driverId, today]);
 
   // The chosen driver's deposit and downpayment, from their Deposits panel; read again whenever the driver list reloads
   // (it does after Add / Edit Driver saves, which may have recorded a deposit)
@@ -184,7 +199,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     let saveProblem = '';
     try {
       // The copy for the driver's page first; the PDF downloads even if the copy can't be kept
-      await api.saveCopy(driver.id, { kind: input.kind, template, values });
+      await api.saveCopy(driver.id, { kind: input.kind, template, values, signing: { agreementDate, extra } });
+      setLastSaved(new Date().toISOString());
     } catch (err) {
       saveProblem = reason(err);
     }
@@ -225,7 +241,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
               </button>
             )}
           >
-            <SearchPick id="agreement-driver" value={driverId} onChange={id => { setDriverId(id); setResult(null); setExtra({}); setAgreementDate(today); }}
+            <SearchPick id="agreement-driver" value={driverId} onChange={id => { setDriverId(id); setResult(null); }}
               placeholder="Search a driver's name or plate" options={activeDrivers.map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}` }))} />
             {!driver ? (
               <p className="text-sm text-gray-500">New customer? Add them first with <b>Add Driver</b> and record their deposit or downpayment, then choose them here.</p>
@@ -274,7 +290,11 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
 
           {driver && (
             <Step number={3} title="Signing-day details">
-              <p className="text-xs text-gray-500 -mt-2">Only for this agreement; kept in its copy, not on the driver's profile.</p>
+              <p className="text-xs text-gray-500 -mt-2">
+                {lastSaved
+                  ? `Filled from the agreement saved on ${longDate(lastSaved.slice(0, 10))}. Change anything and press Save & download PDF again.`
+                  : "Only for this agreement; kept with it when you press Save & download PDF."}
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="agreement-date" className={labelLook}>Agreement date</label>

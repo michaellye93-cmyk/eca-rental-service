@@ -17,6 +17,8 @@ export interface AgreementCopy {
   kind: AgreementKind;
   template: AgreementTemplate;
   values: Record<string, string>;
+  /** What staff typed on signing day (date as YYYY-MM-DD), so the page can show it again. */
+  signing?: { agreementDate: string; extra: Record<string, string> };
 }
 
 /** A saved copy as the driver's sign-in returns it (with when it was made), or null when there is none or it is broken. */
@@ -25,8 +27,11 @@ export const copyFromStored = (stored: unknown): (AgreementCopy & { createdAt: s
   if (!value || (value.kind !== 'SEWABELI' && value.kind !== 'SEWA_BIASA') || !value.values || typeof value.values !== 'object') return null;
   const template = soundTemplate(value.template);
   if (!template) return null;
-  const values = Object.fromEntries(Object.entries(value.values as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
-  return { kind: value.kind, template, values, createdAt: typeof value.created_at === 'string' ? value.created_at : '' };
+  const strings = (from: unknown) => Object.fromEntries(Object.entries((from ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
+  const values = strings(value.values);
+  const signed = (value as { signing?: { agreementDate?: unknown; extra?: unknown } }).signing;
+  const signing = signed && typeof signed.agreementDate === 'string' ? { agreementDate: signed.agreementDate, extra: strings(signed.extra) } : undefined;
+  return { kind: value.kind, template, values, ...(signing ? { signing } : {}), createdAt: typeof value.created_at === 'string' ? value.created_at : '' };
 };
 
 type Result<T> = { data: T | null; error: { message: string } | null };
@@ -61,6 +66,12 @@ export function agreementApi(client: AgreementClient) {
     /** Keeps a copy of a downloaded agreement (its template and filled-in values, not the PDF) for the driver's own page. */
     async saveCopy(driverId: string, copy: AgreementCopy): Promise<void> {
       check(await client.from('driver_agreements').insert({ driver_id: driverId, kind: copy.kind, content: copy }));
+    },
+    /** The newest copy saved for this driver, or null. */
+    async latestCopy(driverId: string): Promise<(AgreementCopy & { createdAt: string }) | null> {
+      const rows = check<{ content: unknown; created_at: string }[]>(await client.from('driver_agreements')
+        .select('content, created_at').eq('driver_id', driverId).order('created_at', { ascending: false }).limit(1)) ?? [];
+      return rows.length ? copyFromStored({ ...(rows[0].content as object), created_at: rows[0].created_at }) : null;
     },
     /** Goes back to the built-in draft by removing the saved template. */
     async resetTemplate(kind: AgreementKind): Promise<void> {
