@@ -142,3 +142,9 @@ test('the payment account follows the agreement type; an older single account st
   const older = { ...input.company, company_bank_account: 'Fixture Bank 0000', company_bank_account_sewabeli: '', company_bank_account_sewabiasa: '' };
   assert.equal(agreementValues({ ...input, kind: 'SEWABELI', company: older }).company_bank_account, 'Fixture Bank 0000');
 });
+
+test('Sewa Biasa: one week\'s notice to end, and default once rent is 3 days overdue', () => {
+  const terms = defaultTemplate('SEWA_BIASA').sections.find(s => s.layout === 'clauses')!.body;
+  assert.match(terms, /5\.1 Ending\. Either party may end the rental with one week's written notice/);
+  assert.match(terms, /5\.2 Default and recovery\. If rent is 3 days overdue/);
+});

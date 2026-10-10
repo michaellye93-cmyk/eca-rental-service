@@ -163,8 +163,8 @@ const BIASA_TERMS = para(
   '4.3 Costs. The Lessee pays tolls, fuel, parking, summonses and fines incurred during the rental. The Lessor renews road tax and insurance and arranges approved servicing; the Lessee brings the Vehicle in when asked.',
   '4.4 Accidents. Tell the Lessor at once, make a police report within 24 hours, and do not admit fault or arrange repairs without approval. The Lessee pays the insurance excess and any damage caused by negligence or misuse, and rent continues while the Vehicle is off the road for those reasons.',
   '5. ENDING, RECOVERY AND GENERAL',
-  '5.1 Ending. Either party may end the rental with two weeks\' written notice. The Vehicle, keys and documents must be returned in the handover condition, apart from fair wear and tear.',
-  '5.2 Default and recovery. If rent is 14 days overdue or the Lessee breaks this agreement, the Lessor sends a written notice giving 7 days to put it right. If it is not put right, the Lessor may end the rental, recover the Vehicle by lawful means and claim arrears and recovery costs. If the Vehicle is abandoned, used illegally or held by a third party, the Lessor may recover it at once.',
+  '5.1 Ending. Either party may end the rental with one week\'s written notice. The Vehicle, keys and documents must be returned in the handover condition, apart from fair wear and tear.',
+  '5.2 Default and recovery. If rent is 3 days overdue or the Lessee breaks this agreement, the Lessor sends a written notice giving 7 days to put it right. If it is not put right, the Lessor may end the rental, recover the Vehicle by lawful means and claim arrears and recovery costs. If the Vehicle is abandoned, used illegally or held by a third party, the Lessor may recover it at once.',
   '5.3 General. Notices may be given by hand, email or WhatsApp. The Lessor may use the Lessee\'s personal and GPS data to run this agreement. Any change must be in writing and signed by both parties. Malaysian law applies.',
 );
 
