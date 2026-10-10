@@ -115,6 +115,30 @@ const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming:
   return obligations;
 };
 
+const isoDay = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+export interface RentAllocation { paymentDate: string; dueDate: string | null; amount: number }
+
+/**
+ * What each payment (cash plus service claim) settled under the rent schedule, as of the reference day: the due date of
+ * the rent it paid, oldest first. Money left over once every listed cycle is paid has no due date (paid ahead).
+ */
+export const rentAllocations = (driver: Driver, referenceDate: Date = kualaLumpurNow()): RentAllocation[] => {
+  const settled: RentAllocation[] = buildRentSchedule(driver, referenceDate, true).flatMap(obligation =>
+    obligation.allocations.map(allocation => ({ paymentDate: isoDay(allocation.date), dueDate: isoDay(obligation.dueDate), amount: allocation.amount })));
+  const referenceEnd = endOfDay(referenceDate);
+  const paidByDay = new Map<string, number>();
+  for (const payment of driver.paymentHistory || []) {
+    const date = parseDate(payment.date);
+    if (isNaN(date.getTime()) || date > referenceEnd) continue;
+    paidByDay.set(isoDay(date), (paidByDay.get(isoDay(date)) ?? 0) + payment.amount + (payment.serviceClaim || 0));
+  }
+  for (const allocation of settled) paidByDay.set(allocation.paymentDate, (paidByDay.get(allocation.paymentDate) ?? 0) - allocation.amount);
+  const leftover = [...paidByDay].filter(([, amount]) => amount > 0.01).map(([paymentDate, amount]) => ({ paymentDate, dueDate: null, amount: Math.round(amount * 100) / 100 }));
+  return [...settled, ...leftover].sort((a, b) => a.paymentDate.localeCompare(b.paymentDate) || Number(a.dueDate === null) - Number(b.dueDate === null));
+};
+
 /** Rent cycles owed at which a driver turns BAD: 3 weeks of weekly rent, 1.1 months of monthly rent (MID below it). */
 export const badThresholdCycles = (cycle: Driver['rentalCycle']): number => (cycle === 'MONTHLY' ? 1.1 : 3);
 

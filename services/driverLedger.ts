@@ -1,5 +1,5 @@
 import type { Driver } from '../types.ts';
-import { generateDriverInvoices } from '../utils.ts';
+import { generateDriverInvoices, rentAllocations } from '../utils.ts';
 
 const cents = (value: number) => Math.round(value * 100) / 100;
 const monthEnd = (month: string) => {
@@ -49,6 +49,52 @@ export function monthCollection(drivers: Driver[], month: string, today: Date): 
     collected += row.collected;
   }
   return { billed: cents(billed), collected: cents(collected), rate: billed ? collected / billed : null };
+}
+
+export interface CollectionSplit {
+  month: string; // YYYY-MM
+  /** Rent falling due in the month (up to today for the current month). */
+  due: number;
+  /** Everything paid in the month: cash, service claims and deposit contra. */
+  collected: number;
+  /** Paid in the month for rent due in the month. */
+  current: number;
+  /** Paid in the month for rent that fell due in an earlier month. */
+  arrears: number;
+  /** Paid in the month for rent not yet due, or beyond the recorded contract. */
+  ahead: number;
+  /** Of `collected`, service claims and deposit contra: settled rent that brought in no cash. */
+  notCash: number;
+}
+
+/**
+ * Money collected each month split by the rent it settled (oldest rent first, as the rent schedule allocates it): this
+ * month's rent, old arrears or paid ahead. Delisted drivers count too: what they pay is arrears.
+ */
+export function collectionSplit(drivers: Driver[], months: string[], today: Date): CollectionSplit[] {
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const rows = months.map((month) => ({ month, due: 0, collected: 0, current: 0, arrears: 0, ahead: 0, notCash: 0 }));
+  const byMonth = new Map(rows.map((row) => [row.month, row]));
+  const ledgers = drivers.map((driver) => driverMonthlyLedger(driver, months, today));
+  ledgers.forEach((ledger) => ledger.forEach((entry) => { byMonth.get(entry.month)!.due += entry.billed; }));
+  for (const driver of drivers) {
+    for (const allocation of rentAllocations(driver, today)) {
+      const row = byMonth.get(allocation.paymentDate.slice(0, 7));
+      if (!row) continue;
+      row.collected += allocation.amount;
+      const dueMonth = allocation.dueDate?.slice(0, 7);
+      if (dueMonth === undefined || dueMonth > row.month) row.ahead += allocation.amount;
+      else if (dueMonth < row.month) row.arrears += allocation.amount;
+      else row.current += allocation.amount;
+    }
+    for (const payment of driver.paymentHistory) {
+      const row = byMonth.get(payment.date.slice(0, 7));
+      if (!row || payment.date > todayKey) continue;
+      row.notCash += (payment.serviceClaim ?? 0) + (['DEPOSIT CONTRA', 'CLAIM'].includes(payment.paymentMethod ?? '') ? payment.amount : 0);
+    }
+  }
+  return rows.map((row) => ({ month: row.month, due: cents(row.due), collected: cents(row.collected), current: cents(row.current),
+    arrears: cents(row.arrears), ahead: cents(row.ahead), notCash: cents(row.notCash) }));
 }
 
 export interface AgeingBucket { label: string; amount: number; drivers: number }
