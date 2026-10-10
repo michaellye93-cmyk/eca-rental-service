@@ -181,19 +181,19 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     busy.current = true;
     setDownloading(true);
     setResult(null);
-    let saved = '';
+    let saveProblem = '';
     try {
       // The copy for the driver's page first; the PDF downloads even if the copy can't be kept
       await api.saveCopy(driver.id, { kind: input.kind, template, values });
-      saved = ' A copy is on the driver\'s page.';
     } catch (err) {
-      saved = ` It was NOT saved to the driver's page: ${reason(err)}`;
+      saveProblem = reason(err);
     }
+    const savedText = saveProblem ? `It was NOT saved to the driver's page (${saveProblem}); press again to retry.` : "Saved to the driver's page.";
     try {
       await downloadAgreementPdf(template, values, agreementFileName(typeLabel, input.car.plateNumber, input.customer.name));
-      setResult({ ok: !saved.includes('NOT'), text: `Saved and downloaded.${saved}` });
+      setResult({ ok: !saveProblem, text: `Downloaded. ${savedText}` });
     } catch (err) {
-      setResult({ ok: false, text: `The PDF couldn't be made: ${reason(err)}` });
+      setResult({ ok: false, text: `The PDF couldn't be made: ${reason(err)}. ${savedText}` });
     } finally {
       busy.current = false;
       setDownloading(false);
