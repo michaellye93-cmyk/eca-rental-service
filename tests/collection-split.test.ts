@@ -58,3 +58,11 @@ test('drivers add up, and the month in progress counts only what has happened by
   // By 10 Sept only the 7 Sept rent is due (RM100 each). The second driver's RM200 settles 3 Aug and 10 Aug rent.
   assert.deepEqual(rows, [{ month: '2026-09', due: 200, collected: 200, current: 0, arrears: 200, ahead: 0, notCash: 0 }]);
 });
+
+test('in the month in progress, rent not yet due counts as paid ahead, whatever the recorded contract length', () => {
+  for (const contractDuration of [52, 1]) {
+    const early: Driver = { ...WEEKLY, id: 'd5', contractStartDate: '2026-09-07', contractDuration, paymentHistory: [pay('e', '2026-09-08', 200)] };
+    const [september] = collectionSplit([early], ['2026-09'], new Date('2026-09-10T12:00:00'));
+    assert.deepEqual(september, { month: '2026-09', due: 100, collected: 200, current: 100, arrears: 0, ahead: 100, notCash: 0 });
+  }
+});

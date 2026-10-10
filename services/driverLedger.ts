@@ -83,7 +83,8 @@ export function collectionSplit(drivers: Driver[], months: string[], today: Date
       if (!row) continue;
       row.collected += allocation.amount;
       const dueMonth = allocation.dueDate?.slice(0, 7);
-      if (dueMonth === undefined || dueMonth > row.month) row.ahead += allocation.amount;
+      // Rent not yet due (later this month too) is paid ahead, so the month in progress never counts more than is due.
+      if (dueMonth === undefined || dueMonth > row.month || allocation.dueDate! > todayKey) row.ahead += allocation.amount;
       else if (dueMonth < row.month) row.arrears += allocation.amount;
       else row.current += allocation.amount;
     }

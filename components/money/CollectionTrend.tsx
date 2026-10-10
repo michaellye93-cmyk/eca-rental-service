@@ -63,7 +63,7 @@ export default function CollectionTrend({ rows }: { rows: CollectionSplit[] }) {
                   <th className="px-2 py-1 text-right">For this month</th>
                   <th className="px-2 py-1 text-right">For old arrears</th>
                   <th className="px-2 py-1 text-right">Paid ahead</th>
-                  <th className="px-2 py-1 text-right">This month's rent paid</th>
+                  <th className="px-2 py-1 text-right">Rent paid within the month</th>
                   <th className="px-2 py-1 text-right">Not cash</th>
                 </tr>
               </thead>
