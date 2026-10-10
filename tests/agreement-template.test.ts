@@ -148,3 +148,9 @@ test('Sewa Biasa: one week\'s notice to end, and default once rent is 3 days ove
   assert.match(terms, /5\.1 Ending\. Either party may end the rental with one week's written notice/);
   assert.match(terms, /5\.2 Default and recovery\. If rent is 3 days overdue/);
 });
+
+test("the opening paragraph names the company without its address (the address is in the letterhead)", () => {
+  for (const kind of ['SEWABELI', 'SEWA_BIASA'] as const) {
+    assert.ok(!(defaultTemplate(kind).preamble ?? '').includes('{{company_address}}'), kind);
+  }
+});

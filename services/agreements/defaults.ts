@@ -194,7 +194,7 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
 });
 
 const preamble = (verb: string) => para(
-  'THIS AGREEMENT is made on {{agreement_date}} BETWEEN {{company_name}} (Company No. {{company_reg_no}}) of {{company_address}} (the "Lessor") AND {{customer_name}} (NRIC No. {{customer_nric}}) of {{customer_address}} (the "Lessee").',
+  'THIS AGREEMENT is made on {{agreement_date}} BETWEEN {{company_name}} (Company No. {{company_reg_no}}) (the "Lessor") AND {{customer_name}} (NRIC No. {{customer_nric}}) of {{customer_address}} (the "Lessee").',
   `The Lessor agrees to ${verb} the vehicle described in Section D (the "Vehicle") to the Lessee, and the Lessee agrees to take it, on the terms set out in Sections A to D of this Agreement.`,
 );
 
