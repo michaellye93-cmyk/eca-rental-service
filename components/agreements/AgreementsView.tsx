@@ -191,7 +191,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     }
     try {
       await downloadAgreementPdf(template, values, agreementFileName(typeLabel, input.car.plateNumber, input.customer.name));
-      setResult({ ok: !saved.includes('NOT'), text: `Downloaded.${saved}` });
+      setResult({ ok: !saved.includes('NOT'), text: `Saved and downloaded.${saved}` });
     } catch (err) {
       setResult({ ok: false, text: `The PDF couldn't be made: ${reason(err)}` });
     } finally {
@@ -313,7 +313,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             {result && <p role={result.ok ? 'status' : 'alert'} className={`text-sm ${result.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{result.text}</p>}
             <button type="button" onClick={() => void download()} disabled={downloading || !driver || !depositsReady}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold py-2.5 rounded-lg shadow-sm flex items-center justify-center gap-2">
-              <Download className="w-4 h-4" aria-hidden="true" /> {downloading ? 'Making the PDF…' : 'Download PDF'}
+              <Download className="w-4 h-4" aria-hidden="true" /> {downloading ? 'Saving and making the PDF…' : 'Save & download PDF'}
             </button>
             <p className="text-xs text-gray-500">The PDF is made on this computer. A copy of the agreement's text is kept so the driver can see it on their phone.</p>
           </div>
