@@ -260,9 +260,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try { return localStorage.getItem('eca_admin_section'); } catch { return null; }
   });
   const [section, setSection] = usePersistedState<Section>('eca_admin_section', sectionFromStored(legacyView) ?? 'DRIVERS', sectionFromStored);
-  // The driver a card's Agreement button opens the Agreements page with
-  const [agreementDriverId, setAgreementDriverId] = useState('');
-  const openAgreement = (driver: Driver) => { setAgreementDriverId(driver.id); setSection('AGREEMENTS'); };
   const [moneyPage, setMoneyPage] = usePersistedState<MoneyPage>(
     'eca_admin_money_page',
     MONEY_PAGE_FROM_STORED[storedSection ?? ''] ?? MONEY_PAGE_FROM_STORED[legacyView ?? ''] ?? 'cash',
@@ -1440,12 +1437,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button type="button" onClick={() => handleOpenPaymentModal(driver)} aria-label={`Record payment for ${driver.name}`} className="flex-1 lg:flex-none min-h-11 lg:min-h-0 px-3 lg:px-2.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1 transition-colors">
                                   <span className="font-bold text-xs">RM</span> Payment
                                 </button>
-                                <button type="button" onClick={() => setStatementDriver(driver)} aria-label={`WhatsApp statement for ${driver.name}`} title="WhatsApp statement" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-emerald-800 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"><MessageSquareText className="w-4 h-4" aria-hidden="true" /></button>
-                                <button type="button" onClick={() => openAgreement(driver)} aria-label={`Agreement for ${driver.name}`} title="Agreement" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"><FileSignature className="w-4 h-4" aria-hidden="true" /></button>
-                                <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-4 h-4" aria-hidden="true" /></button>
+                                <button type="button" onClick={() => setStatementDriver(driver)} aria-label={`WhatsApp statement for ${driver.name}`} title="WhatsApp statement" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-emerald-800 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"><MessageSquareText className="w-5 h-5 shrink-0" aria-hidden="true" /></button>
+                                <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-5 h-5 shrink-0" aria-hidden="true" /></button>
                                 {driverScope === 'ACTIVE'
-                                  ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><UserMinus className="w-4 h-4" aria-hidden="true" /></button>
-                                  : <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 p-2 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Trash2 className="w-4 h-4" aria-hidden="true" /></button>}
+                                  ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><UserMinus className="w-5 h-5 shrink-0" aria-hidden="true" /></button>
+                                  : <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Trash2 className="w-5 h-5 shrink-0" aria-hidden="true" /></button>}
                               </div>
                             </div>
                           </div>
@@ -1474,7 +1470,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <section aria-label="Agreements" className="min-h-[500px]">
             <ScreenLoadBoundary>
               <React.Suspense fallback={<div className="p-6">Loading Agreements…</div>}>
-                <AgreementsView drivers={drivers} isAdmin={userRole === 'admin'} today={todayStr} initialDriverId={agreementDriverId} onEditDriver={handleOpenEditModal} />
+                <AgreementsView drivers={drivers} isAdmin={userRole === 'admin'} today={todayStr} onEditDriver={handleOpenEditModal} />
               </React.Suspense>
             </ScreenLoadBoundary>
           </section>
