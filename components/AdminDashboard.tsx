@@ -52,6 +52,8 @@ import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpS
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
+import { loadDeposits } from '../services/depositsApi';
+import { receivedByKind, upfrontToRecord } from '../services/depositTotals';
 
 interface AdminDashboardProps {
   drivers: Driver[];
@@ -60,7 +62,8 @@ interface AdminDashboardProps {
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void | Promise<void>;
   /** Creates the driver; with `upfront`, also records the money received (Deposits panel) once the driver exists. */
   onCreateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
-  onUpdateDriver: (driver: Driver) => Promise<void>;
+  /** Saves the driver; with `upfront`, also records extra deposit/downpayment received (Deposits panel). */
+  onUpdateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
   onLogout: () => void;
@@ -793,7 +796,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditPaymentMethod(null);
   };
 
-  const handleOpenCreateModal = () => { autoDayTag.current = null; setEditingId(null); setFormData(initialFormState); setTagInput(''); setDriverFormError(null); setIsDriverModalOpen(true); };
+  // What the driver's Deposits panel already has, for the deposit/downpayment boxes: zero for a new driver; null while
+  // reading it for an edit; 'unavailable' when it can't be read (the boxes are then hidden and nothing is recorded).
+  const [depositBaseline, setDepositBaseline] = useState<{ DEPOSIT: number; DOWNPAYMENT: number } | null | 'unavailable'>(null);
+  const depositFor = useRef('');
+  const handleOpenCreateModal = () => { autoDayTag.current = null; setEditingId(null); setFormData(initialFormState); setTagInput(''); setDriverFormError(null); depositFor.current = ''; setDepositBaseline({ DEPOSIT: 0, DOWNPAYMENT: 0 }); setIsDriverModalOpen(true); };
   
   const handleOpenEditModal = (driver: Driver) => {
     setEditingId(driver.id);
@@ -820,6 +827,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
     setTagInput('');
     setDriverFormError(null);
+    // Show what is already recorded, so a missing deposit or downpayment can be added here
+    depositFor.current = driver.id;
+    setDepositBaseline(null);
+    loadDeposits(driver.id).then(rows => {
+      if (depositFor.current !== driver.id) return;
+      const received = receivedByKind(rows);
+      setDepositBaseline(received);
+      setFormData(current => ({
+        ...current,
+        upfrontDeposit: received.DEPOSIT ? String(received.DEPOSIT) : '',
+        upfrontDownpayment: received.DOWNPAYMENT ? String(received.DOWNPAYMENT) : '',
+      }));
+    }).catch(() => { if (depositFor.current === driver.id) setDepositBaseline('unavailable'); });
     setIsDriverModalOpen(true);
   };
 
@@ -860,8 +880,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (editingId) {
         const originalDriver = drivers.find(d => d.id === editingId);
         if (!originalDriver) return;
+        const upfront = depositChanges();
+        if (typeof upfront === 'string') { setDriverFormError(upfront); return; }
         const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, ...profile } = submissionData;
-        await onUpdateDriver({ ...originalDriver, ...profile });
+        await onUpdateDriver({ ...originalDriver, ...profile }, upfront);
       } else {
         // One active driver per NRIC; a returning driver (old record delisted) gets a new record for the new car
         const existing = driverWithNric(drivers.filter(d => !d.isDelisted), formData.nric);
@@ -869,8 +891,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setDriverFormError(`This NRIC already belongs to ${existing.name} (${existing.carPlate}), who is still active. Edit that driver, or delist the old contract first.`);
           return;
         }
-        const upfront = { deposit: Number(formData.upfrontDeposit) || 0, downpayment: formData.category === 'SEWABELI' ? Number(formData.upfrontDownpayment) || 0 : 0 };
-        if (upfront.deposit < 0 || upfront.downpayment < 0) { setDriverFormError('Enter the deposit and downpayment as amounts of zero or more.'); return; }
+        const upfront = depositChanges();
+        if (typeof upfront === 'string') { setDriverFormError(upfront); return; }
         const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, ...profile } = submissionData;
         await onCreateDriver({ id: Date.now().toString(), ...profile, totalAmountPaid: 0, paymentHistory: [] }, upfront);
       }
@@ -881,6 +903,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // Error handled by parent, keep modal open
     }
   };
+
+  /** The deposit/downpayment to record from the form (only the rise over what is recorded), or why it can't be saved. */
+  function depositChanges(): { deposit: number; downpayment: number } | undefined | string {
+    if (!depositBaseline || depositBaseline === 'unavailable') return undefined;
+    // Sewa Biasa has no downpayment box: leave the downpayment as it is
+    return upfrontToRecord({ deposit: formData.upfrontDeposit, downpayment: formData.category === 'SEWABELI' ? formData.upfrontDownpayment : '' }, depositBaseline);
+  }
 
   const renderPaymentSchedule = (driver: Driver) => {
     const invoices = generateDriverInvoices(driver, kualaLumpurNow());
@@ -1571,7 +1600,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <input id="driver-end" type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractEndDate} onChange={e => setFormData({...formData, contractEndDate: e.target.value})} />
               </div>
             </div>
-            {!editingId && (
+            {depositBaseline === null && editingId && <p role="status" className="text-xs text-gray-500">Reading the deposit and downpayment…</p>}
+            {depositBaseline && depositBaseline !== 'unavailable' && (
               <div className={`grid grid-cols-1 ${formData.category === 'SEWABELI' ? 'sm:grid-cols-2' : ''} gap-4`}>
                 {formData.category === 'SEWABELI' && (
                   <div>
@@ -1583,7 +1613,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label htmlFor="driver-deposit" className="block text-sm font-bold text-gray-700 mb-1">{formData.category === 'SEWABELI' ? 'Security deposit received (RM)' : 'Deposit received (RM)'}</label>
                   <input id="driver-deposit" type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.upfrontDeposit} onChange={e => setFormData({...formData, upfrontDeposit: e.target.value})} placeholder="0 if none" />
                 </div>
-                <p className="text-xs text-gray-500 sm:col-span-2 -mt-2">Recorded in the driver's Deposits panel with today's date. Refunds and later changes are made there.</p>
+                <p className="text-xs text-gray-500 sm:col-span-2 -mt-2">
+                  {editingId
+                    ? 'Shows what the Deposits panel has received. Raise it to record money not yet entered (with today\'s date); refunds and corrections are made in the Deposits panel.'
+                    : 'Recorded in the driver\'s Deposits panel with today\'s date. Refunds and later changes are made there.'}
+                </p>
               </div>
             )}
             <div>

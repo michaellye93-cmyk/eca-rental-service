@@ -347,6 +347,21 @@ const App: React.FC = () => {
     }
   };
 
+  /** Records deposit/downpayment received in the Deposits panel; reports (but does not throw) a failure. */
+  const recordUpfront = async (driverId: string, upfront: { deposit: number; downpayment: number } | undefined, note: string, saved: string) => {
+    const entries = [
+      ...(upfront?.downpayment ? [{ kind: 'DOWNPAYMENT' as const, amount: upfront.downpayment }] : []),
+      ...(upfront?.deposit ? [{ kind: 'DEPOSIT' as const, amount: upfront.deposit }] : []),
+    ];
+    try {
+      for (const entry of entries) {
+        await addDeposit({ driver_id: driverId, kind: entry.kind, entry: 'RECEIVED', entry_date: kualaLumpurToday(), amount: entry.amount, note });
+      }
+    } catch (err: any) {
+      setNotice({ type: 'error', text: `${saved}, but the deposit/downpayment was not recorded: ${err.message}. Record it in the driver's Deposits panel.` });
+    }
+  };
+
   const handleCreateDriver = async (newDriver: Driver, upfront?: { deposit: number; downpayment: number }) => {
     let driverId: string;
     try {
@@ -359,25 +374,16 @@ const App: React.FC = () => {
       throw err; // keeps the form open with the details still filled in
     }
     // The money received at sign-up goes to the Deposits panel; the driver stays created even if this fails
-    const entries = [
-      ...(upfront?.downpayment ? [{ kind: 'DOWNPAYMENT' as const, amount: upfront.downpayment }] : []),
-      ...(upfront?.deposit ? [{ kind: 'DEPOSIT' as const, amount: upfront.deposit }] : []),
-    ];
-    try {
-      for (const entry of entries) {
-        await addDeposit({ driver_id: driverId, kind: entry.kind, entry: 'RECEIVED', entry_date: kualaLumpurToday(), amount: entry.amount, note: 'Recorded with Add Driver' });
-      }
-    } catch (err: any) {
-      setNotice({ type: 'error', text: `Driver created, but the deposit/downpayment was not recorded: ${err.message}. Record it in the driver's Deposits panel.` });
-    }
+    await recordUpfront(driverId, upfront, 'Recorded with Add Driver', 'Driver created');
     await fetchDriversAndPayments(true);
   };
 
-  const handleUpdateDriver = async (updatedDriver: Driver) => {
+  const handleUpdateDriver = async (updatedDriver: Driver, upfront?: { deposit: number; downpayment: number }) => {
     try {
       const dbUpdate = toDriverRow(updatedDriver);
       const { error } = await supabase.from('drivers').update(dbUpdate).eq('id', updatedDriver.id);
       if (error) throw error;
+      await recordUpfront(updatedDriver.id, upfront, 'Recorded with Edit Driver', 'Driver saved');
       await fetchDriversAndPayments(true);
     } catch (err: any) {
       setNotice({ type: 'error', text: `Driver not saved: ${err.message}` });
