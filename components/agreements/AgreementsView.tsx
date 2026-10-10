@@ -107,7 +107,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     setAgreementDate(today);
   }, [initialDriverId, today]);
 
-  // The chosen driver's deposit and downpayment, from their Deposits panel
+  // The chosen driver's deposit and downpayment, from their Deposits panel; read again whenever the driver list reloads
+  // (it does after Add / Edit Driver saves, which may have recorded a deposit)
   useEffect(() => {
     if (!driverId) return;
     let live = true;
@@ -115,7 +116,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
       .then(rows => { if (live) setDeposits({ driverId, received: receivedByKind(rows) }); })
       .catch(err => { if (live) setDeposits({ driverId, received: null, problem: reason(err) }); });
     return () => { live = false; };
-  }, [driverId]);
+  }, [driverId, drivers]);
 
   const activeDrivers = useMemo(() => drivers.filter(d => !d.isDelisted).sort((a, b) => a.name.localeCompare(b.name)), [drivers]);
   const driver = drivers.find(d => d.id === driverId) ?? null;

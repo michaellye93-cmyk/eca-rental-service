@@ -31,7 +31,8 @@ export default function DriverDeposits({ driver, onContraPayment }: { driver: Pi
     let live = true;
     loadDeposits(driver.id).then((list) => { if (live) setRows(list); }).catch(() => { if (live) setUnavailable(true); });
     return () => { live = false; };
-  }, [driver.id]);
+    // Read again when the driver record reloads (Add / Edit Driver may have recorded a deposit)
+  }, [driver.id, driver]);
 
   if (unavailable) return null;
   const held = depositHeld((rows ?? []).filter(r => r.kind === 'DEPOSIT'));
