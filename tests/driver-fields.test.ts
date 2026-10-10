@@ -74,12 +74,11 @@ test('the emergency contact and approved driver are saved only when set or being
     contractDuration: 52, rentalRate: 300, totalAmountPaid: 0, paymentHistory: [] };
   const plain = toDriverRow(base);
   assert.equal('emergency_contact_name' in plain, false);
-  assert.equal('approved_driver' in plain, false);
-  const filled = toDriverRow({ ...base, emergencyContactName: ' Fixture Contact ', emergencyContactPhone: '60120000009', approvedDriver: '' });
-  assert.deepEqual([filled.emergency_contact_name, filled.emergency_contact_phone, filled.approved_driver], ['Fixture Contact', '60120000009', null]);
+  const filled = toDriverRow({ ...base, emergencyContactName: ' Fixture Contact ', emergencyContactPhone: '' });
+  assert.deepEqual([filled.emergency_contact_name, filled.emergency_contact_phone], ['Fixture Contact', null]);
   const read = fromDriverRow({ id: 'd1', nric: 'x', name: 'n', car_plate: 'XAA1001', contract_start_date: '2026-10-10', contract_duration_weeks: 52, rental_rate: 300,
-    emergency_contact_name: 'Fixture Contact', emergency_contact_phone: null, approved_driver: 'None' });
-  assert.deepEqual([read.emergencyContactName, read.emergencyContactPhone, read.approvedDriver], ['Fixture Contact', undefined, 'None']);
+    emergency_contact_name: 'Fixture Contact', emergency_contact_phone: null });
+  assert.deepEqual([read.emergencyContactName, read.emergencyContactPhone], ['Fixture Contact', undefined]);
 });
 
 test('an NRIC already on a driver is found whatever the dashes or spaces, delisted drivers included', async () => {

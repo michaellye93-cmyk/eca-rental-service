@@ -12,6 +12,7 @@ import { Database, UploadCloud, RefreshCw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
 import { readAllRows } from './services/pagedRead';
+import { addDeposit } from './services/depositsApi';
 import Notice, { type NoticeMessage } from './components/Notice';
 
 /** This browser's storage, or null when the browser blocks it. */
@@ -346,16 +347,30 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCreateDriver = async (newDriver: Driver) => {
+  const handleCreateDriver = async (newDriver: Driver, upfront?: { deposit: number; downpayment: number }) => {
+    let driverId: string;
     try {
       const dbDriver = { ...toDriverRow(newDriver), is_delisted: false, tags: newDriver.tags || [] };
-      const { error } = await supabase.from('drivers').insert(dbDriver);
+      const { data, error } = await supabase.from('drivers').insert(dbDriver).select('id').single();
       if (error) throw error;
-      await fetchDriversAndPayments(true);
+      driverId = (data as { id: string }).id;
     } catch (err: any) {
       setNotice({ type: 'error', text: `Driver not created: ${err.message}` });
       throw err; // keeps the form open with the details still filled in
     }
+    // The money received at sign-up goes to the Deposits panel; the driver stays created even if this fails
+    const entries = [
+      ...(upfront?.downpayment ? [{ kind: 'DOWNPAYMENT' as const, amount: upfront.downpayment }] : []),
+      ...(upfront?.deposit ? [{ kind: 'DEPOSIT' as const, amount: upfront.deposit }] : []),
+    ];
+    try {
+      for (const entry of entries) {
+        await addDeposit({ driver_id: driverId, kind: entry.kind, entry: 'RECEIVED', entry_date: kualaLumpurToday(), amount: entry.amount, note: 'Recorded with Add Driver' });
+      }
+    } catch (err: any) {
+      setNotice({ type: 'error', text: `Driver created, but the deposit/downpayment was not recorded: ${err.message}. Record it in the driver's Deposits panel.` });
+    }
+    await fetchDriversAndPayments(true);
   };
 
   const handleUpdateDriver = async (updatedDriver: Driver) => {

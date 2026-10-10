@@ -6,7 +6,7 @@ import type { AgreementInput, AgreementKind } from './template.ts';
 /** A blank agreement of this type, dated `today` (YYYY-MM-DD). */
 export const blankInput = (kind: AgreementKind, today: string): Omit<AgreementInput, 'company'> => ({
   kind,
-  customer: { name: '', nric: '', phone: '', address: '', emergencyName: '', emergencyPhone: '', approvedDriver: '' },
+  customer: { name: '', nric: '', phone: '', address: '', emergencyName: '', emergencyPhone: '' },
   terms: { agreementDate: today, startDate: '', endDate: '', cycle: 'WEEKLY', duration: '', rent: '', deposit: '', downpayment: '' },
   car: { plateNumber: '', make: '', model: '' },
   details: { chassisNo: '', registeredDate: '', colour: '', ownerName: '', ownerId: '' },
@@ -22,7 +22,7 @@ export const fromDriver = (driver: Driver, current: Omit<AgreementInput, 'compan
   kind: (driver.category || '').toUpperCase().replace(/\s+/g, '_') === 'SEWA_BIASA' ? 'SEWA_BIASA' : 'SEWABELI',
   customer: {
     name: driver.name || '', nric: driver.nric || '', phone: driver.phone || '', address: driver.address || '',
-    emergencyName: driver.emergencyContactName || '', emergencyPhone: driver.emergencyContactPhone || '', approvedDriver: driver.approvedDriver || '',
+    emergencyName: driver.emergencyContactName || '', emergencyPhone: driver.emergencyContactPhone || '',
   },
   terms: {
     ...current.terms,

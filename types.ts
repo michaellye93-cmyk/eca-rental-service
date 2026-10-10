@@ -30,8 +30,6 @@ export interface Driver {
   /** Who to call when the driver can't be reached, and their phone; printed on the agreement. */
   emergencyContactName?: string;
   emergencyContactPhone?: string;
-  /** Another driver allowed to drive the car (or "None"); printed on the agreement. */
-  approvedDriver?: string;
   carPlate: string;
   contractStartDate: string; // YYYY-MM-DD
   contractEndDate?: string; // YYYY-MM-DD (New)

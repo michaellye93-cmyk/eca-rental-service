@@ -60,7 +60,7 @@ export const emptyCompany = (): CompanyDetails => ({
 export interface AgreementInput {
   kind: AgreementKind;
   company: CompanyDetails;
-  customer: { name: string; nric: string; phone: string; address: string; emergencyName: string; emergencyPhone: string; approvedDriver: string };
+  customer: { name: string; nric: string; phone: string; address: string; emergencyName: string; emergencyPhone: string };
   terms: {
     agreementDate: string;
     startDate: string;
@@ -140,7 +140,6 @@ const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => 
   customer_address: { label: 'Customer address', value: i => i.customer.address },
   emergency_contact_name: { label: 'Emergency contact (driver profile)', value: i => i.customer.emergencyName },
   emergency_contact_phone: { label: 'Emergency phone (driver profile)', value: i => i.customer.emergencyPhone },
-  approved_driver: { label: 'Approved other driver (driver profile)', value: i => i.customer.approvedDriver },
   agreement_type: { label: 'Agreement type', value: i => KIND_LABELS[i.kind] },
   agreement_date: { label: 'Agreement date', value: i => longDate(i.terms.agreementDate) },
   start_date: { label: 'Start date', value: i => longDate(i.terms.startDate) },
@@ -200,7 +199,6 @@ const FIELDS: Record<string, { label: string; value: (input: AgreementInput) => 
 /** Friendlier names for the extra boxes the built-in drafts ask for (typed per agreement, not stored). */
 export const EXTRA_LABELS: Record<string, string> = {
   agreement_ref: 'Agreement reference no.',
-  vehicle_location: 'Normal vehicle location',
   odometer_km: 'Odometer at handover (km)',
   fuel_level: 'Fuel level at handover',
   witness_name: 'Witness name',

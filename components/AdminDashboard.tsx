@@ -58,7 +58,8 @@ interface AdminDashboardProps {
   userRole: 'admin' | 'staff'; // Role passed from parent
   onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void;
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void | Promise<void>;
-  onCreateDriver: (driver: Driver) => Promise<void>;
+  /** Creates the driver; with `upfront`, also records the money received (Deposits panel) once the driver exists. */
+  onCreateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
   onUpdateDriver: (driver: Driver) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
@@ -359,7 +360,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     address: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
-    approvedDriver: '',
+    // Money received at sign-up (new drivers only; later changes go in the driver's Deposits panel)
+    upfrontDeposit: '',
+    upfrontDownpayment: '',
     nric: '',
     // contactNumber removed
     carPlate: '',
@@ -802,7 +805,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       address: driver.address || '',
       emergencyContactName: driver.emergencyContactName || '',
       emergencyContactPhone: driver.emergencyContactPhone || '',
-      approvedDriver: driver.approvedDriver || '',
+      upfrontDeposit: '',
+      upfrontDownpayment: '',
       nric: driver.nric,
       // contactNumber removed
       carPlate: driver.carPlate,
@@ -850,14 +854,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined), whatsappGroup: whatsappGroup || (originalGroup ? '' : undefined),
       emergencyContactName: keepOrClear(formData.emergencyContactName, original?.emergencyContactName),
       emergencyContactPhone: keepOrClear(formData.emergencyContactPhone, original?.emergencyContactPhone),
-      approvedDriver: keepOrClear(formData.approvedDriver, original?.approvedDriver),
     };
 
     try {
       if (editingId) {
         const originalDriver = drivers.find(d => d.id === editingId);
         if (!originalDriver) return;
-        await onUpdateDriver({ ...originalDriver, ...submissionData });
+        const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, ...profile } = submissionData;
+        await onUpdateDriver({ ...originalDriver, ...profile });
       } else {
         // One active driver per NRIC; a returning driver (old record delisted) gets a new record for the new car
         const existing = driverWithNric(drivers.filter(d => !d.isDelisted), formData.nric);
@@ -865,7 +869,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setDriverFormError(`This NRIC already belongs to ${existing.name} (${existing.carPlate}), who is still active. Edit that driver, or delist the old contract first.`);
           return;
         }
-        await onCreateDriver({ id: Date.now().toString(), ...submissionData, totalAmountPaid: 0, paymentHistory: [] });
+        const upfront = { deposit: Number(formData.upfrontDeposit) || 0, downpayment: formData.category === 'SEWABELI' ? Number(formData.upfrontDownpayment) || 0 : 0 };
+        if (upfront.deposit < 0 || upfront.downpayment < 0) { setDriverFormError('Enter the deposit and downpayment as amounts of zero or more.'); return; }
+        const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, ...profile } = submissionData;
+        await onCreateDriver({ id: Date.now().toString(), ...profile, totalAmountPaid: 0, paymentHistory: [] }, upfront);
       }
       // The save handlers reload the list themselves
       setDriverFormError(null);
@@ -1502,7 +1509,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <label htmlFor="driver-address" className="block text-sm font-bold text-gray-700 mb-1">Address</label>
               <textarea id="driver-address" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={2} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Driver Address"></textarea>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="driver-emergency-name" className="block text-sm font-bold text-gray-700 mb-1">Emergency contact</label>
                 <input id="driver-emergency-name" type="text" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.emergencyContactName} onChange={e => setFormData({...formData, emergencyContactName: e.target.value})} placeholder="Name (for the agreement)" />
@@ -1510,10 +1517,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div>
                 <label htmlFor="driver-emergency-phone" className="block text-sm font-bold text-gray-700 mb-1">Emergency phone</label>
                 <input id="driver-emergency-phone" type="tel" inputMode="tel" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.emergencyContactPhone} onChange={e => setFormData({...formData, emergencyContactPhone: e.target.value})} placeholder="e.g. 012-345 6789" />
-              </div>
-              <div>
-                <label htmlFor="driver-approved" className="block text-sm font-bold text-gray-700 mb-1">Approved other driver</label>
-                <input id="driver-approved" type="text" autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.approvedDriver} onChange={e => setFormData({...formData, approvedDriver: e.target.value})} placeholder="Name, or None" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1568,6 +1571,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <input id="driver-end" type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractEndDate} onChange={e => setFormData({...formData, contractEndDate: e.target.value})} />
               </div>
             </div>
+            {!editingId && (
+              <div className={`grid grid-cols-1 ${formData.category === 'SEWABELI' ? 'sm:grid-cols-2' : ''} gap-4`}>
+                {formData.category === 'SEWABELI' && (
+                  <div>
+                    <label htmlFor="driver-downpayment" className="block text-sm font-bold text-gray-700 mb-1">Downpayment received (RM)</label>
+                    <input id="driver-downpayment" type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.upfrontDownpayment} onChange={e => setFormData({...formData, upfrontDownpayment: e.target.value})} placeholder="0 if none" />
+                  </div>
+                )}
+                <div>
+                  <label htmlFor="driver-deposit" className="block text-sm font-bold text-gray-700 mb-1">{formData.category === 'SEWABELI' ? 'Security deposit received (RM)' : 'Deposit received (RM)'}</label>
+                  <input id="driver-deposit" type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.upfrontDeposit} onChange={e => setFormData({...formData, upfrontDeposit: e.target.value})} placeholder="0 if none" />
+                </div>
+                <p className="text-xs text-gray-500 sm:col-span-2 -mt-2">Recorded in the driver's Deposits panel with today's date. Refunds and later changes are made there.</p>
+              </div>
+            )}
             <div>
               <label htmlFor="driver-tag" className="block text-sm font-bold text-gray-700 mb-1">Tags (Press Enter)</label>
               <div className="flex gap-2">

@@ -64,7 +64,7 @@ function Facts({ rows }: { rows: [string, string][] }) {
 }
 
 /** The signing-day details typed here: they belong to this agreement only and are kept only in its saved copy. */
-const SIGNING_FIELDS = ['agreement_ref', 'witness_name', 'witness_id', 'vehicle_location', 'odometer_km', 'fuel_level'];
+const SIGNING_FIELDS = ['agreement_ref', 'witness_name', 'witness_id', 'odometer_km', 'fuel_level'];
 
 /**
  * The agreement generator. Every detail comes from where it is kept: the driver's profile (Add / Edit Driver), their
@@ -236,7 +236,6 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
                   ['Phone', input.customer.phone],
                   ['Address', input.customer.address],
                   ['Emergency contact', [input.customer.emergencyName, input.customer.emergencyPhone].filter(Boolean).join(', ')],
-                  ['Approved other driver', input.customer.approvedDriver],
                   ['Start date', longDate(input.terms.startDate)],
                   ['End date', values.end_date],
                   ['Rent', values.rent_amount ? `${values.rent_amount} per ${values.rental_cycle}` : ''],

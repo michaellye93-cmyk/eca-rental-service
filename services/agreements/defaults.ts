@@ -15,7 +15,6 @@ const lesseeRows = [
   'Mobile | {{customer_phone}}',
   'Address | {{customer_address}}',
   'Emergency contact | {{emergency_contact_name}}, {{emergency_contact_phone}}',
-  'Approved other driver | {{approved_driver}}',
 ];
 
 const vehicle: AgreementSection = {
@@ -30,7 +29,6 @@ const vehicle: AgreementSection = {
     'Registration date | {{vehicle_registered_date}}',
     'Registered owner | {{vehicle_owner_name}}',
     "Registered owner's NRIC / company no. | {{vehicle_owner_id}}",
-    'Normal vehicle location | {{vehicle_location}}',
     'Odometer at handover | {{odometer_km}} km',
     'Fuel level at handover | {{fuel_level}}',
   ),
