@@ -51,50 +51,75 @@ export function monthCollection(drivers: Driver[], month: string, today: Date): 
   return { billed: cents(billed), collected: cents(collected), rate: billed ? collected / billed : null };
 }
 
+const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/** A stretch of calendar days, `from` to `to` inclusive (YYYY-MM-DD); `key` names it (its first day). */
+export interface Period { key: string; from: string; to: string }
+
+/** The calendar month YYYY-MM as a period. */
+export function monthPeriod(month: string): Period {
+  const [year, number] = month.split('-').map(Number);
+  return { key: month, from: `${month}-01`, to: isoDay(new Date(year, number, 0)) };
+}
+
+/** The last `count` Monday-to-Sunday weeks, oldest first, ending with the week that contains today. */
+export function weekPeriods(today: Date, count: number): Period[] {
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
+  return Array.from({ length: count }, (_, i) => {
+    const from = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * (count - 1 - i));
+    const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6);
+    return { key: isoDay(from), from: isoDay(from), to: isoDay(to) };
+  });
+}
+
 export interface CollectionSplit {
-  month: string; // YYYY-MM
-  /** Rent falling due in the month (up to today for the current month). */
+  /** The period's key (its first day, or YYYY-MM for a month). */
+  period: string;
+  /** Rent falling due in the period (up to today for the period in progress). */
   due: number;
-  /** Everything paid in the month: cash, service claims and deposit contra. */
+  /** Everything paid in the period: cash, service claims and deposit contra. */
   collected: number;
-  /** Paid in the month for rent due in the month. */
+  /** Paid in the period for rent due in the period. */
   current: number;
-  /** Paid in the month for rent that fell due in an earlier month. */
+  /** Paid in the period for rent that fell due before it. */
   arrears: number;
-  /** Paid in the month for rent not yet due, or beyond the recorded contract. */
+  /** Paid in the period for rent not yet due, or beyond the recorded contract. */
   ahead: number;
   /** Of `collected`, service claims and deposit contra: settled rent that brought in no cash. */
   notCash: number;
 }
 
 /**
- * Money collected each month split by the rent it settled (oldest rent first, as the rent schedule allocates it): this
- * month's rent, old arrears or paid ahead. Delisted drivers count too: what they pay is arrears.
+ * Money collected in each period split by the rent it settled (oldest rent first, as the rent schedule allocates it):
+ * the period's own rent, old arrears or paid ahead. Delisted drivers count too: what they pay is arrears.
  */
-export function collectionSplit(drivers: Driver[], months: string[], today: Date): CollectionSplit[] {
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const rows = months.map((month) => ({ month, due: 0, collected: 0, current: 0, arrears: 0, ahead: 0, notCash: 0 }));
-  const byMonth = new Map(rows.map((row) => [row.month, row]));
-  const ledgers = drivers.map((driver) => driverMonthlyLedger(driver, months, today));
-  ledgers.forEach((ledger) => ledger.forEach((entry) => { byMonth.get(entry.month)!.due += entry.billed; }));
+export function collectionSplit(drivers: Driver[], periods: Period[], today: Date): CollectionSplit[] {
+  const todayKey = isoDay(today);
+  const rows = periods.map((period) => ({ period, due: 0, collected: 0, current: 0, arrears: 0, ahead: 0, notCash: 0 }));
+  const rowFor = (date: string) => rows.find((row) => row.period.from <= date && date <= row.period.to);
+  const last = periods.reduce((latest, period) => (period.to > latest ? period.to : latest), '');
   for (const driver of drivers) {
+    // Rent due counts only up to today: rent not yet due is neither due nor owed.
+    for (const invoice of last ? generateDriverInvoices(driver, today, new Date(`${last}T00:00:00`)) : []) {
+      const row = invoice.dueDate <= todayKey ? rowFor(invoice.dueDate) : undefined;
+      if (row) row.due += invoice.amount;
+    }
     for (const allocation of rentAllocations(driver, today)) {
-      const row = byMonth.get(allocation.paymentDate.slice(0, 7));
+      const row = rowFor(allocation.paymentDate);
       if (!row) continue;
       row.collected += allocation.amount;
-      const dueMonth = allocation.dueDate?.slice(0, 7);
-      // Rent not yet due (later this month too) is paid ahead, so the month in progress never counts more than is due.
-      if (dueMonth === undefined || dueMonth > row.month || allocation.dueDate! > todayKey) row.ahead += allocation.amount;
-      else if (dueMonth < row.month) row.arrears += allocation.amount;
+      const due = allocation.dueDate;
+      // Rent not yet due (later in this period too) is paid ahead, so the period in progress never counts more than is due.
+      if (due === null || due > row.period.to || due > todayKey) row.ahead += allocation.amount;
+      else if (due < row.period.from) row.arrears += allocation.amount;
       else row.current += allocation.amount;
     }
     for (const payment of driver.paymentHistory) {
-      const row = byMonth.get(payment.date.slice(0, 7));
-      if (!row || payment.date > todayKey) continue;
-      row.notCash += (payment.serviceClaim ?? 0) + (['DEPOSIT CONTRA', 'CLAIM'].includes(payment.paymentMethod ?? '') ? payment.amount : 0);
+      const row = payment.date <= todayKey ? rowFor(payment.date) : undefined;
+      if (row) row.notCash += (payment.serviceClaim ?? 0) + (['DEPOSIT CONTRA', 'CLAIM'].includes(payment.paymentMethod ?? '') ? payment.amount : 0);
     }
   }
-  return rows.map((row) => ({ month: row.month, due: cents(row.due), collected: cents(row.collected), current: cents(row.current),
+  return rows.map((row) => ({ period: row.period.key, due: cents(row.due), collected: cents(row.collected), current: cents(row.current),
     arrears: cents(row.arrears), ahead: cents(row.ahead), notCash: cents(row.notCash) }));
 }
 

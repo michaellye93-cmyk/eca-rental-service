@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import type { DriverWithMetrics } from '../../types';
 import { formatCurrency, kualaLumpurNow, kualaLumpurToday, overdueRent } from '../../utils';
 import { balanceTrend } from '../../services/collections';
-import { arrearsAgeing, collectionSplit, driverMonthlyLedger, monthCollection, type DriverMonth } from '../../services/driverLedger';
+import { arrearsAgeing, collectionSplit, driverMonthlyLedger, monthCollection, monthPeriod, weekPeriods, type DriverMonth } from '../../services/driverLedger';
 import SegmentTrend from './SegmentTrend';
 import CollectionTrend from './CollectionTrend';
 
@@ -47,7 +47,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
   const today = kualaLumpurToday();
   const months = useMemo(() => lastMonths(today, 6), [today]);
 
-  const { rows, strip, arrears, ageing, split } = useMemo(() => {
+  const { rows, strip, arrears, ageing, weekly, thisMonthSplit } = useMemo(() => {
     const now = kualaLumpurNow();
     const all: Row[] = drivers.map((driver) => {
       const trend = balanceTrend(driver, now);
@@ -58,9 +58,12 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
     });
     const active = all.filter((row) => !row.driver.isDelisted);
     const thisMonth = monthCollection(drivers, months[months.length - 1], now);
-    const split = collectionSplit(drivers, months, now);
+    // About the last 3 months, week by week; the tile splits this calendar month the same way.
+    const weekly = collectionSplit(drivers, weekPeriods(now, 13), now);
+    const [thisMonthSplit] = collectionSplit(drivers, [monthPeriod(months[months.length - 1])], now);
     return {
-      split,
+      weekly,
+      thisMonthSplit,
       // Active drivers only, so the total matches "Overdue rent" above.
       ageing: arrearsAgeing(active.map((row) => row.driver), now),
       rows: all,
@@ -98,7 +101,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
             <span>Collected this month</span>
             <strong>{percent(strip.rate)}</strong>
             <small>{money(strip.collected)} of {money(strip.billed)} billed so far</small>
-            {split.length > 0 && <small>{money(split[split.length - 1].current)} for this month's rent · {money(split[split.length - 1].arrears)} for old arrears</small>}
+            {thisMonthSplit && <small>{money(thisMonthSplit.current)} for this month's rent · {money(thisMonthSplit.arrears)} for old arrears</small>}
           </div>
           <div className="finance-total">
             <span>Overdue rent</span>
@@ -118,7 +121,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
         </div>
       </section>
 
-      <CollectionTrend rows={split} />
+      <CollectionTrend rows={weekly} />
 
       <section className="finance-panel" aria-labelledby="collections-ageing-heading">
         <div className="finance-section-heading">
