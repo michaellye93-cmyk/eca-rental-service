@@ -13,6 +13,16 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+// Lets the installed driver app open without a connection (public/sw.js). Production only, so local development
+// never serves stale files; each load also asks the browser to check for a newer worker.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+      .then(registration => registration.update())
+      .catch(() => { /* the site works the same without it */ });
+  });
+}
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
