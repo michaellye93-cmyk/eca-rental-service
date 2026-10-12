@@ -14,6 +14,7 @@ import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
 import { readAllRows } from './services/pagedRead';
 import { addDeposit } from './services/depositsApi';
+import type { UpfrontReceived } from './services/depositTotals';
 import { writeTodaysSnapshotOnce } from './services/dailyStatus';
 import { saveDailyStatus } from './services/collectionsApi';
 import Notice, { type NoticeMessage } from './components/Notice';
@@ -383,21 +384,21 @@ const App: React.FC = () => {
   };
 
   /** Records the deposit/downpayment received at signing (typed only in Add / Edit Driver); reports (but does not throw) a failure. */
-  const recordUpfront = async (driverId: string, upfront: { deposit: number; downpayment: number } | undefined, note: string, saved: string) => {
+  const recordUpfront = async (driverId: string, upfront: UpfrontReceived | undefined, note: string, saved: string) => {
     const entries = [
       ...(upfront?.downpayment ? [{ kind: 'DOWNPAYMENT' as const, amount: upfront.downpayment }] : []),
       ...(upfront?.deposit ? [{ kind: 'DEPOSIT' as const, amount: upfront.deposit }] : []),
     ];
     try {
       for (const entry of entries) {
-        await addDeposit({ driver_id: driverId, kind: entry.kind, entry: 'RECEIVED', entry_date: kualaLumpurToday(), amount: entry.amount, note });
+        await addDeposit({ driver_id: driverId, kind: entry.kind, entry: 'RECEIVED', entry_date: upfront!.date, amount: entry.amount, note });
       }
     } catch (err: any) {
       setNotice({ type: 'error', text: `${saved}, but the deposit/downpayment was not recorded: ${err.message}. Open Edit Driver and save it again.` });
     }
   };
 
-  const handleCreateDriver = async (newDriver: Driver, upfront?: { deposit: number; downpayment: number }) => {
+  const handleCreateDriver = async (newDriver: Driver, upfront?: UpfrontReceived) => {
     let driverId: string;
     try {
       const dbDriver = { ...toDriverRow(newDriver), is_delisted: false, tags: newDriver.tags || [] };
@@ -413,7 +414,7 @@ const App: React.FC = () => {
     await fetchDriversAndPayments(true);
   };
 
-  const handleUpdateDriver = async (updatedDriver: Driver, upfront?: { deposit: number; downpayment: number }) => {
+  const handleUpdateDriver = async (updatedDriver: Driver, upfront?: UpfrontReceived) => {
     try {
       const dbUpdate = toDriverRow(updatedDriver);
       const { error } = await supabase.from('drivers').update(dbUpdate).eq('id', updatedDriver.id);
