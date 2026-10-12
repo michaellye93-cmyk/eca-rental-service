@@ -1,4 +1,5 @@
-import type { DepositKind, DriverDeposit } from './depositsApi.ts';
+import type { DepositEntry, DepositKind, DriverDeposit } from './depositsApi.ts';
+import { formatCurrency } from '../utils.ts';
 
 /** What was received of each kind (refunds and forfeits not taken off): the amounts an agreement states. */
 export const receivedByKind = (rows: Array<Pick<DriverDeposit, 'kind' | 'entry' | 'amount'>>): Record<DepositKind, number> => {
@@ -28,4 +29,16 @@ export const upfrontToRecord = (
     return "To lower a deposit or downpayment already recorded, refund or delete the entry in the driver's Deposits panel.";
   }
   return { deposit: Math.round((deposit - recorded.DEPOSIT) * 100) / 100, downpayment: Math.round((downpayment - recorded.DOWNPAYMENT) * 100) / 100 };
+};
+
+/**
+ * What the driver's Deposits panel can record: only later movements of a security deposit (refund, forfeit, and on
+ * termination a deposit forfeit set against rent). Money received at signing is entered once, in Add / Edit Driver.
+ */
+export const depositPanelEntries = (canContra: boolean): DepositEntry[] => (canContra ? ['REFUNDED', 'FORFEITED', 'CONTRA'] : ['REFUNDED', 'FORFEITED']);
+
+/** Why a refund or forfeit of `amount` cannot be recorded when `held` is what the deposit still holds, or null. */
+export const movementError = (amount: number, held: number): string | null => {
+  if (held <= 0.001) return 'No deposit is held. Enter the deposit received at signing with Edit Driver first.';
+  return amount > held + 0.001 ? `Only ${formatCurrency(held)} is held.` : null;
 };
