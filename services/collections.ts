@@ -71,9 +71,12 @@ export const contactsForDriver = (contacts: CollectionContact[], driverId: strin
 export const latestContact = (contacts: CollectionContact[], driverId: string): CollectionContact | null =>
   contactsForDriver(contacts, driverId, 1)[0] ?? null;
 
+/** The contacts that count as asking the driver to pay: an ask, a follow-up or a statement. */
+export const ASK_KINDS: readonly ContactKind[] = ['ASK', 'FOLLOW_UP', 'STATEMENT'];
+
 /** When the driver was last asked to pay: the latest ask, follow-up or statement; null when none is logged. */
 export const lastAskAt = (contacts: CollectionContact[], driverId: string): string | null =>
-  contacts.filter(contact => contact.driver_id === driverId && ['ASK', 'FOLLOW_UP', 'STATEMENT'].includes(contact.kind))
+  contacts.filter(contact => contact.driver_id === driverId && ASK_KINDS.includes(contact.kind))
     .sort(newestFirst)[0]?.contacted_at ?? null;
 
 /** The daily collection run a Kuala Lumpur time falls in: 1PM (12:00 to 16:59), 9PM (20:00 to 23:59), otherwise none. */
