@@ -29,6 +29,7 @@ export const cancelCashBalance = (id: string, reason: string) => rpc<CashBalance
 export const setFixedCostTreatment = (seriesId: string, treatment: FixedCostTreatment['treatment']) =>
   rpc<FixedCostTreatment[]>('finance_set_fixed_cost_treatment', { p_series_id: seriesId, p_treatment: treatment });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
+export const generateFixedCosts = (month: string, revision: number) => rpc<FinanceInput>('finance_generate_fixed_costs', { p_month: financeMonth(month), p_revision: revision });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });
 export const transitionMonth = (month: string, action: 'READY' | 'CLOSE' | 'REOPEN', revision: number, acknowledgement = '') =>
   rpc<FinanceInput>('finance_transition_month', { p_month: financeMonth(month), p_action: action, p_revision: revision, p_acknowledgement: acknowledgement });

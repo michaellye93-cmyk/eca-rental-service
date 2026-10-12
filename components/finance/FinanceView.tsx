@@ -21,6 +21,7 @@ import type {
 import {
   getFinanceAccess,
   loadMonth,
+  generateFixedCosts,
   postSmartDrive,
   refreshPayments,
   mutateRecord,
@@ -33,7 +34,7 @@ import {
   saveOtherIncome,
 } from "../../services/finance/api";
 import { addDeposit, depositKindFor, depositKindLabel } from "../../services/depositsApi";
-import { buildFinanceReport } from "../../services/finance/calculations";
+import { buildFinanceReport, fixedCostsMissing } from "../../services/finance/calculations";
 import { insuranceCashOutflow, insuranceProblems } from "../../services/finance/insurance";
 import {
   previewSmartDrive,
@@ -290,10 +291,15 @@ export default function FinanceView(props: MoneyProps = {}) {
       setBusy(true);
       setError(null);
       try {
-        const [loaded, meta] = await Promise.all([
+        let [loaded, meta] = await Promise.all([
           loadMonth(selectedMonth),
           loadWorkspaceMeta(selectedMonth),
         ]);
+        // A Draft month opened for the first time gets its Operation Fix Cost lines from Records.
+        if (fixedCostsMissing(loaded)) {
+          loaded = await generateFixedCosts(selectedMonth, loaded.month.revision);
+          meta = await loadWorkspaceMeta(selectedMonth);
+        }
         if (current === generation.current && selectedMonth === month) {
           setInput(loaded);
           setWorkspaceMeta(meta);

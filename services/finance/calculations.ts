@@ -181,4 +181,21 @@ export function calculateFinance(input: FinanceInput) {
   return { vehicles: [...contributions.values()], businesses, totals, corporate_opex: cents(corporateOpex), cash_flow_only: cents(cashFlowOnly), cash_flow_only_items: cashFlowOnlyItems, fleet_unallocated_workshop: cents(fleetWorkshopUnallocated), management_profit: cents(totals.contribution - corporateOpex), issues };
 }
 
+/**
+ * True when a Draft month has a running Operation Fix Cost with no line of its own yet. The database creates each month's
+ * lines from the fixed costs only when asked, so a month opened for the first time starts without them. A line deleted
+ * for the month still counts as its line, so it is not created again.
+ */
+export function fixedCostsMissing(input: FinanceInput): boolean {
+  if (input.month.status !== 'DRAFT') return false;
+  const month = monthKey(input.month.finance_month);
+  const templates = input.fixed_cost_templates ?? [];
+  const seriesOf = new Map(templates.map((template) => [template.id, template.series_id]));
+  const covered = new Set(input.expenses
+    .filter((expense) => expense.fixed_cost_template_id && monthKey(expense.finance_month) === month)
+    .map((expense) => seriesOf.get(expense.fixed_cost_template_id!)));
+  return templates.some((template) => !template.cancelled_at && monthOverlaps({ start_month: template.effective_from, end_month: template.effective_until }, month)
+    && !covered.has(template.series_id));
+}
+
 export const buildFinanceReport = calculateFinance;
