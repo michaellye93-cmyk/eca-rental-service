@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Driver } from '../types';
-import { calculateDriverMetrics, formatCurrency, generateDriverInvoices, getNextDueDate, isSewaBiasa, kualaLumpurNow, parseDate, portalPenalty } from '../utils';
+import { formatCurrency, isSewaBiasa, kualaLumpurNow } from '../utils';
 import { driverPortalView, type PortalTone } from '../services/driverPortal';
 import type { PortalSignIn } from '../services/driverPortalSession';
 import { agreementFileName, downloadAgreementPdf } from '../services/agreements/pdf';
@@ -67,16 +67,12 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, agreement = n
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const now = kualaLumpurNow();
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-  const metrics = calculateDriverMetrics(driver, now);
-  const owed = Math.max(0, metrics.principalOutstanding);
   const cycle = driver.rentalCycle === 'MONTHLY' ? 'month' : 'week';
+  // Every figure on this page comes from the driver's account facts, the same ones the office's driver row reads
   const view = driverPortalView(driver, now, lang);
-  const oldestUnpaid = generateDriverInvoices(driver, now).find(inv => inv.remainingBalance > 0.01 && parseDate(inv.dueDate) <= endOfToday);
-  const nextDue = driver.isDelisted ? null : getNextDueDate(driver, now);
+  const { owed, oldestUnpaidDueDate, penalty } = view.account;
+  const nextDue = driver.isDelisted ? null : view.account.dueDate;
   const ownsAtEnd = !isSewaBiasa(driver);
-  const penalty = portalPenalty(metrics);
   const recent = driver.paymentHistory.slice(0, 5);
   const tone = TONE[view.tone];
 
@@ -168,7 +164,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ driver, agreement = n
               {owed > 0 ? (
                 <>
                   <p className="text-sm font-semibold text-gray-900 mt-0.5">{view.milestone}</p>
-                  {oldestUnpaid && <p className="text-xs text-gray-600 mt-0.5">{t.unpaidSince(portalDate(oldestUnpaid.dueDate, lang))}</p>}
+                  {oldestUnpaidDueDate && <p className="text-xs text-gray-600 mt-0.5">{t.unpaidSince(portalDate(oldestUnpaidDueDate, lang))}</p>}
                 </>
               ) : nextDue && view.upcoming.length === 0 ? (
                 <p className="text-sm text-gray-800 mt-0.5">{t.amountOn(formatCurrency(driver.rentalRate), portalDate(nextDue, lang))}</p>

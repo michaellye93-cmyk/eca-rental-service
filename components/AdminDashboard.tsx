@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Driver, DriverMetrics, DriverStatus, type CollectionTone } from '../types';
-import { driverWithNric, buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
+import { driverWithNric, buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, kualaLumpurNow, kualaLumpurToday, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const FleetView = React.lazy(() => import('./fleet/FleetView'));
 const AgreementsView = React.lazy(() => import('./agreements/AgreementsView'));
@@ -51,6 +51,7 @@ import { BankBadge, PaymentNoteLines, useBankStatus, usePaymentLog } from './Pay
 import { findPossibleDuplicates, isBankReceipt, type PossibleDuplicate } from '../services/paymentLog';
 import { catchUpStatus, collectionSummary, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
+import { driverAccount } from '../services/driverAccount';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
 import { buildAdminPath, linkedWindowLeft, storedFinancePage, type AdminRoute, type DriverAction } from '../services/routes';
@@ -476,13 +477,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Enhance drivers with metrics for sorting
   const driverData = useMemo(() => drivers.map(d => {
-    // Basic financial metrics
-    const metrics = calculateDriverMetrics(d);
+    // The driver's account facts (the same ones the driver's phone page reads): status, weeks owed, last pay, due date
+    const now = kualaLumpurNow();
+    const account = driverAccount(d, now);
+    const metrics = account.metrics;
     const activeBalance = { baseValue: metrics.principalOutstanding, accruedInterest: metrics.penaltyAmount };
     // The recovery bar compares today's balance with the balance at the end of last month
-    const recoveryBaseline = calculateDriverMetrics(d, startOfMonthBaseline(kualaLumpurNow())).principalOutstanding;
+    const recoveryBaseline = calculateDriverMetrics(d, startOfMonthBaseline(now)).principalOutstanding;
     // Late-alert days drive the list's default order (delisted drivers are never late alerts)
-    const lateDays = d.isDelisted ? null : lateAlertDays(d);
+    const lateDays = account.lateDays;
 
     
     // --- DEBT TREND INDICATOR (VIRTUAL SNAPSHOT LOGIC) ---
@@ -515,6 +518,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return {
         ...d,
+        account,
         metrics,
         activeBalance, // Exposed for UI
         recoveryBaseline,
@@ -526,7 +530,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             isStreak: isDebtStreak
         }
     };
-  }), [drivers]);
+    // Worked out again when the Kuala Lumpur day rolls over (screeningDate), so days late and due dates move on overnight
+  }), [drivers, screeningDate]);
 
   // Each active driver's open or recently missed promise, and running catch-up plan, for the row's chips
   const collectionChips = useMemo(() => {
@@ -1396,16 +1401,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   <ul role="list" className="space-y-2">
                     {filteredDrivers.map(driver => {
-                      const m = driver.metrics;
+                      // The row's figures are the driver's account facts, the same ones the driver's phone page reads
+                      const m = driver.account;
                       const expanded = expandedDriverIds.includes(driver.id);
                       const cycleLabel = driver.rentalCycle === 'MONTHLY' ? 'Months' : 'Weeks';
                       // The latest payment and the row's warning: weekly rent 8+ days without a payment; monthly rent the late-alert
                       // rule (oldest unpaid rent 8+ days past its due date), so in the active list a monthly row is red exactly when it
                       // is a late alert (a delisted row still shows rent left unpaid)
-                      const lastPaid = lastPayment(driver, todayNormalized);
-                      const payWarning = lastPayWarning(driver, todayNormalized);
+                      const lastPaid = m.lastPayment;
+                      const payWarning = m.payWarning;
                       const payWarningText = payWarning ? (payWarning.kind === 'overdue' ? `Rent ${payWarning.days} days overdue` : `${payWarning.days} days without payment`) : undefined;
-                      const nextDueStr = formatDate(getNextDueDate(driver), 'N/A');
+                      const nextDueStr = formatDate(m.dueDate, 'N/A');
                       // Active drivers whose day tag disagrees with their rent day (or who have none)
                       const tagCheck = driver.isDelisted ? null : dayTagCheck(driver);
                       const currentOutstanding = driver.activeBalance.baseValue;

@@ -1,11 +1,14 @@
 import type { Driver } from '../types.ts';
 import { DriverStatus } from '../types.ts';
-import { calculateDriverMetrics, formatCurrency, generateDriverInvoices, getNextDueDate, isSewaBiasa, parseDate } from '../utils.ts';
+import { formatCurrency, isSewaBiasa, parseDate } from '../utils.ts';
+import { driverAccount, type DriverAccount } from './driverAccount.ts';
 import { portalDate, portalText, type PortalLang } from './portalText.ts';
 
 export type PortalTone = 'good' | 'warning' | 'neutral';
 
 export interface DriverPortalView {
+  /** The facts every figure below is worded from: the same ones the admin driver row reads (driverAccount). */
+  account: DriverAccount;
   tone: PortalTone;
   title: string;
   message: string;
@@ -21,18 +24,16 @@ export interface DriverPortalView {
   upcoming: { date: string; amount: string }[];
 }
 
-const UPCOMING_COUNT = 3;
-
 /**
  * What the driver's own page says, in the tone the office uses on WhatsApp: recognise each payment, show truthful
- * progress and one concrete next step, never threaten or push for full settlement. Figures come from the shared rent
- * rules (calculateDriverMetrics), so the balance always matches the office.
+ * progress and one concrete next step, never threaten or push for full settlement. Every figure comes from the driver's
+ * account facts (driverAccount, on the shared rent rules), so the balance and dates always match the office.
  */
 export const driverPortalView = (driver: Driver, now: Date, lang: PortalLang = 'en'): DriverPortalView => {
   const t = portalText(lang);
   const date = (value: string | Date) => portalDate(value, lang);
-  const metrics = calculateDriverMetrics(driver, now);
-  const owed = Math.max(0, metrics.principalOutstanding);
+  const account = driverAccount(driver, now);
+  const owed = account.owed;
   const rate = driver.rentalRate;
   const unit = driver.rentalCycle === 'MONTHLY' ? 'month' : 'week';
 
@@ -44,11 +45,10 @@ export const driverPortalView = (driver: Driver, now: Date, lang: PortalLang = '
     title = owed > 0 ? t.finalTitle : t.closedTitle;
     message = owed > 0 ? t.final(formatCurrency(owed)) : t.closed;
   } else if (owed <= 0.01) {
-    const nextDue = getNextDueDate(driver, now);
     tone = 'good';
     title = t.upToDateTitle;
-    message = nextDue ? t.upToDate(formatCurrency(rate), date(nextDue)) : t.nothingOwed;
-  } else if (metrics.status === DriverStatus.BAD) {
+    message = account.dueDate ? t.upToDate(formatCurrency(rate), date(account.dueDate)) : t.nothingOwed;
+  } else if (account.status === DriverStatus.BAD) {
     tone = 'warning';
     title = t.behindTitle;
     message = t.behind(formatCurrency(owed));
@@ -58,37 +58,18 @@ export const driverPortalView = (driver: Driver, now: Date, lang: PortalLang = '
     message = t.catchUp(formatCurrency(owed));
   }
 
-  let milestone: string | null = null;
-  if (owed > 0.01 && rate > 0) {
-    const nextLevel = (Math.ceil(owed / rate - 1e-9) - 1) * rate;
-    const step = owed - nextLevel;
-    milestone = nextLevel <= 0.01
-      ? t.clearAll(formatCurrency(owed))
-      : t.nextStep(formatCurrency(step), formatCurrency(nextLevel));
-  }
+  const step = account.nextStep;
+  const milestone = !step ? null
+    : step.leaves <= 0.01 ? t.clearAll(formatCurrency(owed)) : t.nextStep(formatCurrency(step.amount), formatCurrency(step.leaves));
 
-  const endOfDay = new Date(now);
-  endOfDay.setHours(23, 59, 59, 999);
-  // Cash payments up to today only (a service claim alone is not a payment the driver made); same-day transfers count together.
-  const cashByDay = new Map<string, number>();
-  for (const payment of driver.paymentHistory || []) {
-    const day = parseDate(payment.date);
-    if (payment.amount > 0 && !isNaN(day.getTime()) && day <= endOfDay) {
-      cashByDay.set(payment.date, (cashByDay.get(payment.date) ?? 0) + payment.amount);
-    }
-  }
-  const latestDay = [...cashByDay.keys()].sort((a, b) => parseDate(b).getTime() - parseDate(a).getTime())[0];
-  const thanks = latestDay ? t.thanks(formatCurrency(cashByDay.get(latestDay)!), date(latestDay)) : null;
+  const cash = account.lastCashPayment;
+  const thanks = cash ? t.thanks(formatCurrency(cash.amount), date(cash.date)) : null;
 
-  let progress: DriverPortalView['progress'] = null;
-  if (!driver.isDelisted && driver.contractDuration > 0) {
-    const shown = Math.min(metrics.cyclesElapsed, driver.contractDuration);
-    progress = {
-      label: t.progress(unit, shown, driver.contractDuration),
-      percent: Math.round(metrics.progressPercent),
-      note: metrics.cyclesElapsed > driver.contractDuration ? t.pastLength : null,
-    };
-  }
+  const progress: DriverPortalView['progress'] = account.progress ? {
+    label: t.progress(unit, account.progress.shown, account.progress.length),
+    percent: account.progress.percent,
+    note: account.progress.pastLength ? t.pastLength : null,
+  } : null;
 
   const start = parseDate(driver.contractStartDate);
   const hasStart = !isNaN(start.getTime());
@@ -108,19 +89,7 @@ export const driverPortalView = (driver: Driver, now: Date, lang: PortalLang = '
     contract.push({ key: 'length', label: t.length, value: t.lengthValue(driver.contractDuration, unit) });
   }
 
-  let upcoming: DriverPortalView['upcoming'] = [];
-  if (!driver.isDelisted && hasStart) {
-    const endOfToday = new Date(now);
-    endOfToday.setHours(23, 59, 59, 999);
-    const horizon = new Date(endOfToday);
-    if (driver.rentalCycle === 'MONTHLY') horizon.setMonth(horizon.getMonth() + UPCOMING_COUNT + 1);
-    else horizon.setDate(horizon.getDate() + 7 * (UPCOMING_COUNT + 1));
-    upcoming = generateDriverInvoices(driver, now, horizon)
-      // Rent already paid ahead is not due again; a part-paid cycle shows what is left
-      .filter(invoice => parseDate(invoice.dueDate) > endOfToday && invoice.remainingBalance > 0.01)
-      .slice(0, UPCOMING_COUNT)
-      .map(invoice => ({ date: date(invoice.dueDate), amount: formatCurrency(invoice.remainingBalance) }));
-  }
+  const upcoming = account.upcoming.map(row => ({ date: date(row.date), amount: formatCurrency(row.amount) }));
 
-  return { tone, title, message, milestone, thanks, progress, contract, upcoming };
+  return { account, tone, title, message, milestone, thanks, progress, contract, upcoming };
 };

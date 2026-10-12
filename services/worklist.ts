@@ -1,9 +1,11 @@
-import { generateDriverInvoices, kualaLumpurToday } from '../utils.ts';
+import { kualaLumpurToday } from '../utils.ts';
+import { driverAccount } from './driverAccount.ts';
 import { buildCollectionsData, type ContactSummary, type CollectionsData, type CollectionsDriver, type CollectionsInput, type ContactKind, type PromiseState } from './collections.ts';
 
 /**
  * The day's collection worklist (/admin/worklist): one row per active driver with what to do next, built from the
- * collections data view (buildCollectionsData) so every rent figure comes from the shared rent schedule in utils.ts.
+ * collections data view (buildCollectionsData) and the driver's account facts (driverAccount), so every rent figure comes
+ * from the shared rent schedule in utils.ts.
  * Nothing is sent from it.
  */
 
@@ -116,7 +118,6 @@ export interface WorklistData {
   drivers: WorklistRow[];
 }
 
-const round2 = (amount: number) => Math.round(amount * 100) / 100;
 const lastThanks = (contacts: ContactSummary[] | null, driverId: string): string | null =>
   (contacts ?? []).filter(contact => contact.driver_id === driverId && contact.kind === 'THANKS')
     .reduce<string | null>((latest, contact) => (!latest || contact.contacted_at > latest ? contact.contacted_at : latest), null);
@@ -130,10 +131,11 @@ export function buildWorklist(input: CollectionsInput & { instant: Date }): Work
   const byId = new Map(input.drivers.map(driver => [driver.id, driver]));
   const rows = data.drivers.map((row): WorklistRow => {
     const driver = byId.get(row.id)!;
-    const dueToday = generateDriverInvoices(driver, input.now).find(invoice => invoice.dueDate === input.today) ?? null;
+    // Rent falling due today, from the driver's account facts (driverAccount), as the driver row and phone page read them
+    const dueToday = driverAccount(driver, input.now).dueToday;
     const thanks = lastThanks(input.contacts ?? null, row.id);
     const next_step = nextCollectionStep({
-      now: input.instant, today: input.today, owed: row.status.outstanding, dueTodayUnpaid: dueToday ? dueToday.remainingBalance : 0,
+      now: input.instant, today: input.today, owed: row.status.outstanding, dueTodayUnpaid: dueToday ? dueToday.unpaid : 0,
       arrangement: row.collection.arrangement, lastPaymentDate: row.status.last_payment_date, lastAskAt: row.last_ask_at, lastThanksAt: thanks,
       promise: row.promise ? { state: row.promise.status, date: row.promise.date, loggedOn: row.promise.logged_on } : null,
     });
@@ -144,7 +146,7 @@ export function buildWorklist(input: CollectionsInput & { instant: Date }): Work
       whatsapp_group: row.whatsapp_group,
       status: row.status.risk,
       owed: row.status.outstanding,
-      due_today: dueToday ? { amount: dueToday.amount, unpaid: round2(dueToday.remainingBalance) } : null,
+      due_today: dueToday,
       late_days: row.status.late_days,
       last_payment_date: row.status.last_payment_date,
       promise: row.promise ? { amount: row.promise.amount, date: row.promise.date, status: row.promise.status, paid_so_far: row.promise.paid_so_far } : null,

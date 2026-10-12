@@ -1,11 +1,12 @@
 import type { Driver, Invoice } from '../types.ts';
 import {
   badThresholdCycles, buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, categoryLabel, dayTagCheck, displayPlate, generateDriverInvoices,
-  getNextDueDate, isSewaBiasa, lastPayment, lateAlertDays, mondayToSunday, normalizePlate, outstandingDaysAgo, overdueRent, parseDate,
+  isSewaBiasa, mondayToSunday, normalizePlate, outstandingDaysAgo, overdueRent, parseDate,
   rentDayTag, rentDueAndPaid, shortName,
 } from '../utils.ts';
 import { whoLabel } from './paymentLog.ts';
 import { cashOf } from './moneyDefinitions.ts';
+import { driverAccount } from './driverAccount.ts';
 
 /**
  * The collections tools behind the daily run: WhatsApp statements, promises to pay, catch-up plans, the improving flag,
@@ -404,22 +405,22 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
   warnings.push(...hygieneWarnings(collectionsHygiene(input.drivers, input.bankIn)));
   const cutoff = iso(addDays(todayDate, -60));
 
+  // Each driver's account facts (driverAccount): the same status, balance, days late and dates as the driver row and phone page
   const rows = active
-    .map(driver => ({ driver, metrics: calculateDriverMetrics(driver, now), lateDays: lateAlertDays(driver, now) }))
+    .map(driver => ({ driver, account: driverAccount(driver, now) }))
     .sort((a, b) => cashAtRiskOrder(
-      { name: a.driver.name, lateDays: a.lateDays, outstanding: a.metrics.principalOutstanding },
-      { name: b.driver.name, lateDays: b.lateDays, outstanding: b.metrics.principalOutstanding },
+      { name: a.driver.name, lateDays: a.account.lateDays, outstanding: a.account.owed },
+      { name: b.driver.name, lateDays: b.account.lateDays, outstanding: b.account.owed },
     ));
 
-  const drivers = rows.map(({ driver, metrics, lateDays }): CollectionsDriver => {
+  const drivers = rows.map(({ driver, account }): CollectionsDriver => {
     const tagCheck = dayTagCheck(driver);
+    // The statement's cycles (about two months ahead): the next rent here is the statement's "Sewa seterusnya"
     const cycles = cyclesAround(driver, now);
     const dueSoFar = cycles.filter(invoice => parseDate(invoice.dueDate) <= todayEnd);
     const nextCycle = cycles.find(invoice => parseDate(invoice.dueDate) > todayEnd);
     const nextUnpaid = cycles.find(invoice => parseDate(invoice.dueDate) > todayEnd && invoice.remainingBalance > 0.01);
-    const oldestUnpaid = getNextDueDate(driver, now);
     const trend = balanceTrend(driver, now);
-    const last = lastPayment(driver, now);
     const promise = input.promises ? latestPromise(input.promises, driver.id) : null;
     const plan = input.plans ? runningPlan(input.plans, driver.id, today) : null;
     const planStatus = plan ? catchUpStatus(plan, driver, now) : null;
@@ -446,14 +447,14 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
           ? (isNaN(parseDate(driver.contractStartDate).getTime()) ? null : `${ordinal(parseDate(driver.contractStartDate).getDate())} of each month`)
           : rentDayTag(driver),
         next_due_date: nextUnpaid?.dueDate ?? null,
-        oldest_unpaid_due_date: oldestUnpaid && oldestUnpaid <= todayEnd ? iso(oldestUnpaid) : null,
+        oldest_unpaid_due_date: account.oldestUnpaidDueDate,
       },
       status: {
-        risk: metrics.status,
-        outstanding: round2(metrics.principalOutstanding),
-        cycles_owed: Math.round(metrics.cyclesOwed * 10) / 10,
-        last_payment_date: last ? iso(last.date) : null,
-        late_days: lateDays,
+        risk: account.status,
+        outstanding: round2(account.owed),
+        cycles_owed: Math.round(account.cyclesOwed * 10) / 10,
+        last_payment_date: account.lastPayment?.date ?? null,
+        late_days: account.lateDays,
         balance_change_7d: trend.change7,
         balance_change_28d: trend.change28,
         trend: trend.trend,

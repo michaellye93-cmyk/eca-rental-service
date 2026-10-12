@@ -28,6 +28,12 @@ follows the same rules. Do not add another schedule or allocation copy. Each sch
 object, reference day and horizon (a cache inside `utils.ts`); every data load makes new driver objects, so a reload
 starts afresh. Never change a driver object in place: make a new one.
 
+One driver's position (owed, overdue, status, weeks owed, days late, last payment, due dates, next step, upcoming
+rents, contract progress) is read through `driverAccount` in `services/driverAccount.ts`, built only on those
+`utils.ts` functions. The driver's phone page (`driverPortalView`), the admin driver row and the collections data view
+and worklist all word the same facts, so they show the same numbers and dates. The WhatsApp statement keeps its own
+agreed format.
+
 ## Sections
 
 | Section | Screens | Logic / data access | Main tables |
