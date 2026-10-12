@@ -7,6 +7,7 @@ import { COLLECTED_INCLUDES } from '../../services/moneyDefinitions';
 import { arrearsAgeing, collectionSplit, driverMonthlyLedger, monthCollection, monthPeriod, weekPeriods, type DriverMonth } from '../../services/driverLedger';
 import SegmentTrend from './SegmentTrend';
 import CollectionTrend from './CollectionTrend';
+import DailyBrief from './DailyBrief';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const money = (n: number) => formatCurrency(n || 0);
@@ -37,8 +38,9 @@ interface Row {
 }
 
 /**
- * Money → Collections: who owes rent and whether it is getting better. A summary strip, the 12-week segment trend, one
- * driver table (expand a row for its month-by-month figures) and the arrears owed at each month end.
+ * Money → Collections: who owes rent and whether it is getting better. A summary strip, the daily brief of the last
+ * seven collection runs, the 12-week segment trend, one driver table (expand a row for its month-by-month figures) and
+ * the arrears owed at each month end.
  */
 export default function CollectionsPage({ drivers }: { drivers: DriverWithMetrics[] }) {
   const [sort, setSort] = useState<Sort>('attention');
@@ -121,6 +123,8 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
           </div>
         </div>
       </section>
+
+      <DailyBrief />
 
       <CollectionTrend rows={weekly} />
 
