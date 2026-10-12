@@ -6,6 +6,21 @@
 -- table's link), the file stops with an error and changes nothing, instead of silently taking that with it.
 begin;
 
+-- 0. public.cleanup_all_ghost_invoices_manual (every version): an old function in the live database that no file in the
+--    repository defines and nothing calls. It probably reads public.invoices, so it would only fail once that table is
+--    gone. Dropped first, so even a version tied to the table cannot stop step 1.
+do $$
+declare fn regprocedure;
+begin
+  for fn in
+    select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'cleanup_all_ghost_invoices_manual'
+  loop
+    raise notice 'Dropping function %', fn;
+    execute format('drop function if exists %s', fn);
+  end loop;
+end$$;
+
 -- 1. public.invoices: a copy of the generated rent invoices that the app wrote after each new payment until the
 --    rent engine (utils.ts) became the only source. The app has not read or written it since, and it has been closed
 --    to the browser since 27 Sep (20260927090200_close_public_access.sql).

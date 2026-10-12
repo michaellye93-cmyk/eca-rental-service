@@ -66,7 +66,10 @@ async function setup() {
     create function public.test_get_drivers() returns jsonb language plpgsql security definer as $$begin return (select jsonb_agg(d) from public.drivers d);end;$$;
     create function public.reconcile_bank_statement(batch_transactions jsonb) returns jsonb language plpgsql security definer as $$begin return '[]'::jsonb;end;$$;
     create function public.reconcile_bank_statement(batch_transactions jsonb, strict boolean) returns jsonb language plpgsql security definer as $$begin return '[]'::jsonb;end;$$;
-    create table public.fleet_snapshots(id uuid primary key, snapshot_date date, good_count integer);`);
+    create table public.fleet_snapshots(id uuid primary key, snapshot_date date, good_count integer);
+    -- An old live function in no repository file; it reads the invoices table, so it would fail once that is gone.
+    create function public.cleanup_all_ghost_invoices_manual() returns integer language plpgsql security definer as $$begin return (select count(*) from public.invoices);end;$$;
+    create function public.cleanup_all_ghost_invoices_manual(p_driver uuid) returns integer language plpgsql security definer as $$begin return (select count(*) from public.invoices);end;$$;`);
   for (const file of CHAIN) await migrate(db, file);
   await db.exec(`reset role; select set_config('request.jwt.claims','',false);
     insert into finance_private.months(finance_month) values ('2026-08-01') on conflict do nothing;
@@ -89,6 +92,7 @@ test('the clean-up drops the unused tables and retired functions, keeps posted i
   try {
     assert.equal(await found(db, 'to_regclass', 'public.invoices'), true, 'the fixture starts with the old tables');
     assert.equal(await overloads(db, 'reconcile_bank_statement'), 2);
+    assert.equal(await overloads(db, 'cleanup_all_ghost_invoices_manual'), 2);
     for (const stub of STUBS) assert.equal(await found(db, 'to_regprocedure', stub), true, `${stub} exists before`);
 
     await migrate(db, CLEANUP);
@@ -97,6 +101,7 @@ test('the clean-up drops the unused tables and retired functions, keeps posted i
     assert.equal(await found(db, 'to_regclass', 'public.fleet_snapshots'), false, 'fleet_snapshots is gone');
     assert.equal(await overloads(db, 'reconcile_bank_statement'), 0, 'every reconcile_bank_statement overload is gone');
     assert.equal(await overloads(db, 'test_get_drivers'), 0, 'test_get_drivers is gone');
+    assert.equal(await overloads(db, 'cleanup_all_ghost_invoices_manual'), 0, 'every cleanup_all_ghost_invoices_manual overload is gone');
     for (const stub of STUBS) assert.equal(await found(db, 'to_regprocedure', stub), false, `${stub} is gone`);
 
     const previews = (await db.query<{ filename: string }>(`select filename from finance_private.import_previews order by filename`)).rows.map(r => r.filename);
