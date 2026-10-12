@@ -4,7 +4,8 @@ import type { Driver, PaymentTransaction } from '../types.ts';
 import { buildLateAlerts, generateDriverInvoices, mondayToSunday, rentDueAndPaid } from '../utils.ts';
 import {
   balanceTrend, buildCollectionsData, catchUpStatus, collectionSummary, collectionsHygiene, collectionsJson, contactsForDriver, lastAskAt, latestContact, promiseStatus,
-  runSlotAt, segmentHistory, statementMoney, whatsappStatement, type CatchUpPlan, type CollectionContact, type PaymentPromise,
+  runSlotAt, segmentHistory, statementMoney, whatsappStatement, CONTACT_SUMMARY_COLUMNS, reloadDue, type CatchUpPlan, type CollectionContact,
+  type ContactSummary, type PaymentPromise,
 } from '../services/collections.ts';
 
 const pay = (id: string, date: string, amount: number, reference?: string, serviceClaim = 0): PaymentTransaction =>
@@ -260,10 +261,27 @@ test('F2: the latest contact, the latest ask (asks, follow-ups and statements) a
   assert.deepEqual(contactsForDriver(many, 'a').map(c => c.id), ['m11', 'm10', 'm9', 'm8', 'm7', 'm6', 'm5', 'm4', 'm3', 'm2']);
 });
 
+test('F2: the contact log for all drivers is read without the message text (messages load per driver, when the log is open)', () => {
+  assert.deepEqual(CONTACT_SUMMARY_COLUMNS.split(','), ['id', 'driver_id', 'contacted_at', 'run_slot', 'kind', 'logged_by_name', 'logged_by_role']);
+  const summaries: ContactSummary[] = CONTACTS.map(({ message: _message, ...rest }) => rest);
+  assert.equal(latestContact(summaries, 'a')?.id, 'k3');
+  assert.equal(lastAskAt(summaries, 'a'), '2026-09-28T13:00:00Z');
+  const [, alpha] = buildCollectionsData(dataInput({ contacts: summaries })).drivers;
+  assert.deepEqual(alpha.last_contact, { at: '2026-09-29T01:00:00Z', kind: 'REPLY', run_slot: null });
+});
+
+test('the collections extras reload when the tab comes back into view at most once a minute', () => {
+  const t = Date.parse('2026-10-12T05:00:00Z');
+  assert.equal(reloadDue(null, t), true, 'never loaded');
+  assert.equal(reloadDue(t, t + 30_000), false);
+  assert.equal(reloadDue(t, t + 60_000), false);
+  assert.equal(reloadDue(t, t + 60_001), true);
+});
+
 test('F2: the data view carries each driver\'s last contact and last ask, and says when the contact log is not available', () => {
   const data = buildCollectionsData(dataInput({ contacts: CONTACTS }));
   const [bravo, alpha] = data.drivers;
-  assert.deepEqual(alpha.last_contact, { at: '2026-09-29T01:00:00Z', kind: 'REPLY', run_slot: null, message: 'Driver: tomorrow' });
+  assert.deepEqual(alpha.last_contact, { at: '2026-09-29T01:00:00Z', kind: 'REPLY', run_slot: null }, 'the message text is not in the data view');
   assert.equal(alpha.last_ask_at, '2026-09-28T13:00:00Z');
   assert.equal(bravo.last_contact?.kind, 'THANKS');
   assert.equal(bravo.last_ask_at, null, 'a thank-you is not an ask');

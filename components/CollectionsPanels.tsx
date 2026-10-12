@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HandCoins, MessagesSquare, Target } from 'lucide-react';
 import type { Driver } from '../types';
 import { formatCurrency, formatDate } from '../utils';
-import { CONTACT_KINDS, catchUpStatus, contactsForDriver, latestPromise, promiseStatus, runningPlan, runSlotAt, type CatchUpStatus, type ContactKind, type PromiseState } from '../services/collections';
+import { CONTACT_KINDS, catchUpStatus, contactsForDriver, latestPromise, promiseStatus, runningPlan, runSlotAt, type CatchUpStatus, type CollectionContact, type ContactKind, type PromiseState } from '../services/collections';
 import { whoLabel } from '../services/paymentLog';
-import { logContact, logPromise, removeContact, removePromise, startPlan, stopPlan } from '../services/collectionsApi';
-import type { CollectionsExtras } from './useCollectionsExtras';
+import { loadDriverContacts, logContact, logPromise, removeContact, removePromise, startPlan, stopPlan } from '../services/collectionsApi';
+import { CONTACT_DAYS, type CollectionsExtras } from './useCollectionsExtras';
 import { ConfirmDialog } from './Dialog';
 
 interface CollectionsPanelsProps {
@@ -272,7 +272,11 @@ const KIND_LABEL = Object.fromEntries(CONTACT_KINDS.map(({ kind, label }) => [ki
 const contactTime = (at: string) =>
   new Date(at).toLocaleString('en-GB', { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
 
-/** The driver's last 10 contacts (statements, asks, replies, disputes and so on) and a form to log one. */
+/**
+ * The driver's last 10 contacts (statements, asks, replies, disputes and so on) and a form to log one. The message text
+ * is read here, for this driver only, when the panel is shown, and again whenever the driver's entries in the shared
+ * contact list change (something logged or removed here or from the statement window).
+ */
 function ContactLogPanel({ driver, extras, isAdmin, now }: { driver: Driver; extras: CollectionsExtras; isAdmin: boolean; now: Date }) {
   const [kind, setKind] = useState<ContactKind>('ASK');
   const [slot, setSlot] = useState<string>(() => runSlotAt(now) ?? '');
@@ -280,12 +284,24 @@ function ContactLogPanel({ driver, extras, isAdmin, now }: { driver: Driver; ext
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toRemove, setToRemove] = useState<string | null>(null);
+  const [entries, setEntries] = useState<CollectionContact[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // The driver's latest entries (without text) from the shared list: when they change, the texts are read again
+  const entryKey = extras.contacts === null ? null : contactsForDriver(extras.contacts, driver.id).map(entry => entry.id).join(',');
+  useEffect(() => {
+    if (entryKey === null) return;
+    if (entryKey === '') { setEntries([]); setLoadError(null); return; }
+    let live = true;
+    const since = new Date(Date.now() - CONTACT_DAYS * 86_400_000).toISOString();
+    loadDriverContacts(driver.id, since)
+      .then(rows => { if (live) { setEntries(rows); setLoadError(null); } })
+      .catch(err => { if (live) setLoadError(err instanceof Error ? err.message : 'try again'); });
+    return () => { live = false; };
+  }, [driver.id, entryKey]);
   const icon = <MessagesSquare className="w-4 h-4 text-teal-600" aria-hidden="true" />;
 
   if (!extras.loaded) return <Card title="Contact log" icon={icon}><p className="text-gray-500">Loading…</p></Card>;
   if (extras.contacts === null) return <Card title="Contact log" icon={icon}><p className="text-gray-600">The contact log needs the database update, which has not been run yet.</p></Card>;
-
-  const entries = contactsForDriver(extras.contacts, driver.id);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -317,7 +333,11 @@ function ContactLogPanel({ driver, extras, isAdmin, now }: { driver: Driver; ext
 
   return (
     <Card title="Contact log" icon={icon}>
-      {entries.length === 0 ? (
+      {loadError && entries === null ? (
+        <p className="text-rose-700">The contact log could not be read: {loadError}</p>
+      ) : entries === null ? (
+        <p className="text-gray-500">Loading…</p>
+      ) : entries.length === 0 ? (
         <p className="text-gray-600">Nothing logged in the last 45 days.</p>
       ) : (
         <ul className="space-y-1.5 max-h-72 overflow-y-auto pr-1" aria-label="Last 10 contacts, newest first">

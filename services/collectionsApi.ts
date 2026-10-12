@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { readAllRows } from './pagedRead';
 import type { PaymentChange } from './paymentLog';
-import type { CatchUpPlan, CollectionContact, ContactKind, PaymentPromise } from './collections';
+import { CONTACT_SUMMARY_COLUMNS, type CatchUpPlan, type CollectionContact, type ContactKind, type ContactSummary, type PaymentPromise } from './collections';
 import type { DailyStatusRow } from './dailyStatus';
 import type { CollectionRun, NewCollectionRun } from './collectionRuns';
 
@@ -105,14 +105,28 @@ export async function loadDriverChanges(driverId: string): Promise<import('./dri
 }
 
 /**
- * Every contact logged since `since` (an ISO time), newest first: one query for all drivers, read 1,000 rows a page (the
- * most Supabase returns at once). Rejects when the table is not there yet.
+ * Every contact logged since `since` (an ISO time), newest first, WITHOUT the message text: one query for all drivers,
+ * read 1,000 rows a page (the most Supabase returns at once). Rejects when the table is not there yet.
  */
-export async function loadRecentContacts(since: string): Promise<CollectionContact[]> {
-  return readAllRows<CollectionContact>(() => supabase
+export async function loadRecentContacts(since: string): Promise<ContactSummary[]> {
+  return readAllRows<ContactSummary>(() => supabase
     .from('collection_contacts')
-    .select('id,driver_id,contacted_at,run_slot,kind,message,logged_by_name,logged_by_role')
+    .select(CONTACT_SUMMARY_COLUMNS)
     .gte('contacted_at', since), 'contacted_at', false);
+}
+
+/** One driver's latest `limit` contacts since `since` (an ISO time), with the message text, newest first. */
+export async function loadDriverContacts(driverId: string, since: string, limit = 10): Promise<CollectionContact[]> {
+  const { data, error } = await supabase
+    .from('collection_contacts')
+    .select(`${CONTACT_SUMMARY_COLUMNS},message`)
+    .eq('driver_id', driverId)
+    .gte('contacted_at', since)
+    .order('contacted_at', { ascending: false })
+    .order('id')
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as CollectionContact[];
 }
 
 /** Logs a contact under the signed-in account (the database stamps who and when). */

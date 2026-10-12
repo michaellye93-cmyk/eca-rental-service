@@ -1,5 +1,5 @@
 import { generateDriverInvoices, kualaLumpurToday } from '../utils.ts';
-import { buildCollectionsData, type CollectionContact, type CollectionsData, type CollectionsDriver, type CollectionsInput, type ContactKind, type PromiseState } from './collections.ts';
+import { buildCollectionsData, type ContactSummary, type CollectionsData, type CollectionsDriver, type CollectionsInput, type ContactKind, type PromiseState } from './collections.ts';
 
 /**
  * The day's collection worklist (/admin/worklist): one row per active driver with what to do next, built from the
@@ -117,7 +117,7 @@ export interface WorklistData {
 }
 
 const round2 = (amount: number) => Math.round(amount * 100) / 100;
-const lastThanks = (contacts: CollectionContact[] | null, driverId: string): string | null =>
+const lastThanks = (contacts: ContactSummary[] | null, driverId: string): string | null =>
   (contacts ?? []).filter(contact => contact.driver_id === driverId && contact.kind === 'THANKS')
     .reduce<string | null>((latest, contact) => (!latest || contact.contacted_at > latest ? contact.contacted_at : latest), null);
 

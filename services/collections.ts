@@ -61,21 +61,33 @@ export interface CollectionContact {
   logged_by_role: string | null;
 }
 
-const newestFirst = (a: CollectionContact, b: CollectionContact) => b.contacted_at.localeCompare(a.contacted_at);
+/**
+ * A contact without its message text: what is read for every driver at once (the bulk views and the next steps need
+ * only who, when and what kind). A driver's messages are read only when their contact log is open.
+ */
+export type ContactSummary = Omit<CollectionContact, 'message'>;
+/** The columns read for ContactSummary (everything but the message). */
+export const CONTACT_SUMMARY_COLUMNS = 'id,driver_id,contacted_at,run_slot,kind,logged_by_name,logged_by_role';
+
+/** Whether to reload when the tab comes back into view: at most once a minute (as the driver list does). */
+export const reloadDue = (lastLoadedAt: number | null, now: number, minGapMs = 60_000): boolean =>
+  lastLoadedAt === null || now - lastLoadedAt > minGapMs;
+
+const newestFirst = (a: ContactSummary, b: ContactSummary) => b.contacted_at.localeCompare(a.contacted_at);
 
 /** The driver's most recent `limit` contacts, newest first. */
-export const contactsForDriver = (contacts: CollectionContact[], driverId: string, limit = 10): CollectionContact[] =>
+export const contactsForDriver = <T extends ContactSummary>(contacts: T[], driverId: string, limit = 10): T[] =>
   contacts.filter(contact => contact.driver_id === driverId).sort(newestFirst).slice(0, limit);
 
 /** The driver's latest contact of any kind, or null. */
-export const latestContact = (contacts: CollectionContact[], driverId: string): CollectionContact | null =>
+export const latestContact = <T extends ContactSummary>(contacts: T[], driverId: string): T | null =>
   contactsForDriver(contacts, driverId, 1)[0] ?? null;
 
 /** The contacts that count as asking the driver to pay: an ask, a follow-up or a statement. */
 export const ASK_KINDS: readonly ContactKind[] = ['ASK', 'FOLLOW_UP', 'STATEMENT'];
 
 /** When the driver was last asked to pay: the latest ask, follow-up or statement; null when none is logged. */
-export const lastAskAt = (contacts: CollectionContact[], driverId: string): string | null =>
+export const lastAskAt = (contacts: ContactSummary[], driverId: string): string | null =>
   contacts.filter(contact => contact.driver_id === driverId && ASK_KINDS.includes(contact.kind))
     .sort(newestFirst)[0]?.contacted_at ?? null;
 
@@ -331,7 +343,7 @@ export interface CollectionsInput {
   promises: PaymentPromise[] | null;
   plans: CatchUpPlan[] | null;
   /** Recent contact log entries (the last 45 days is enough); null or left out when the table is not available yet. */
-  contacts?: CollectionContact[] | null;
+  contacts?: ContactSummary[] | null;
 }
 
 /** One active driver in the data view. Built field by field: NRIC, phone, email and address are never included. */
@@ -357,7 +369,8 @@ export interface CollectionsDriver {
   } | null;
   statement: string | null;
   /** The latest contact log entry (null when none in the period loaded) and when the driver was last asked to pay. */
-  last_contact: { at: string; kind: ContactKind; run_slot: string | null; message: string } | null;
+  /** The latest contact: when, what kind and which run (its message text is not read for the bulk views). */
+  last_contact: { at: string; kind: ContactKind; run_slot: string | null } | null;
   last_ask_at: string | null;
 }
 
@@ -461,7 +474,7 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
         ends_before_good: planStatus.endsBeforeGood, note: plan.note,
       } : null,
       statement: bank ? whatsappStatement(driver, now, bank) : null,
-      last_contact: lastContact ? { at: lastContact.contacted_at, kind: lastContact.kind, run_slot: lastContact.run_slot, message: lastContact.message } : null,
+      last_contact: lastContact ? { at: lastContact.contacted_at, kind: lastContact.kind, run_slot: lastContact.run_slot } : null,
       last_ask_at: contacts ? lastAskAt(contacts, driver.id) : null,
     };
   });
