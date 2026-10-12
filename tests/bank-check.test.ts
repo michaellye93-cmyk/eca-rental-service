@@ -47,8 +47,8 @@ test('an account with no balance within 45 days of the month is not in use then,
 
 test('Month close names each bank account in use that has no posted statement for the month', async () => {
   const { accountsWithoutStatement } = await import('../services/cashOutlook.ts');
-  const balances = [entry('RHB Sewa Beli 4281', 1, '2026-08-31'), entry('RHB Biasa 1109', 1, '2026-08-31'), entry('Old bank', 1, '2026-01-31')];
-  assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …4281' }], '2026-08'), ['RHB Biasa 1109']);
-  assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …4281' }, { account_label: 'RHB Biasa 1109' }], '2026-08'), []);
+  const balances = [entry('Fixture Bank A 9999', 1, '2026-08-31'), entry('Fixture Bank B 8888', 1, '2026-08-31'), entry('Old bank', 1, '2026-01-31')];
+  assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …9999' }], '2026-08'), ['Fixture Bank B 8888']);
+  assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …9999' }, { account_label: 'Fixture Bank B 8888' }], '2026-08'), []);
   assert.deepEqual(accountsWithoutStatement([], [], '2026-08'), []);
 });
