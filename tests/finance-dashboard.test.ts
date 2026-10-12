@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import type { FinanceInput } from '../types/finance.ts';
 import { calculateFinance } from '../services/finance/calculations.ts';
-import { marginTarget, monthCashFlow, trendMonths, trendRow } from '../services/finance/dashboard.ts';
+import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedTotals, trendMonths, trendRow } from '../services/finance/dashboard.ts';
 import { arrearsAgeing, driverMonthlyLedger, monthCollection } from '../services/driverLedger.ts';
 
 const month = { finance_month: '2026-08', status: 'DRAFT' as const, revision: 1, refreshed_at: '2026-09-01', frozen_at: null,
@@ -118,6 +118,31 @@ test('a trend row carries revenue, contribution, operating profit and margin for
   const row = trendRow('2026-08', 'DRAFT', report);
   assert.deepEqual({ ...row, margin: Math.round((row.margin ?? 0) * 1000) },
     { month: '2026-08', status: 'DRAFT', revenue: report.totals.revenue, contribution: report.totals.contribution, profit: report.management_profit, margin: Math.round(report.management_profit / report.totals.revenue * 1000) });
+});
+
+test('the trend uses the stored figures of closed months and reads only the other months live', () => {
+  const stored = [
+    { month: '2026-08-01', revision: 3, totals: { revenue: 1000, contribution: 400, profit: 250, margin: 0.25 } },
+    { month: '2026-09-01', revision: 5, totals: { revenue: 0, contribution: -50, profit: -80, margin: null } },
+  ];
+  const plan = planTrend(['2026-08', '2026-09', '2026-10'], stored);
+  assert.deepEqual(plan.live, ['2026-10']);
+  assert.deepEqual(plan.rows.get('2026-08'), { month: '2026-08', status: 'CLOSED', revenue: 1000, contribution: 400, profit: 250, margin: 0.25 });
+  assert.equal(plan.rows.get('2026-09')?.margin, null);
+  // Before the database update is run nothing is stored: every month is read live, as before.
+  assert.deepEqual(planTrend(['2026-08', '2026-09'], null).live, ['2026-08', '2026-09']);
+});
+
+test('a closed month read without its stored figures (or with figures from before a reopen) is stored', () => {
+  const report = calculateFinance(input);
+  const row = trendRow('2026-08', 'CLOSED', report);
+  assert.deepEqual(storedTotals(row), { revenue: row.revenue, contribution: row.contribution, profit: row.profit, margin: row.margin });
+  const stored = new Map([['2026-08', 3]]);
+  assert.equal(needsStoredTotals({ ...month, status: 'CLOSED', revision: 3 }, stored), false, 'already stored at this revision');
+  assert.equal(needsStoredTotals({ ...month, status: 'CLOSED', revision: 4 }, stored), true, 'closed again after a reopen');
+  assert.equal(needsStoredTotals({ ...month, finance_month: '2026-09-01', status: 'CLOSED', revision: 1 }, stored), true, 'not stored yet');
+  assert.equal(needsStoredTotals({ ...month, status: 'READY FOR REVIEW', revision: 9 }, stored), false, 'only closed months');
+  assert.equal(needsStoredTotals({ ...month, status: 'CLOSED', revision: 1 }, null), false, 'not while the stored figures are unavailable');
 });
 
 test('arrears by age: unpaid rent grouped by days past its due date', () => {

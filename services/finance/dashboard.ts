@@ -108,3 +108,33 @@ export const trendRow = (month: string, status: string, report: FinanceReport): 
   profit: report.management_profit,
   margin: report.totals.revenue ? report.management_profit / report.totals.revenue : null,
 });
+
+/** A closed month's trend figures as stored by finance_save_month_totals (supabase/migrations/20261012200000_money_review.sql). */
+export interface StoredMonthTotals { month: string; revision: number; totals: { revenue: number; contribution: number; profit: number; margin: number | null } }
+
+/** What is stored for a month: the trend row's figures, worked out by the P&L rules above. */
+export const storedTotals = (row: TrendRow): StoredMonthTotals['totals'] =>
+  ({ revenue: row.revenue, contribution: row.contribution, profit: row.profit, margin: row.margin });
+
+/**
+ * Trend rows for `months` (YYYY-MM): closed months with stored figures are taken from them; the others (Draft and
+ * Ready months, or every month while nothing is stored, `stored` null) are listed in `live` to be read in full.
+ */
+export function planTrend(months: string[], stored: StoredMonthTotals[] | null): { rows: Map<string, TrendRow>; live: string[] } {
+  const byMonth = new Map((stored ?? []).map((row) => [row.month.slice(0, 7), row] as const));
+  const rows = new Map<string, TrendRow>();
+  const live: string[] = [];
+  for (const month of months) {
+    const row = byMonth.get(month);
+    if (row) rows.set(month, { month, status: 'CLOSED', ...row.totals, margin: row.totals.margin ?? null });
+    else live.push(month);
+  }
+  return { rows, live };
+}
+
+/**
+ * Whether a month just read should have its figures stored: it is closed, and nothing is stored for it at this revision
+ * (`stored`: month YYYY-MM to stored revision; null while the stored figures are unavailable).
+ */
+export const needsStoredTotals = (month: { finance_month: string; status: string; revision: number }, stored: Map<string, number> | null) =>
+  !!stored && month.status === 'CLOSED' && stored.get(month.finance_month.slice(0, 7)) !== month.revision;
