@@ -97,6 +97,35 @@ test('F1: the driver sign-in never shows the collection arrangement or notes', a
   } finally { await db.close(); }
 });
 
+test('F2: staff and admins log contacts under their own name; only admins remove one; the public sees nothing', async () => {
+  const db = await setup();
+  try {
+    await asUser(db, STAFF_ID);
+    await db.query(`insert into public.collection_contacts(driver_id, run_slot, kind, message, logged_by, logged_by_name) values($1, '1PM', 'STATEMENT', 'Sewa XAA1001: ...', $2, 'pretend')`, [DRIVER_A, ADMIN_ID]);
+    await db.query(`insert into public.collection_contacts(driver_id, kind, message) values($1, 'NOTE', 'Fixture note')`, [DRIVER_B]);
+    const logged = await rows<{ kind: string; run_slot: string | null; logged_by: string; logged_by_name: string; logged_by_role: string; recent: boolean }>(db,
+      `select kind, run_slot, logged_by, logged_by_name, logged_by_role, contacted_at > now() - interval '1 minute' recent from public.collection_contacts order by kind desc`);
+    assert.deepEqual(logged.map(r => [r.kind, r.run_slot, r.logged_by, r.logged_by_name, r.logged_by_role, r.recent]), [
+      ['STATEMENT', '1PM', STAFF_ID, 'Staff', 'staff', true],
+      ['NOTE', null, STAFF_ID, 'Staff', 'staff', true],
+    ]);
+    await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message) values($1, 'SHOUT', 'x')`, [DRIVER_A]), /check/);
+    await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message) values($1, 'NOTE', '')`, [DRIVER_A]), /check/);
+    await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'NOTE', 'x', now() + interval '1 day')`, [DRIVER_A]), /future/i);
+    await db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'REPLY', 'Driver replied this morning', now() - interval '3 hours')`, [DRIVER_A]);
+    await assert.rejects(db.query(`update public.collection_contacts set message = 'changed'`), /permission denied/);
+    await db.query(`delete from public.collection_contacts`);
+    assert.equal(await count(db, `select count(*)::int n from public.collection_contacts`), 3, 'staff cannot remove a contact');
+    await asAnon(db);
+    await assert.rejects(db.query(`select * from public.collection_contacts`), /permission denied/);
+    await asUser(db, ADMIN_ID);
+    await db.query(`delete from public.collection_contacts where kind = 'NOTE'`);
+    assert.equal(await count(db, `select count(*)::int n from public.collection_contacts`), 2);
+    await db.query(`delete from public.drivers where id = $1`, [DRIVER_A]);
+    assert.equal(await count(db, `select count(*)::int n from public.collection_contacts`), 0, 'a deleted driver takes their contacts with them');
+  } finally { await db.close(); }
+});
+
 test('the file can safely run twice', async () => {
   const db = await setup();
   try {

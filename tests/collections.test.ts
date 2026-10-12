@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import { buildLateAlerts, generateDriverInvoices, mondayToSunday, rentDueAndPaid } from '../utils.ts';
 import {
-  balanceTrend, buildCollectionsData, catchUpStatus, collectionSummary, collectionsJson, promiseStatus, segmentHistory, statementMoney, whatsappStatement,
-  type CatchUpPlan, type PaymentPromise,
+  balanceTrend, buildCollectionsData, catchUpStatus, collectionSummary, collectionsJson, contactsForDriver, lastAskAt, latestContact, promiseStatus,
+  runSlotAt, segmentHistory, statementMoney, whatsappStatement, type CatchUpPlan, type CollectionContact, type PaymentPromise,
 } from '../services/collections.ts';
 
 const pay = (id: string, date: string, amount: number, reference?: string, serviceClaim = 0): PaymentTransaction =>
@@ -238,4 +238,45 @@ test('F1: the arrangement summary for the driver row joins what is set, and is n
   assert.equal(collectionSummary({ collectionArrangement: 'Monthly RM1,400 by the 10th', collectionTone: 'FIRM', contactWindow: 'after 2pm' }), 'Monthly RM1,400 by the 10th · Firm · after 2pm');
   assert.equal(collectionSummary({ collectionTone: 'SOFT', collectionLanguage: 'ZH' }), 'Soft · ZH');
   assert.equal(collectionSummary({}), null);
+});
+
+const contact = (over: Partial<CollectionContact>): CollectionContact => ({
+  id: 'k1', driver_id: 'a', contacted_at: '2026-09-28T05:00:00Z', run_slot: '1PM', kind: 'STATEMENT', message: 'Sewa XAA1001: ...',
+  logged_by_name: 'Staff', logged_by_role: 'staff', ...over,
+});
+const CONTACTS = [
+  contact({ id: 'k1', contacted_at: '2026-09-27T05:00:00Z', kind: 'STATEMENT' }),
+  contact({ id: 'k2', contacted_at: '2026-09-28T13:00:00Z', kind: 'ASK', run_slot: '9PM', message: 'Please pay RM450 today' }),
+  contact({ id: 'k3', contacted_at: '2026-09-29T01:00:00Z', kind: 'REPLY', run_slot: null, message: 'Driver: tomorrow' }),
+  contact({ id: 'k4', driver_id: 'b', contacted_at: '2026-09-26T05:00:00Z', kind: 'THANKS' }),
+];
+
+test('F2: the latest contact, the latest ask (asks, follow-ups and statements) and the last 10 entries per driver', () => {
+  assert.equal(latestContact(CONTACTS, 'a')?.id, 'k3');
+  assert.equal(lastAskAt(CONTACTS, 'a'), '2026-09-28T13:00:00Z');
+  assert.equal(lastAskAt(CONTACTS, 'b'), null, 'a thank-you is not an ask');
+  assert.equal(latestContact(CONTACTS, 'z'), null);
+  const many = Array.from({ length: 12 }, (_, i) => contact({ id: `m${i}`, contacted_at: `2026-09-${String(10 + i).padStart(2, '0')}T05:00:00Z` }));
+  assert.deepEqual(contactsForDriver(many, 'a').map(c => c.id), ['m11', 'm10', 'm9', 'm8', 'm7', 'm6', 'm5', 'm4', 'm3', 'm2']);
+});
+
+test('F2: the data view carries each driver\'s last contact and last ask, and says when the contact log is not available', () => {
+  const data = buildCollectionsData(dataInput({ contacts: CONTACTS }));
+  const [bravo, alpha] = data.drivers;
+  assert.deepEqual(alpha.last_contact, { at: '2026-09-29T01:00:00Z', kind: 'REPLY', run_slot: null, message: 'Driver: tomorrow' });
+  assert.equal(alpha.last_ask_at, '2026-09-28T13:00:00Z');
+  assert.equal(bravo.last_contact?.kind, 'THANKS');
+  assert.equal(bravo.last_ask_at, null, 'a thank-you is not an ask');
+  assert.ok(!data.warnings.some(w => /contact log/i.test(w)));
+  const missing = buildCollectionsData(dataInput({ contacts: null }));
+  assert.ok(missing.warnings.some(w => /contact log/i.test(w)));
+  assert.equal(missing.drivers[1].last_contact, null);
+});
+
+test('F2: a statement logged during a daily run is labelled with that run', () => {
+  assert.equal(runSlotAt(new Date(2026, 9, 12, 13, 5)), '1PM');
+  assert.equal(runSlotAt(new Date(2026, 9, 12, 16, 59)), '1PM');
+  assert.equal(runSlotAt(new Date(2026, 9, 12, 21, 30)), '9PM');
+  assert.equal(runSlotAt(new Date(2026, 9, 12, 10, 0)), null);
+  assert.equal(runSlotAt(new Date(2026, 9, 12, 18, 0)), null);
 });

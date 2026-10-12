@@ -12,8 +12,8 @@ export default function CollectionsDataPage({ drivers, userRole }: { drivers: Dr
   const extras = useCollectionsExtras();
   const [copied, setCopied] = useState(false);
   const json = useMemo(() => (extras.loaded
-    ? collectionsJson(buildCollectionsData({ drivers, now: kualaLumpurNow(), today: kualaLumpurToday(), bankIn: extras.bankIn, promises: extras.promises, plans: extras.plans }))
-    : ''), [drivers, extras.loaded, extras.bankIn, extras.promises, extras.plans]);
+    ? collectionsJson(buildCollectionsData({ drivers, now: kualaLumpurNow(), today: kualaLumpurToday(), bankIn: extras.bankIn, promises: extras.promises, plans: extras.plans, contacts: extras.contacts }))
+    : ''), [drivers, extras.loaded, extras.bankIn, extras.promises, extras.plans, extras.contacts]);
 
   if (userRole !== 'admin') {
     return (

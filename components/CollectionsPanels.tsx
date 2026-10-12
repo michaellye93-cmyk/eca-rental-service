@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { HandCoins, Target } from 'lucide-react';
+import { HandCoins, MessagesSquare, Target } from 'lucide-react';
 import type { Driver } from '../types';
 import { formatCurrency, formatDate } from '../utils';
-import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpStatus, type PromiseState } from '../services/collections';
+import { CONTACT_KINDS, catchUpStatus, contactsForDriver, latestPromise, promiseStatus, runningPlan, runSlotAt, type CatchUpStatus, type ContactKind, type PromiseState } from '../services/collections';
 import { whoLabel } from '../services/paymentLog';
-import { logPromise, removePromise, startPlan, stopPlan } from '../services/collectionsApi';
+import { logContact, logPromise, removeContact, removePromise, startPlan, stopPlan } from '../services/collectionsApi';
 import type { CollectionsExtras } from './useCollectionsExtras';
 import { ConfirmDialog } from './Dialog';
 
@@ -43,12 +43,13 @@ const reachText = (date: string | null) => (date === 'NOW' ? 'already' : date ? 
 const input = 'w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 const label = 'text-xs font-bold text-gray-500 uppercase';
 
-/** Promise to pay and catch-up plan for one driver, below their expanded details. */
+/** Promise to pay, catch-up plan and contact log for one driver, below their expanded details. */
 export default function CollectionsPanels({ driver, extras, isAdmin, today, now }: CollectionsPanelsProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
       <PromisePanel driver={driver} extras={extras} isAdmin={isAdmin} today={today} />
       <PlanPanel driver={driver} extras={extras} isAdmin={isAdmin} today={today} now={now} />
+      <div className="lg:col-span-2"><ContactLogPanel driver={driver} extras={extras} isAdmin={isAdmin} now={now} /></div>
     </div>
   );
 }
@@ -261,6 +262,103 @@ function PlanPanel({ driver, extras, isAdmin, today, now }: CollectionsPanelsPro
       {confirmStop && plan && (
         <ConfirmDialog title="Stop catch-up plan" confirmLabel="Stop plan" onConfirm={() => void stop()} onCancel={() => setConfirmStop(false)}>
           <p>Stop the plan of {formatCurrency(plan.extra_per_cycle)} extra each {cycle} from today? Rent itself does not change.</p>
+        </ConfirmDialog>
+      )}
+    </Card>
+  );
+}
+
+const KIND_LABEL = Object.fromEntries(CONTACT_KINDS.map(({ kind, label }) => [kind, label])) as Record<ContactKind, string>;
+const contactTime = (at: string) =>
+  new Date(at).toLocaleString('en-GB', { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+
+/** The driver's last 10 contacts (statements, asks, replies, disputes and so on) and a form to log one. */
+function ContactLogPanel({ driver, extras, isAdmin, now }: { driver: Driver; extras: CollectionsExtras; isAdmin: boolean; now: Date }) {
+  const [kind, setKind] = useState<ContactKind>('ASK');
+  const [slot, setSlot] = useState<string>(() => runSlotAt(now) ?? '');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [toRemove, setToRemove] = useState<string | null>(null);
+  const icon = <MessagesSquare className="w-4 h-4 text-teal-600" aria-hidden="true" />;
+
+  if (!extras.loaded) return <Card title="Contact log" icon={icon}><p className="text-gray-500">Loading…</p></Card>;
+  if (extras.contacts === null) return <Card title="Contact log" icon={icon}><p className="text-gray-600">The contact log needs the database update, which has not been run yet.</p></Card>;
+
+  const entries = contactsForDriver(extras.contacts, driver.id);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!message.trim()) { setError('Write what was sent or said.'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await logContact({ driverId: driver.id, kind, runSlot: slot || null, message });
+      setMessage('');
+      await extras.reload();
+    } catch (err) {
+      setError(`Not saved: ${err instanceof Error ? err.message : 'try again'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    const id = toRemove;
+    setToRemove(null);
+    if (!id) return;
+    try {
+      await removeContact(id);
+      await extras.reload();
+    } catch (err) {
+      setError(`Not removed: ${err instanceof Error ? err.message : 'try again'}`);
+    }
+  };
+
+  return (
+    <Card title="Contact log" icon={icon}>
+      {entries.length === 0 ? (
+        <p className="text-gray-600">Nothing logged in the last 45 days.</p>
+      ) : (
+        <ul className="space-y-1.5 max-h-72 overflow-y-auto pr-1" aria-label="Last 10 contacts, newest first">
+          {entries.map(entry => (
+            <li key={entry.id} className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-gray-600">
+                <span className="font-bold text-gray-900">{KIND_LABEL[entry.kind] ?? entry.kind}</span>
+                <span>{contactTime(entry.contacted_at)}{entry.run_slot ? ` · ${entry.run_slot} run` : ''}</span>
+                <span>· {whoLabel(entry.logged_by_role, entry.logged_by_name)}</span>
+                {isAdmin && <button type="button" onClick={() => setToRemove(entry.id)} className="ml-auto font-semibold text-rose-700 underline">Remove</button>}
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap break-words text-gray-800">{entry.message}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={submit} className="grid grid-cols-2 gap-2" aria-label="Log a contact">
+        <div>
+          <label htmlFor={`contact-kind-${driver.id}`} className={label}>Kind</label>
+          <select id={`contact-kind-${driver.id}`} value={kind} onChange={e => setKind(e.target.value as ContactKind)} className={input}>
+            {CONTACT_KINDS.map(option => <option key={option.kind} value={option.kind}>{option.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor={`contact-slot-${driver.id}`} className={label}>Run <span className="normal-case font-medium">(optional)</span></label>
+          <select id={`contact-slot-${driver.id}`} value={slot} onChange={e => setSlot(e.target.value)} className={input}>
+            <option value="">None</option>
+            <option value="1PM">1PM</option>
+            <option value="9PM">9PM</option>
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label htmlFor={`contact-message-${driver.id}`} className={label}>Message</label>
+          <textarea id={`contact-message-${driver.id}`} rows={2} maxLength={4000} value={message} onChange={e => setMessage(e.target.value)} className={input} />
+        </div>
+        {error && <p role="alert" className="col-span-2 text-xs font-medium text-rose-700">{error}</p>}
+        <button type="submit" disabled={busy} className="col-span-2 py-2 text-sm font-semibold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg">{busy ? 'Saving…' : 'Log contact'}</button>
+      </form>
+      {toRemove && (
+        <ConfirmDialog title="Remove contact" confirmLabel="Remove" onConfirm={() => void remove()} onCancel={() => setToRemove(null)}>
+          <p>Remove this contact log entry? Only do this for an entry logged by mistake.</p>
         </ConfirmDialog>
       )}
     </Card>

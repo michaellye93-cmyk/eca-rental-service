@@ -3,7 +3,7 @@ import { Check, ClipboardCopy } from 'lucide-react';
 import Dialog from './Dialog';
 import type { Driver } from '../types';
 import { categoryLabel, isSewaBiasa, kualaLumpurNow } from '../utils';
-import { collectionSummary, whatsappStatement } from '../services/collections';
+import { collectionSummary, runSlotAt, whatsappStatement } from '../services/collections';
 import { saveBankIn, type BankIn } from '../services/collectionsApi';
 
 interface StatementDialogProps {
@@ -14,6 +14,8 @@ interface StatementDialogProps {
   onClose: () => void;
   /** Called after an Admin saves a bank-in line, to reload them. */
   onBankInSaved: () => Promise<void> | void;
+  /** Logs the copied statement in the contact log; left out when the contact log is not available yet. */
+  onLogSent?: (text: string, runSlot: string | null) => Promise<void>;
 }
 
 /**
@@ -21,7 +23,7 @@ interface StatementDialogProps {
  * dates and amounts always match the system. It can be copied only once the bank-in line for the driver's category
  * is set, so a statement never goes out with a missing or wrong account.
  */
-export default function StatementDialog({ driver, bankIn, isAdmin, onClose, onBankInSaved }: StatementDialogProps) {
+export default function StatementDialog({ driver, bankIn, isAdmin, onClose, onBankInSaved, onLogSent }: StatementDialogProps) {
   const category: keyof BankIn = isSewaBiasa(driver) ? 'SEWA_BIASA' : 'SEWABELI';
   const bank = bankIn?.[category] ?? null;
   const text = useMemo(() => whatsappStatement(driver, kualaLumpurNow(), bank ?? '(not set yet)'), [driver, bank]);
@@ -31,11 +33,29 @@ export default function StatementDialog({ driver, bankIn, isAdmin, onClose, onBa
   const [draft, setDraft] = useState(bank ?? '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // After a copy: offer to log the statement as sent
+  const [copiedOnce, setCopiedOnce] = useState(false);
+  const [logState, setLogState] = useState<'idle' | 'saving' | 'logged'>('idle');
+  const [logError, setLogError] = useState<string | null>(null);
+
+  const logSent = async () => {
+    if (!onLogSent) return;
+    setLogState('saving');
+    setLogError(null);
+    try {
+      await onLogSent(text, runSlotAt(kualaLumpurNow()));
+      setLogState('logged');
+    } catch (error) {
+      setLogState('idle');
+      setLogError(error instanceof Error ? error.message : 'Not logged');
+    }
+  };
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
+      setCopiedOnce(true);
       setCopyFailed(false);
       window.setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -100,6 +120,18 @@ export default function StatementDialog({ driver, bankIn, isAdmin, onClose, onBa
             {bank ? `Change the bank-in line for ${categoryLabel(driver)}` : `Add the bank-in line for ${categoryLabel(driver)}`}
           </button>
         ))}
+
+        {onLogSent && copiedOnce && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-950">
+            {logState === 'logged'
+              ? <p role="status" className="font-semibold">Logged in the contact log as a statement sent.</p>
+              : <>
+                  <p className="flex-1 min-w-40">Sent it? Log it in the driver's contact log.</p>
+                  <button type="button" onClick={() => void logSent()} disabled={logState === 'saving'} className="px-3 py-1.5 text-sm font-semibold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-60 rounded-lg">{logState === 'saving' ? 'Logging…' : 'Log as sent'}</button>
+                </>}
+            {logError && <p role="alert" className="w-full text-xs font-medium text-rose-700">Not logged: {logError}</p>}
+          </div>
+        )}
 
         <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg">Close</button>

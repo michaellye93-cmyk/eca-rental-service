@@ -52,6 +52,7 @@ import { catchUpStatus, collectionSummary, latestPromise, promiseStatus, running
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
+import { logContact } from '../services/collectionsApi';
 import { loadDeposits, loadDepositsHeld } from '../services/depositsApi';
 import { receivedByKind, upfrontToRecord } from '../services/depositTotals';
 
@@ -1728,6 +1729,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           isAdmin={userRole === 'admin'}
           onClose={() => setStatementDriver(null)}
           onBankInSaved={extras.reload}
+          onLogSent={extras.contacts === null ? undefined : async (text, runSlot) => {
+            await logContact({ driverId: statementDriver.id, kind: 'STATEMENT', runSlot, message: text });
+            await extras.reload();
+          }}
         />
       )}
 
