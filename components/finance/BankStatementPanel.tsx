@@ -177,6 +177,8 @@ export default function BankStatementPanel({
   }, [month, inputReady]);
   useEffect(() => {
     if (draftMonth !== month) return;
+    // This change supersedes any save still waiting (an older send must not write back discarded or posted work).
+    pendingSave.current = null;
     const immediate = saveNow.current;
     saveNow.current = false;
     const store = browserStore();
