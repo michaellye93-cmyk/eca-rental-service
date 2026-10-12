@@ -21,25 +21,25 @@ test('nothing owed: nothing due, or a thank-you for a payment today or yesterday
   assert.equal(step({ lastPaymentDate: '2026-10-11' }), 'Thank for payment');
   assert.equal(step({ lastPaymentDate: '2026-10-11', lastThanksAt: kl('2026-10-11T21:05:00') }), 'Nothing due', 'already thanked');
   assert.equal(step({ lastPaymentDate: TODAY, lastThanksAt: kl('2026-10-11T21:05:00') }), 'Thank for payment', 'thanked for an earlier payment only');
-  assert.equal(step({ arrangement: 'Monthly RM1,400 by the 10th' }), 'Nothing due', 'an arrangement with nothing owed needs no step');
+  assert.equal(step({ arrangement: 'Monthly RM1,000 by the 5th' }), 'Nothing due', 'an arrangement with nothing owed needs no step');
 });
 
 test('a standing arrangement replaces the ask, follow-up and due-day message (never a plain due-day message)', () => {
-  const arrangement = 'Monthly RM1,400 by the 10th';
-  const expected = 'Arrangement: Monthly RM1,400 by the 10th — check before asking';
-  assert.equal(step({ arrangement, owed: 1400, dueTodayUnpaid: 1400 }), expected);
-  assert.equal(step({ arrangement, owed: 1400, lastAskAt: kl('2026-10-08T13:00:00') }), expected);
-  assert.equal(step({ arrangement, owed: 1400 }), expected, 'instead of a first ask');
-  assert.equal(step({ arrangement: '   ', owed: 1400, dueTodayUnpaid: 1400 }), 'Due-day message', 'a blank arrangement is no arrangement');
+  const arrangement = 'Monthly RM1,000 by the 5th';
+  const expected = 'Arrangement: Monthly RM1,000 by the 5th — check before asking';
+  assert.equal(step({ arrangement, owed: 1000, dueTodayUnpaid: 1000 }), expected);
+  assert.equal(step({ arrangement, owed: 1000, lastAskAt: kl('2026-10-08T13:00:00') }), expected);
+  assert.equal(step({ arrangement, owed: 1000 }), expected, 'instead of a first ask');
+  assert.equal(step({ arrangement: '   ', owed: 1000, dueTodayUnpaid: 1000 }), 'Due-day message', 'a blank arrangement is no arrangement');
 });
 
 test('a standing arrangement does not hold back a thank-you, a missed-promise follow-up or a wait', () => {
-  const arrangement = 'Monthly RM1,400 by the 10th';
-  assert.equal(step({ arrangement, owed: 1400, lastPaymentDate: TODAY }), 'Thank for payment', 'a part payment today is thanked first');
-  assert.equal(step({ arrangement, owed: 1400, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
-  assert.equal(step({ arrangement, owed: 1400, dueTodayUnpaid: 1400, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
-  assert.equal(step({ arrangement, owed: 1400, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 24 hours');
-  assert.equal(step({ arrangement, owed: 1400, promise: { state: 'OPEN', date: '2026-10-14', loggedOn: '2026-10-08' }, lastAskAt: kl('2026-10-08T13:00:00') }), 'Wait: promised 14/10');
+  const arrangement = 'Monthly RM1,000 by the 5th';
+  assert.equal(step({ arrangement, owed: 1000, lastPaymentDate: TODAY }), 'Thank for payment', 'a part payment today is thanked first');
+  assert.equal(step({ arrangement, owed: 1000, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
+  assert.equal(step({ arrangement, owed: 1000, dueTodayUnpaid: 1000, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
+  assert.equal(step({ arrangement, owed: 1000, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 24 hours');
+  assert.equal(step({ arrangement, owed: 1000, promise: { state: 'OPEN', date: '2026-10-14', loggedOn: '2026-10-08' }, lastAskAt: kl('2026-10-08T13:00:00') }), 'Wait: promised 14/10');
 });
 
 test('the due day: a due-day message even within 24 hours of an ask, once', () => {
@@ -97,10 +97,10 @@ const LATE: Driver = { ...base, id: 'd2', name: 'Fixture Driver Bravo', carPlate
 // Weekly every Wednesday from 2 Sept: one week owed, last paid 7 Oct
 const OWES: Driver = { ...base, id: 'd3', name: 'Fixture Driver Charlie', carPlate: 'XAC3001', contractStartDate: '2026-09-02',
   paymentHistory: [pay('r1', '2026-09-02', 450), pay('r2', '2026-09-09', 450), pay('r3', '2026-09-16', 450), pay('r4', '2026-09-23', 450), pay('r5', '2026-10-07', 450)] };
-// Monthly on the 10th with a standing arrangement, this month paid on 9 Oct
-const MONTHLY: Driver = { ...base, id: 'd4', name: 'Fixture Driver Delta', carPlate: 'XAD4001', contractStartDate: '2026-08-10', rentalCycle: 'MONTHLY', rentalRate: 1400,
-  contractDuration: 12, category: 'SEWA_BIASA', collectionArrangement: 'Monthly RM1,400 by the 10th', collectionTone: 'FIRM', collectionLanguage: 'BM', contactWindow: 'after 2pm',
-  paymentHistory: [pay('s1', '2026-08-10', 1400), pay('s2', '2026-09-10', 1400), pay('s3', '2026-10-09', 1400)] };
+// Monthly on the 5th with a standing arrangement, this month paid on 4 Oct
+const MONTHLY: Driver = { ...base, id: 'd4', name: 'Fixture Driver Delta', carPlate: 'XAD4001', contractStartDate: '2026-08-05', rentalCycle: 'MONTHLY', rentalRate: 1000,
+  contractDuration: 12, category: 'SEWA_BIASA', collectionArrangement: 'Monthly RM1,000 by the 5th', collectionTone: 'FIRM', collectionLanguage: 'BM', contactWindow: 'weekday mornings',
+  paymentHistory: [pay('s1', '2026-08-05', 1000), pay('s2', '2026-09-05', 1000), pay('s3', '2026-10-04', 1000)] };
 const DELISTED: Driver = { ...base, id: 'd5', name: 'Fixture Driver Echo', carPlate: 'XAE5001', contractStartDate: '2026-09-01', isDelisted: true, delistDate: '2026-09-20', paymentHistory: [] };
 const DRIVERS = [OWES, MONTHLY, LATE, DUE_TODAY, DELISTED];
 const NOW = new Date(2026, 9, 12, 13, 0); // Kuala Lumpur wall-clock time
@@ -131,7 +131,7 @@ test('one row per active driver: rent due today first, then late alerts (longest
   assert.equal(owes.next_step, 'Follow up (asked 3 days ago, still unpaid)');
   assert.equal(monthly.owed, 0);
   assert.equal(monthly.next_step, 'Nothing due');
-  assert.deepEqual(monthly.collection, { arrangement: 'Monthly RM1,400 by the 10th', tone: 'FIRM', language: 'BM', contact_window: 'after 2pm', note: null });
+  assert.deepEqual(monthly.collection, { arrangement: 'Monthly RM1,000 by the 5th', tone: 'FIRM', language: 'BM', contact_window: 'weekday mornings', note: null });
 });
 
 test('without the contact log or promises (database update not run) the worklist still works', () => {

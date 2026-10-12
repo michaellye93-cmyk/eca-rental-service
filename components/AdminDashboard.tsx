@@ -1702,7 +1702,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p id="driver-collections-note" className="text-xs text-gray-500 -mt-1">How rent is collected from this driver. Shown on the driver row, the WhatsApp statement window and the collections data; never to the driver.</p>
               <div>
                 <label htmlFor="driver-arrangement" className="block text-xs font-bold text-gray-600 uppercase mb-1">Arrangement</label>
-                <input id="driver-arrangement" type="text" maxLength={300} autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.collectionArrangement} onChange={e => setFormData({...formData, collectionArrangement: e.target.value})} placeholder="e.g. Monthly RM1,400 by the 10th (optional)" />
+                <input id="driver-arrangement" type="text" maxLength={300} autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.collectionArrangement} onChange={e => setFormData({...formData, collectionArrangement: e.target.value})} placeholder="e.g. Monthly RM1,000 by the 5th (optional)" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -1727,7 +1727,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div>
                   <label htmlFor="driver-window" className="block text-xs font-bold text-gray-600 uppercase mb-1">Contact window</label>
-                  <input id="driver-window" type="text" maxLength={100} autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contactWindow} onChange={e => setFormData({...formData, contactWindow: e.target.value})} placeholder="e.g. after 2pm" />
+                  <input id="driver-window" type="text" maxLength={100} autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contactWindow} onChange={e => setFormData({...formData, contactWindow: e.target.value})} placeholder="e.g. weekday mornings" />
                 </div>
               </div>
               <div>

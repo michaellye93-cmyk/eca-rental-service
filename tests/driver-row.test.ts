@@ -103,9 +103,9 @@ test('fromDriverRow reads the WhatsApp group name back, and leaves it out when t
 });
 
 test('the collection arrangement, tone, language, contact window and note are written only when set or being cleared', () => {
-  const row = toDriverRow({ ...driver, collectionArrangement: ' Monthly RM1,400 by the 10th ', collectionTone: 'FIRM', collectionLanguage: 'BM', contactWindow: 'after 2pm', collectionNote: 'Fixture note' });
+  const row = toDriverRow({ ...driver, collectionArrangement: ' Monthly RM1,000 by the 5th ', collectionTone: 'FIRM', collectionLanguage: 'BM', contactWindow: 'weekday mornings', collectionNote: 'Fixture note' });
   assert.deepEqual([row.collection_arrangement, row.collection_tone, row.collection_language, row.contact_window, row.collection_note],
-    ['Monthly RM1,400 by the 10th', 'FIRM', 'BM', 'after 2pm', 'Fixture note']);
+    ['Monthly RM1,000 by the 5th', 'FIRM', 'BM', 'weekday mornings', 'Fixture note']);
   const cleared = toDriverRow({ ...driver, collectionArrangement: '', collectionTone: '', collectionLanguage: '', contactWindow: ' ', collectionNote: '' });
   assert.deepEqual([cleared.collection_arrangement, cleared.collection_tone, cleared.collection_language, cleared.contact_window, cleared.collection_note],
     [null, null, null, null, null]);
@@ -116,8 +116,8 @@ test('the collection arrangement, tone, language, contact window and note are wr
 });
 
 test('fromDriverRow reads the collection fields back, and leaves them out when empty', () => {
-  const back = fromDriverRow({ id: 'd1', ...toDriverRow({ ...driver, collectionArrangement: 'Weekly', collectionTone: 'SOFT', collectionLanguage: 'EN', contactWindow: 'after 2pm', collectionNote: 'Note' }) });
-  assert.deepEqual([back.collectionArrangement, back.collectionTone, back.collectionLanguage, back.contactWindow, back.collectionNote], ['Weekly', 'SOFT', 'EN', 'after 2pm', 'Note']);
+  const back = fromDriverRow({ id: 'd1', ...toDriverRow({ ...driver, collectionArrangement: 'Weekly', collectionTone: 'SOFT', collectionLanguage: 'EN', contactWindow: 'weekday mornings', collectionNote: 'Note' }) });
+  assert.deepEqual([back.collectionArrangement, back.collectionTone, back.collectionLanguage, back.contactWindow, back.collectionNote], ['Weekly', 'SOFT', 'EN', 'weekday mornings', 'Note']);
   const empty = fromDriverRow({ id: 'd1', ...toDriverRow(driver), collection_arrangement: null, collection_tone: null });
   assert.equal('collectionArrangement' in empty || 'collectionTone' in empty, false);
 });

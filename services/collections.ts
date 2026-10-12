@@ -150,7 +150,7 @@ export function whatsappStatement(driver: Driver, now: Date, bankIn: string): st
 const TONE_LABEL: Record<string, string> = { SOFT: 'Soft', POLITE: 'Polite', FIRM: 'Firm' };
 
 /** The driver's collection arrangement in one line for the driver row and the statement window, e.g.
- * "Monthly RM1,400 by the 10th · Firm · after 2pm"; null when none of it is set. */
+ * "Monthly RM1,000 by the 5th · Firm · weekday mornings"; null when none of it is set. */
 export function collectionSummary(driver: Pick<Driver, 'collectionArrangement' | 'collectionTone' | 'collectionLanguage' | 'contactWindow'>): string | null {
   const parts = [driver.collectionArrangement?.trim(), driver.collectionTone ? TONE_LABEL[driver.collectionTone] ?? driver.collectionTone : '',
     driver.collectionLanguage?.trim(), driver.contactWindow?.trim()].filter(Boolean);

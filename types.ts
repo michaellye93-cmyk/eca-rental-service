@@ -32,10 +32,10 @@ export interface Driver {
   address?: string;
   /** How collections are made with this driver (typed only in Add / Edit Driver; never shown to the driver). An empty
    * text means "being cleared" when saving. */
-  collectionArrangement?: string; // e.g. "Monthly RM1,400 by the 10th"
+  collectionArrangement?: string; // e.g. "Monthly RM1,000 by the 5th"
   collectionTone?: CollectionTone | '';
   collectionLanguage?: string; // BM, EN, ZH or MIXED
-  contactWindow?: string; // e.g. "after 2pm"
+  contactWindow?: string; // e.g. "weekday mornings"
   collectionNote?: string;
   /** Who to call when the driver can't be reached, and their phone; printed on the agreement. */
   emergencyContactName?: string;

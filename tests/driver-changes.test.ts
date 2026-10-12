@@ -40,9 +40,9 @@ test('collection arrangement edits read with plain labels', () => {
   const [line] = driverChangeLines([change({
     fields: ['collection_arrangement', 'collection_tone', 'contact_window'],
     before: { collection_arrangement: null, collection_tone: 'SOFT', contact_window: null },
-    after: { collection_arrangement: 'Monthly by the 10th', collection_tone: 'FIRM', contact_window: 'after 2pm' },
+    after: { collection_arrangement: 'Monthly by the 5th', collection_tone: 'FIRM', contact_window: 'weekday mornings' },
   })]);
-  assert.match(line, /collection arrangement — → Monthly by the 10th/);
+  assert.match(line, /collection arrangement — → Monthly by the 5th/);
   assert.match(line, /collection tone SOFT → FIRM/);
-  assert.match(line, /contact window — → after 2pm/);
+  assert.match(line, /contact window — → weekday mornings/);
 });
