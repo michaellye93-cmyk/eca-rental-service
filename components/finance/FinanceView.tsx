@@ -84,8 +84,8 @@ const monthLabel = (month: string) =>
     month: "long",
     year: "numeric",
   });
-/** The Money tab's pages: Cash and Collections, then the month-based Finance pages. */
-export type Page = "cash" | "collections" | "overview" | "vehicles" | "close" | "expenses" | "reconcile";
+import { monthLoadNeeded, type Page } from "../../services/finance/pages";
+export type { Page } from "../../services/finance/pages";
 // Report → act → record → close: what happened, who owes, which cars earn, then the entries and the month close.
 const MONEY_PAGES: [Page, string][] = [
   ["overview", "Overview"],
@@ -173,8 +173,11 @@ export default function FinanceView(props: MoneyProps = {}) {
   const authorizationGeneration = useRef(0);
   const mounted = useRef(false);
   const authenticatedUserId = useRef<string | null>(null);
+  // The month already read (or being read) for the pages that use it; cleared with the private data.
+  const requestedMonth = useRef<string | null>(null);
   const clearPrivate = useCallback(() => {
     previewGeneration.current++;
+    requestedMonth.current = null;
     setInput(null);
     setPreview(null);
     setSmartFile(null);
@@ -310,21 +313,27 @@ export default function FinanceView(props: MoneyProps = {}) {
           setAcknowledged(false);
         }
       } catch (cause) {
-        if (current === generation.current)
+        if (current === generation.current) {
+          // Opening another page that uses the month tries again (as does the Retry button).
+          if (requestedMonth.current === selectedMonth) requestedMonth.current = null;
           setError(
             cause instanceof Error
               ? cause.message
               : "Unable to load Finance data.",
           );
+        }
       } finally {
         if (current === generation.current) setBusy(false);
       }
     },
     [month, sessionState],
   );
+  // The month is read only by the pages that use it (not Collections), once per chosen month.
   useEffect(() => {
+    if (sessionState !== "ready" || !monthLoadNeeded(page, month, requestedMonth.current)) return;
+    requestedMonth.current = month;
     void reload(month);
-  }, [month, reload]);
+  }, [month, reload, page, sessionState]);
   const report = useMemo(
     () => (input ? buildFinanceReport(input) : null),
     [input],
@@ -629,7 +638,7 @@ export default function FinanceView(props: MoneyProps = {}) {
             <button
               className="finance-secondary"
               disabled={busy}
-              onClick={() => void reload()}
+              onClick={() => { requestedMonth.current = month; void reload(); }}
             >
               Retry loading Finance
             </button>
