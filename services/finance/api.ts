@@ -33,8 +33,12 @@ export const setFixedCostTreatment = (seriesId: string, treatment: FixedCostTrea
 // Unposted Reconcile work kept on the server (supabase/migrations/20261012200000_money_review.sql); each call rejects
 // until that file is run, and Reconcile then keeps the work in the browser only.
 export const loadServerReconcileDraft = (month: string) => rpc<ServerReconcileDraft | null>('finance_load_reconcile_draft', { p_month: financeMonth(month) });
-export const saveServerReconcileDraft = (month: string, statements: DraftStatement[]) => rpc<string>('finance_save_reconcile_draft', { p_month: financeMonth(month), p_statements: statements });
-export const clearServerReconcileDraft = (month: string) => rpc<null>('finance_clear_reconcile_draft', { p_month: financeMonth(month) });
+// Each save and clear sends the time the change was made here; the server keeps it only when newer than what it holds
+// and returns the draft it holds either way.
+export const saveServerReconcileDraft = (month: string, statements: DraftStatement[], savedAt: string) =>
+  rpc<ServerReconcileDraft>('finance_save_reconcile_draft', { p_month: financeMonth(month), p_statements: statements, p_saved_at: savedAt });
+export const clearServerReconcileDraft = (month: string, savedAt: string) =>
+  rpc<ServerReconcileDraft>('finance_clear_reconcile_draft', { p_month: financeMonth(month), p_saved_at: savedAt });
 // Stored trend figures of closed months (same file); each call rejects until it is run, and the trend then reads every month.
 export const loadMonthTotals = () => rpc<StoredMonthTotals[]>('finance_month_totals');
 export const saveMonthTotals = (month: string, revision: number, totals: StoredMonthTotals['totals']) =>

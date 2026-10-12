@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseReconcileDraft, clearReconcileDraft, draftStatements, loadReconcileDraft, markReconcileDraftSynced, saveReconcileDraft, serverDraftTooLarge, type DraftStatement } from '../services/finance/reconcileDraft.ts';
+import { chooseReconcileDraft, clearReconcileDraft, draftStatements, draftToResend, loadReconcileDraft, markReconcileDraftSynced, saveReconcileDraft, SERVER_DRAFT_LIMIT, serverDraftTooLarge, settleServerSave, type DraftStatement } from '../services/finance/reconcileDraft.ts';
 
 const memory = () => { const data = new Map<string, string>(); return { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v); }, removeItem: (k: string) => { data.delete(k); } }; };
 const statement = (hash: string): DraftStatement => ({ filename: `${hash}.xlsx`, account_label: 'Bank A', source_hash: hash, finance_month: '2026-08', total_debits: 0, total_credits: 400, issues: [],
@@ -66,4 +66,63 @@ test('the server draft is used on every device; this browser\'s copy wins only f
   saveReconcileDraft(store, '2026-08', [statement('newer')], new Date('2026-10-12T04:00:00Z'));
   markReconcileDraftSynced(store, '2026-08', '2026-10-12T03:00:00.000Z');
   assert.deepEqual(chooseReconcileDraft(store, '2026-08', new Set(), { available: true, draft: server })?.statements.map((s) => s.source_hash), ['newer']);
+});
+
+test('the app keeps a draft for the server only up to 1.8 MB of compact JSON (the server refuses over 2 MB of its own, wider, text)', () => {
+  assert.equal(SERVER_DRAFT_LIMIT, Math.floor(1.8 * 1024 * 1024));
+  const rows = (count: number) => [{ ...statement('b'), rows: Array.from({ length: count }, (_, i) => ({ ...statement('b').rows[0], source_row: i, description: 'X'.repeat(400) })) }];
+  // About 1.9 MB of compact JSON: under the server's 2 MB, but over the app's limit.
+  const size = (count: number) => new TextEncoder().encode(JSON.stringify(draftStatements(rows(count)))).length;
+  let count = 3000;
+  while (size(count) < 1.9 * 1024 * 1024) count += 50;
+  assert.ok(size(count) < 2 * 1024 * 1024);
+  assert.equal(serverDraftTooLarge(rows(count)), true);
+});
+
+test('when the server refuses an older save, this browser keeps whichever draft is newer', () => {
+  const store = memory();
+  saveReconcileDraft(store, '2026-08', [statement('mine')], new Date('2026-10-12T03:00:00Z'));
+  // Accepted: the server returns the draft as sent (its own time format), and this browser's copy is marked as on the server.
+  assert.equal(settleServerSave(store, '2026-08', '2026-10-12T03:00:00.000Z', { statements: [statement('mine')], saved_at: '2026-10-12T03:00:00+00:00' }), 'saved');
+  assert.equal(chooseReconcileDraft(store, '2026-08', new Set(), { available: true, draft: null }), null, 'on the server: the server decides');
+  // Refused: another device saved newer work; it replaces this browser's older copy, so reopening shows it.
+  saveReconcileDraft(store, '2026-08', [statement('mine2')], new Date('2026-10-12T04:00:00Z'));
+  const newer = { statements: [statement('theirs')], saved_at: '2026-10-12T05:00:00+00:00' };
+  assert.equal(settleServerSave(store, '2026-08', '2026-10-12T04:00:00.000Z', newer), 'newer-on-server');
+  assert.deepEqual(loadReconcileDraft(store, '2026-08', new Set())?.statements.map((s) => s.source_hash), ['theirs']);
+  assert.equal(draftToResend(store, '2026-08', new Set(), { available: true, draft: newer }), null, 'nothing of this browser left to send');
+  // Refused, but this browser has changed since (a newer local copy): the newer local copy stays, to be sent next.
+  saveReconcileDraft(store, '2026-08', [statement('latest')], new Date('2026-10-12T06:00:00Z'));
+  assert.equal(settleServerSave(store, '2026-08', '2026-10-12T04:30:00.000Z', newer), 'newer-on-server');
+  assert.deepEqual(loadReconcileDraft(store, '2026-08', new Set())?.statements.map((s) => s.source_hash), ['latest']);
+});
+
+test('a discard is kept as an empty draft, so an older copy anywhere cannot bring the work back', () => {
+  const store = memory();
+  saveReconcileDraft(store, '2026-08', [statement('a')], new Date('2026-10-12T03:00:00Z'));
+  markReconcileDraftSynced(store, '2026-08', '2026-10-12T03:00:00.000Z');
+  saveReconcileDraft(store, '2026-08', [], new Date('2026-10-12T04:00:00Z'));
+  assert.equal(loadReconcileDraft(store, '2026-08', new Set()), null, 'nothing to restore');
+  // The discard has not reached the server, which still holds the older draft: it is not restored, and the discard is sent.
+  const older = { statements: [statement('a')], saved_at: '2026-10-12T03:00:00+00:00' };
+  assert.equal(chooseReconcileDraft(store, '2026-08', new Set(), { available: true, draft: older }), null);
+  assert.deepEqual(draftToResend(store, '2026-08', new Set(), { available: true, draft: older }), { statements: [], saved_at: '2026-10-12T04:00:00.000Z' });
+  // A discard made on another device after this browser's unsent work wins over it.
+  const other = memory();
+  saveReconcileDraft(other, '2026-08', [statement('unsent')], new Date('2026-10-12T03:30:00Z'));
+  const discarded = { statements: [], saved_at: '2026-10-12T04:00:00+00:00' };
+  assert.equal(chooseReconcileDraft(other, '2026-08', new Set(), { available: true, draft: discarded }), null);
+  assert.equal(draftToResend(other, '2026-08', new Set(), { available: true, draft: discarded }), null);
+});
+
+test('only this browser\'s work that never reached the server is sent again on opening, with the time it was made', () => {
+  const store = memory();
+  const server = { statements: [statement('s')], saved_at: '2026-10-12T02:00:00+00:00' };
+  assert.equal(draftToResend(store, '2026-08', new Set(), { available: true, draft: server }), null, 'nothing in this browser');
+  saveReconcileDraft(store, '2026-08', [statement('local'), statement('posted')], new Date('2026-10-12T03:00:00Z'));
+  assert.deepEqual(draftToResend(store, '2026-08', new Set(['posted']), { available: true, draft: server }), { statements: [statement('local')], saved_at: '2026-10-12T03:00:00.000Z' },
+    'unsent and newer: sent with its own time, without statements posted since');
+  assert.equal(draftToResend(store, '2026-08', new Set(), { available: false, draft: null }), null, 'no server to send to');
+  markReconcileDraftSynced(store, '2026-08', '2026-10-12T03:00:00.000Z');
+  assert.equal(draftToResend(store, '2026-08', new Set(), { available: true, draft: server }), null, 'already on the server: a restored draft is not sent again');
 });

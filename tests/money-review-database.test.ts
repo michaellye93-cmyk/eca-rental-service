@@ -27,37 +27,50 @@ const call = async <T>(db: any, sql: string, args: unknown[] = []) => (await db.
 const statement = (hash: string) => ({ filename: `${hash}.xlsx`, account_label: 'Bank A', source_hash: hash, finance_month: '2026-08', total_debits: 0, total_credits: 400, issues: [],
   rows: [{ source_row: 1, transaction_date: '2026-08-01', description: 'IBG CREDIT FIXTURE', credit: 400, debit: 0, decision: 'MATCHED', matched_id: 'p1', review_note: 'Auto-matched' }] });
 
+// When each change was made on the device (the client sends its own time with every save and clear).
+const at = (minute: number) => new Date(Date.UTC(2026, 9, 12, 2, minute)).toISOString();
+const save = (db: any, month: string, statements: unknown[], savedAt: string) =>
+  call<any>(db, `select public.finance_save_reconcile_draft($1::date, $2::jsonb, $3::timestamptz) value`, [month, JSON.stringify(statements), savedAt]);
+const clear = (db: any, month: string, savedAt: string) => call<any>(db, `select public.finance_clear_reconcile_draft($1::date, $2::timestamptz) value`, [month, savedAt]);
+const load = (db: any, month: string) => call<any>(db, `select public.finance_load_reconcile_draft($1::date) value`, [month]);
+const hashes = (draft: any) => draft.statements.map((s: any) => s.source_hash);
+const sameTime = (a: string, b: string) => Date.parse(a) === Date.parse(b);
+
 test('unposted Reconcile work is kept on the server per month, for Admins only', async () => {
   const db = await setup();
   try {
-    assert.equal(await call(db, `select public.finance_load_reconcile_draft('2026-08-01') value`), null);
-    const saved = await call<string>(db, `select public.finance_save_reconcile_draft('2026-08-01', $1::jsonb) value`, [JSON.stringify([statement('a'), statement('b')])]);
-    assert.ok(saved, 'returns when it was saved');
-    const draft = await call<any>(db, `select public.finance_load_reconcile_draft('2026-08-01') value`);
-    assert.deepEqual(draft.statements.map((s: any) => s.source_hash), ['a', 'b']);
+    assert.equal(await load(db, '2026-08-01'), null);
+    const saved = await save(db, '2026-08-01', [statement('a'), statement('b')], at(1));
+    assert.ok(sameTime(saved.saved_at, at(1)), 'returns the stored draft, saved at the time the change was made');
+    const draft = await load(db, '2026-08-01');
+    assert.deepEqual(hashes(draft), ['a', 'b']);
     assert.equal(draft.statements[0].rows[0].matched_id, 'p1');
-    assert.ok(draft.saved_at);
-    assert.equal(await call(db, `select public.finance_load_reconcile_draft('2026-09-01') value`), null, 'another month has its own draft');
+    assert.ok(sameTime(draft.saved_at, at(1)));
+    assert.equal(await load(db, '2026-09-01'), null, 'another month has its own draft');
 
-    // Saving again replaces the draft; saving no statements (all posted or removed) clears it.
-    await db.query(`select public.finance_save_reconcile_draft('2026-08-01', $1::jsonb)`, [JSON.stringify([statement('b')])]);
-    assert.deepEqual((await call<any>(db, `select public.finance_load_reconcile_draft('2026-08-01') value`)).statements.map((s: any) => s.source_hash), ['b']);
-    await db.query(`select public.finance_save_reconcile_draft('2026-08-01', '[]'::jsonb)`);
-    assert.equal(await call(db, `select public.finance_load_reconcile_draft('2026-08-01') value`), null);
-    await db.query(`select public.finance_save_reconcile_draft('2026-08-01', $1::jsonb)`, [JSON.stringify([statement('c')])]);
-    await db.query(`select public.finance_clear_reconcile_draft('2026-08-01')`);
-    assert.equal(await call(db, `select public.finance_load_reconcile_draft('2026-08-01') value`), null);
+    // Saving again replaces the draft; saving no statements (all posted or removed) clears it, keeping when that was
+    // done (so an older save arriving late cannot bring the work back).
+    await save(db, '2026-08-01', [statement('b')], at(2));
+    assert.deepEqual(hashes(await load(db, '2026-08-01')), ['b']);
+    await save(db, '2026-08-01', [], at(3));
+    const cleared = await load(db, '2026-08-01');
+    assert.deepEqual(cleared.statements, [], 'nothing to restore');
+    assert.ok(sameTime(cleared.saved_at, at(3)));
+    await save(db, '2026-08-01', [statement('c')], at(4));
+    await clear(db, '2026-08-01', at(5));
+    assert.deepEqual((await load(db, '2026-08-01')).statements, []);
 
-    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-15', '[]'::jsonb)`), /first day/);
-    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', '{"rows":[]}'::jsonb)`), /list of statements/);
+    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-15', '[]'::jsonb, now())`), /first day/);
+    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', '{"rows":[]}'::jsonb, now())`), /list of statements/);
+    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', '[]'::jsonb, null)`), /time/);
     // Over 2 MB is refused: the draft holds the lines read from the files, never the files.
-    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', jsonb_build_array(jsonb_build_object('note', repeat('x', 2200000))))`), /too large/);
+    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', jsonb_build_array(jsonb_build_object('note', repeat('x', 2200000))), now())`), /too large/);
 
     await assert.rejects(db.query(`select * from finance_private.reconcile_drafts`), /permission denied/);
     await asUser(db, STAFF_ID);
     await assert.rejects(db.query(`select public.finance_load_reconcile_draft('2026-08-01')`), /Admin/);
-    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', '[]'::jsonb)`), /Admin/);
-    await assert.rejects(db.query(`select public.finance_clear_reconcile_draft('2026-08-01')`), /Admin/);
+    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', '[]'::jsonb, now())`), /Admin/);
+    await assert.rejects(db.query(`select public.finance_clear_reconcile_draft('2026-08-01', now())`), /Admin/);
     await db.exec('reset role; set role anon');
     await assert.rejects(db.query(`select public.finance_load_reconcile_draft('2026-08-01')`), /permission denied/);
   } finally { await db.close(); }
@@ -109,10 +122,59 @@ test('a closed month keeps its trend figures, which go stale when the month is r
 test('the file can safely run twice', async () => {
   const db = await setup();
   try {
-    await db.query(`select public.finance_save_reconcile_draft('2026-08-01', $1::jsonb)`, [JSON.stringify([statement('a')])]);
+    await save(db, '2026-08-01', [statement('a')], at(1));
     await db.exec('reset role');
     await migrate(db, MIGRATION);
     await asUser(db);
-    assert.deepEqual((await call<any>(db, `select public.finance_load_reconcile_draft('2026-08-01') value`)).statements.map((s: any) => s.source_hash), ['a']);
+    assert.deepEqual(hashes(await load(db, '2026-08-01')), ['a']);
+  } finally { await db.close(); }
+});
+
+test('a save or clear older than the stored draft is refused without an error, and the stored draft is returned', async () => {
+  const db = await setup();
+  try {
+    // Out of order: the save made at minute 2 arrives after the one made at minute 3.
+    await save(db, '2026-08-01', [statement('new')], at(3));
+    const late = await save(db, '2026-08-01', [statement('old')], at(2));
+    assert.deepEqual(hashes(late), ['new'], 'the stored (newer) draft comes back');
+    assert.ok(sameTime(late.saved_at, at(3)));
+    assert.deepEqual(hashes(await load(db, '2026-08-01')), ['new']);
+    // The same time is not newer either.
+    assert.deepEqual(hashes(await save(db, '2026-08-01', [statement('same')], at(3))), ['new']);
+
+    // Discarded at minute 5; a save made at minute 4 arriving afterwards does not bring the work back.
+    const discarded = await clear(db, '2026-08-01', at(5));
+    assert.deepEqual(discarded.statements, []);
+    const resurrect = await save(db, '2026-08-01', [statement('old')], at(4));
+    assert.deepEqual(resurrect.statements, [], 'refused: the discard is newer');
+    assert.ok(sameTime(resurrect.saved_at, at(5)));
+    assert.deepEqual((await load(db, '2026-08-01')).statements, []);
+    // A clear older than the stored draft is refused too.
+    await save(db, '2026-08-01', [statement('kept')], at(7));
+    assert.deepEqual(hashes(await clear(db, '2026-08-01', at(6))), ['kept']);
+    assert.deepEqual(hashes(await load(db, '2026-08-01')), ['kept']);
+    // A newer save is kept.
+    assert.deepEqual(hashes(await save(db, '2026-08-01', [statement('newer')], at(8))), ['newer']);
+
+    // A device clock far ahead would lock the month for everyone else: refused (the work stays in that browser).
+    await assert.rejects(db.query(`select public.finance_save_reconcile_draft('2026-08-01', '[]'::jsonb, now() + interval '1 day')`), /clock/);
+  } finally { await db.close(); }
+});
+
+test('a draft the app sends (up to 1.8 MB of compact JSON) fits the server limit of 2 MB', async () => {
+  const { draftStatements, serverDraftTooLarge, SERVER_DRAFT_LIMIT } = await import('../services/finance/reconcileDraft.ts');
+  // Realistic lines: a matched credit with a typical bank description, as Reconcile keeps them.
+  const row = (i: number) => ({ source_row: i, transaction_date: '2026-08-01', description: 'RPP INWARD INST TRF FIXTURE DRIVER ALPHA / XAA1001 SEWA', reference: String(100000 + i),
+    debit: 0, credit: 400, decision: 'MATCHED', payment_source: null, category: null, plate_key: null, matched_kind: 'payment', matched_id: `p${i}`, review_note: 'Auto-matched' });
+  const sized = (count: number) => [{ ...statement('big'), rows: Array.from({ length: count }, (_, i) => row(i + 1)) }];
+  let count = 1000;
+  while (!serverDraftTooLarge(sized(count + 200) as any)) count += 200;
+  const draft = draftStatements(sized(count) as any);
+  const compact = new TextEncoder().encode(JSON.stringify(draft)).length;
+  assert.ok(compact <= SERVER_DRAFT_LIMIT && compact > SERVER_DRAFT_LIMIT - 120000, `close to the app's limit (${compact} bytes)`);
+  const db = await setup();
+  try {
+    const saved = await save(db, '2026-08-01', draft, at(1));
+    assert.equal(saved.statements[0].rows.length, count, 'the server keeps it');
   } finally { await db.close(); }
 });

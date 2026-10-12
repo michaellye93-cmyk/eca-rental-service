@@ -58,5 +58,12 @@ test('the new files apply after the whole Finance chain, and the additive ones c
     assert.deepEqual(Object.keys(outlook).sort(), ['balances', 'duplicate_recurring', 'history', 'insurance', 'months', 'today']);
     assert.equal((await db.query<{ n: number }>(`select count(*)::int n from pg_proc where proname = 'finance_portal_instructions'`)).rows[0].n, 0,
       'the old "How to pay" text is gone at the end of the chain');
+    // Reconcile drafts: each save and clear carries the time the change was made (one version of each, no older overload).
+    const args = async (name: string) => (await db.query<{ args: string }>(`select pg_get_function_identity_arguments(p.oid) args from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = $1`, [name])).rows.map((row) => row.args);
+    assert.deepEqual(await args('finance_save_reconcile_draft'), ['p_month date, p_statements jsonb, p_saved_at timestamp with time zone']);
+    assert.deepEqual(await args('finance_clear_reconcile_draft'), ['p_month date, p_saved_at timestamp with time zone']);
+    const saved = (await db.query<{ value: any }>(`select public.finance_save_reconcile_draft('2026-08-01', '[]'::jsonb, now()) value`)).rows[0].value;
+    assert.deepEqual(saved.statements, []);
   } finally { await db.close(); }
 });

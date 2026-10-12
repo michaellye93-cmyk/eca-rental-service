@@ -5,8 +5,11 @@
 begin;
 
 -- D3. Unposted Reconcile work (the statements loaded for a Finance month, with their matches and decisions), so it
--- survives another device or browser. One draft per month; the newest save replaces it. Only the lines read from
--- the bank files are kept, never the files. Nothing here is posted: posting still goes through Reconcile.
+-- survives another device or browser. One draft per month. Each save and clear carries the time the change was made on
+-- the device (saved_at); one that is not newer than the stored draft is refused (the stored draft is returned, no
+-- error), so a save arriving late can never bring back work discarded or posted since. Clearing keeps an empty draft
+-- with its time for the same reason. Only the lines read from the bank files are kept, never the files. Nothing here
+-- is posted: posting still goes through Reconcile.
 create table if not exists finance_private.reconcile_drafts (
   finance_month date primary key check (extract(day from finance_month) = 1),
   statements jsonb not null check (jsonb_typeof(statements) = 'array'),
@@ -22,26 +25,33 @@ begin
   if p_month is null or extract(day from p_month) <> 1 then raise exception 'Finance month must be the first day of a month'; end if;
 end$$;
 
--- Saves the month's draft (an empty list clears it) and returns when it was saved. Refuses more than 2 MB.
-create or replace function finance_private.save_reconcile_draft(p_month date, p_statements jsonb)
-returns timestamptz language plpgsql security definer set search_path='' as $$
-declare saved timestamptz := now();
+-- Saves the month's draft as of p_saved_at (an empty list clears it) and returns the stored draft as
+-- {statements, saved_at}: the one just saved, or the newer one already stored when this save is refused. Refuses more
+-- than 2 MB, and a time far ahead of the server's clock (it would lock out every other device until then).
+create or replace function finance_private.save_reconcile_draft(p_month date, p_statements jsonb, p_saved_at timestamptz)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare kept finance_private.reconcile_drafts;
 begin
   perform finance_private.require_admin();
   perform finance_private.check_draft_month(p_month);
   if p_statements is null or jsonb_typeof(p_statements) <> 'array' then raise exception 'The draft must be a list of statements'; end if;
-  if octet_length(p_statements::text) > 2097152 then raise exception 'The Reconcile draft is too large to keep on the server (over 2 MB)'; end if;
-  if jsonb_array_length(p_statements) = 0 then
-    delete from finance_private.reconcile_drafts where finance_month = p_month;
-    return saved;
+  if p_saved_at is null then raise exception 'The draft needs the time the change was made'; end if;
+  if p_saved_at > now() + interval '10 minutes' then
+    raise exception 'This device''s clock is ahead of the server, so the Reconcile draft is kept in this browser only';
   end if;
+  if octet_length(p_statements::text) > 2097152 then raise exception 'The Reconcile draft is too large to keep on the server (over 2 MB)'; end if;
   insert into finance_private.reconcile_drafts(finance_month, statements, saved_at, saved_by)
-    values (p_month, p_statements, saved, auth.uid())
-    on conflict (finance_month) do update set statements = excluded.statements, saved_at = excluded.saved_at, saved_by = excluded.saved_by;
-  return saved;
+    values (p_month, p_statements, p_saved_at, auth.uid())
+    on conflict (finance_month) do update set statements = excluded.statements, saved_at = excluded.saved_at, saved_by = excluded.saved_by
+      where finance_private.reconcile_drafts.saved_at < excluded.saved_at
+    returning * into kept;
+  if kept.finance_month is null then
+    select * into kept from finance_private.reconcile_drafts where finance_month = p_month;
+  end if;
+  return jsonb_build_object('statements', kept.statements, 'saved_at', kept.saved_at);
 end$$;
 
--- The month's draft as {statements, saved_at}, or null when there is none.
+-- The month's draft as {statements, saved_at} (an empty list once cleared), or null when there has never been one.
 create or replace function finance_private.load_reconcile_draft(p_month date)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 begin
@@ -51,30 +61,29 @@ begin
     from finance_private.reconcile_drafts d where d.finance_month = p_month);
 end$$;
 
-create or replace function finance_private.clear_reconcile_draft(p_month date)
-returns void language plpgsql security definer set search_path='' as $$
+-- Clears the month's draft as of p_saved_at (posted or discarded); the same rule as a save of no statements.
+create or replace function finance_private.clear_reconcile_draft(p_month date, p_saved_at timestamptz)
+returns jsonb language plpgsql security definer set search_path='' as $$
 begin
-  perform finance_private.require_admin();
-  perform finance_private.check_draft_month(p_month);
-  delete from finance_private.reconcile_drafts where finance_month = p_month;
+  return finance_private.save_reconcile_draft(p_month, '[]'::jsonb, p_saved_at);
 end$$;
 
-create or replace function public.finance_save_reconcile_draft(p_month date, p_statements jsonb) returns timestamptz
-  language sql security invoker set search_path='' as $$select finance_private.save_reconcile_draft(p_month, p_statements)$$;
+create or replace function public.finance_save_reconcile_draft(p_month date, p_statements jsonb, p_saved_at timestamptz) returns jsonb
+  language sql security invoker set search_path='' as $$select finance_private.save_reconcile_draft(p_month, p_statements, p_saved_at)$$;
 create or replace function public.finance_load_reconcile_draft(p_month date) returns jsonb
   language sql security invoker set search_path='' as $$select finance_private.load_reconcile_draft(p_month)$$;
-create or replace function public.finance_clear_reconcile_draft(p_month date) returns void
-  language sql security invoker set search_path='' as $$select finance_private.clear_reconcile_draft(p_month)$$;
+create or replace function public.finance_clear_reconcile_draft(p_month date, p_saved_at timestamptz) returns jsonb
+  language sql security invoker set search_path='' as $$select finance_private.clear_reconcile_draft(p_month, p_saved_at)$$;
 
 revoke all on function finance_private.check_draft_month(date) from public, anon, authenticated;
-revoke all on function finance_private.save_reconcile_draft(date, jsonb), finance_private.load_reconcile_draft(date),
-  finance_private.clear_reconcile_draft(date) from public, anon, authenticated;
-grant execute on function finance_private.save_reconcile_draft(date, jsonb), finance_private.load_reconcile_draft(date),
-  finance_private.clear_reconcile_draft(date) to authenticated;
-revoke all on function public.finance_save_reconcile_draft(date, jsonb), public.finance_load_reconcile_draft(date),
-  public.finance_clear_reconcile_draft(date) from public, anon, authenticated;
-grant execute on function public.finance_save_reconcile_draft(date, jsonb), public.finance_load_reconcile_draft(date),
-  public.finance_clear_reconcile_draft(date) to authenticated;
+revoke all on function finance_private.save_reconcile_draft(date, jsonb, timestamptz), finance_private.load_reconcile_draft(date),
+  finance_private.clear_reconcile_draft(date, timestamptz) from public, anon, authenticated;
+grant execute on function finance_private.save_reconcile_draft(date, jsonb, timestamptz), finance_private.load_reconcile_draft(date),
+  finance_private.clear_reconcile_draft(date, timestamptz) to authenticated;
+revoke all on function public.finance_save_reconcile_draft(date, jsonb, timestamptz), public.finance_load_reconcile_draft(date),
+  public.finance_clear_reconcile_draft(date, timestamptz) from public, anon, authenticated;
+grant execute on function public.finance_save_reconcile_draft(date, jsonb, timestamptz), public.finance_load_reconcile_draft(date),
+  public.finance_clear_reconcile_draft(date, timestamptz) to authenticated;
 
 -- C3. The Overview trend's figures (revenue, contribution, profit, margin) for each CLOSED month, computed in the app
 -- by the same P&L rules as the month itself and saved when the month is closed (or first read while closed). The trend
