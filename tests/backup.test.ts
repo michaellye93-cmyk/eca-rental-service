@@ -10,6 +10,14 @@ test('the backup lists every table the office keeps, drivers and payments first'
   }
 });
 
+test('the collections tools tables are backed up too (each reported as "could not be read" until its SQL has run)', () => {
+  const entry = (table: string) => BACKUP_TABLES.find(t => t.table === table);
+  assert.deepEqual(entry('collection_contacts'), { table: 'collection_contacts', order: 'contacted_at' });
+  assert.deepEqual(entry('collection_runs'), { table: 'collection_runs', order: 'started_at' });
+  // No id column: read a page at a time in order of day, then driver (the table's key), so no row is missed past 1,000
+  assert.deepEqual(entry('driver_daily_status'), { table: 'driver_daily_status', order: 'day', noId: true, thenBy: 'driver_id' });
+});
+
 test('Finance months run from August 2026 (the start of kept Finance) to the current month', () => {
   assert.deepEqual(financeMonthsSince('2026-08', '2026-10-12'), ['2026-08', '2026-09', '2026-10']);
   assert.deepEqual(financeMonthsSince('2026-08', '2027-01-03'), ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01']);

@@ -5,8 +5,11 @@
  * admin's access. Reading a Finance month that does not exist yet opens it as a Draft, as Finance itself does.
  */
 
-/** The tables in the backup, the column each is read in order of, and whether it has an id column to page by. */
-export const BACKUP_TABLES: { table: string; order: string; noId?: true }[] = [
+/**
+ * The tables in the backup, the column each is read in order of, and whether it has an id column to page by. A table
+ * without one is paged by its order column, then `thenBy` when the order column alone is not unique.
+ */
+export const BACKUP_TABLES: { table: string; order: string; noId?: true; thenBy?: string }[] = [
   { table: 'drivers', order: 'created_at' },
   { table: 'payments', order: 'date' },
   { table: 'payment_changes', order: 'changed_at' },
@@ -16,6 +19,9 @@ export const BACKUP_TABLES: { table: string; order: string; noId?: true }[] = [
   { table: 'driver_car_assignments', order: 'id' },
   { table: 'payment_promises', order: 'logged_at' },
   { table: 'catch_up_plans', order: 'start_date' },
+  { table: 'collection_contacts', order: 'contacted_at' },
+  { table: 'driver_daily_status', order: 'day', noId: true, thenBy: 'driver_id' },
+  { table: 'collection_runs', order: 'started_at' },
   { table: 'collection_settings', order: 'key', noId: true },
   { table: 'driver_agreements', order: 'created_at' },
   { table: 'agreement_settings', order: 'key', noId: true },
@@ -44,15 +50,15 @@ export interface Backup {
 }
 
 export async function buildBackup(deps: {
-  read: (table: string, order: string, noId: boolean) => Promise<unknown[]>;
+  read: (table: string, order: string, noId: boolean, thenBy: string | null) => Promise<unknown[]>;
   month: (month: string) => Promise<unknown>;
   today: string;
   now: string;
 }): Promise<Backup> {
   const backup: Backup = { made_at: deps.now, tables: {}, finance_months: {}, unreadable: [] };
-  for (const { table, order, noId } of BACKUP_TABLES) {
+  for (const { table, order, noId, thenBy } of BACKUP_TABLES) {
     try {
-      backup.tables[table] = await deps.read(table, order, Boolean(noId));
+      backup.tables[table] = await deps.read(table, order, Boolean(noId), thenBy ?? null);
     } catch (error) {
       backup.unreadable.push({ table, error: error instanceof Error ? error.message : String((error as { message?: string })?.message ?? error) });
     }

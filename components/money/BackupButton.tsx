@@ -15,11 +15,18 @@ export default function BackupButton() {
     try {
       const today = kualaLumpurToday();
       const backup = await buildBackup({
-        read: async (table, order, noId) => {
+        read: async (table, order, noId, thenBy) => {
           if (noId) {
-            const { data, error } = await supabase.from(table).select('*').order(order);
-            if (error) throw error;
-            return data ?? [];
+            // 1,000 rows a page (the most Supabase returns at once), in a fixed order: the order column, then `thenBy`
+            const rows: unknown[] = [];
+            for (let from = 0; ; from += 1000) {
+              let query = supabase.from(table).select('*').order(order);
+              if (thenBy) query = query.order(thenBy);
+              const { data, error } = await query.range(from, from + 999);
+              if (error) throw error;
+              rows.push(...(data ?? []));
+              if (!data || data.length < 1000) return rows;
+            }
           }
           return readAllRows(() => supabase.from(table).select('*') as never, order, true);
         },
