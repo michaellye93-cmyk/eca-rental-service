@@ -76,6 +76,7 @@ test('previousMonth steps back one month, across the year end', () => {
   assert.equal(previousMonth('2026-09'), '2026-08');
   assert.equal(previousMonth('2026-01'), '2025-12');
   assert.equal(previousMonth('2026-10'), '2026-09');
+  assert.equal(previousMonth('2026-09-15'), '2026-08');
 });
 
 test('round2 rounds to two decimals exactly as the old local helpers did', () => {
