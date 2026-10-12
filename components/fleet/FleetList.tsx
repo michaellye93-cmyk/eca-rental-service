@@ -1,6 +1,6 @@
 import { AlertTriangle, Building2, CarFront, Pencil, Plus, Search, StickyNote, Trash2, Users } from 'lucide-react';
 import { formatDate } from '../../utils';
-import { attentionCount, byUrgency, carStatuses, EXPIRY_LABELS, matchesSearch, needsAttention, type Car, type ExpiryTone } from '../../services/fleet/rules';
+import { attentionCount, byUrgency, carStatuses, EXPIRY_LABELS, financeInsurance, matchesSearch, needsAttention, type Car, type ExpiryTone, type InsuranceCover } from '../../services/fleet/rules';
 
 export type FleetFilter = 'ALL' | 'ATTENTION' | 'OWN' | 'OTHERS';
 
@@ -16,6 +16,10 @@ interface FleetListProps {
   cars: Car[];
   /** Kuala Lumpur's date, YYYY-MM-DD. */
   today: string;
+  /** Finance's insurance end dates (Admins only); the later of Finance's and the car's own date sets the reminder. */
+  cover?: InsuranceCover;
+  /** "Use this date": saves Finance's later insurance date on the car. */
+  onUseFinanceInsurance?: (car: Car, date: string) => void;
   filter: FleetFilter;
   onFilterChange: (filter: FleetFilter) => void;
   query: string;
@@ -28,19 +32,19 @@ interface FleetListProps {
 }
 
 /** The Fleet page's tiles, search and car cards; FleetView loads and saves around it. */
-export default function FleetList({ cars, today, filter, onFilterChange, query, onQueryChange, onAdd, onEdit, onOpen, onDelete }: FleetListProps) {
+export default function FleetList({ cars, today, cover, onUseFinanceInsurance, filter, onFilterChange, query, onQueryChange, onAdd, onEdit, onOpen, onDelete }: FleetListProps) {
   const tiles: { id: FleetFilter; label: string; count: number; Icon: typeof CarFront; look: string }[] = [
     { id: 'ALL', label: 'All cars', count: cars.length, Icon: CarFront, look: 'text-gray-900' },
-    { id: 'ATTENTION', label: 'Needs attention', count: attentionCount(cars, today), Icon: AlertTriangle, look: 'text-rose-600' },
+    { id: 'ATTENTION', label: 'Needs attention', count: attentionCount(cars, today, cover), Icon: AlertTriangle, look: 'text-rose-600' },
     { id: 'OWN', label: 'Own Fleet', count: cars.filter(car => car.ownership === 'Own Fleet').length, Icon: Building2, look: 'text-blue-700' },
     { id: 'OTHERS', label: 'Others', count: cars.filter(car => car.ownership === 'Others').length, Icon: Users, look: 'text-purple-700' },
   ];
   const inFilter = (car: Car) =>
     filter === 'ALL'
-    || (filter === 'ATTENTION' && needsAttention(car, today))
+    || (filter === 'ATTENTION' && needsAttention(car, today, cover))
     || (filter === 'OWN' && car.ownership === 'Own Fleet')
     || (filter === 'OTHERS' && car.ownership === 'Others');
-  const shown = byUrgency(cars.filter(car => inFilter(car) && matchesSearch(car, query)));
+  const shown = byUrgency(cars.filter(car => inFilter(car) && matchesSearch(car, query)), cover);
 
   return (
     <div className="space-y-3">
@@ -93,7 +97,8 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
       ) : (
         <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {shown.map(car => {
-            const statuses = carStatuses(car, today);
+            const statuses = carStatuses(car, today, cover);
+            const finance = financeInsurance(car, cover);
             // A coloured left edge for the car's worst date, so the list can be scanned at a glance
             const accent = statuses.some(status => status.tone === 'expired') ? 'border-l-rose-500'
               : statuses.some(status => status.needsAttention) ? 'border-l-amber-400' : 'border-l-emerald-400';
@@ -138,6 +143,22 @@ export default function FleetList({ cars, today, filter, onFilterChange, query, 
                     </div>
                   ))}
                 </dl>
+                {finance && (
+                  <p className="px-4 pb-3 -mt-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs text-gray-500">
+                    {finance.relation === 'later' ? (
+                      <>
+                        <span>Finance: insured to {formatDate(finance.date, finance.date)}</span>
+                        {onUseFinanceInsurance && (
+                          <button type="button" onClick={() => onUseFinanceInsurance(car, finance.date)}
+                            aria-label={`${car.plateNumber}: use Finance's insurance date ${formatDate(finance.date, finance.date)}`}
+                            className="font-semibold text-blue-600 hover:underline">Use this date</button>
+                        )}
+                      </>
+                    ) : (
+                      <span title="Fleet's insurance date is later than Finance's record: correct it in Finance">Finance has {formatDate(finance.date, finance.date)}</span>
+                    )}
+                  </p>
+                )}
               </li>
             );
           })}

@@ -5,11 +5,13 @@ import FleetList, { type FleetFilter } from './FleetList';
 import CarFormDialog from './CarFormDialog';
 import VehicleInfoCard from './VehicleInfoCard';
 import { fleet } from '../../services/fleet/client';
-import { detailsChanged, emptyDetails, type Car, type VehicleDetails } from '../../services/fleet/rules';
+import { detailsChanged, emptyDetails, type Car, type InsuranceCover, type VehicleDetails } from '../../services/fleet/rules';
 
 interface FleetViewProps {
   /** Kuala Lumpur's date, YYYY-MM-DD. */
   today: string;
+  /** Admins also see Finance's insurance dates (staff cannot read Finance). */
+  isAdmin?: boolean;
   /** Called with the car list after every load, so the Fleet tab's count stays current. */
   onCarsChange?: (cars: Car[]) => void;
 }
@@ -19,8 +21,10 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 const CAR_SAVED = 'The car is saved,';
 
 /** The Fleet page: loads the car list, and lets staff and admins add, edit and delete cars. */
-export default function FleetView({ today, onCarsChange }: FleetViewProps) {
+export default function FleetView({ today, isAdmin = false, onCarsChange }: FleetViewProps) {
   const [cars, setCars] = useState<Car[] | null>(null);
+  // Finance's insurance end date per plate; none for staff, or when it can't be read (Fleet then uses its own dates)
+  const [cover, setCover] = useState<InsuranceCover | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FleetFilter>('ALL');
   const [query, setQuery] = useState('');
@@ -51,7 +55,8 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
     } catch (err) {
       setDetailsProblem(`Vehicle details can't be read yet: ${reason(err)}`);
     }
-  }, []);
+    if (isAdmin) setCover(await fleet.insuranceCover().catch(() => undefined));
+  }, [isAdmin]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -76,6 +81,17 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
     }
     setEditing(null);
     setNotice({ type: 'success', text: `${car.plateNumber} saved.` });
+  };
+
+  // "Use this date": the car takes Finance's later insurance date, so Fleet has one master date again.
+  const acceptFinanceInsurance = async (car: Car, date: string) => {
+    try {
+      await fleet.updateCar({ ...car, insuranceExpiry: date });
+      setNotice({ type: 'success', text: `${car.plateNumber}: insurance date updated from Finance.` });
+    } catch (err) {
+      setNotice({ type: 'error', text: `Insurance date not updated: ${reason(err)}` });
+    }
+    await reload();
   };
 
   const confirmDelete = async () => {
@@ -108,6 +124,8 @@ export default function FleetView({ today, onCarsChange }: FleetViewProps) {
       <FleetList
         cars={cars}
         today={today}
+        cover={cover}
+        onUseFinanceInsurance={(car, date) => void acceptFinanceInsurance(car, date)}
         filter={filter}
         onFilterChange={setFilter}
         query={query}

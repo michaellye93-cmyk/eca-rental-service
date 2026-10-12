@@ -23,4 +23,22 @@ update public.cars set plate_key = nullif(upper(regexp_replace(coalesce("plateNu
   where plate_key is distinct from nullif(upper(regexp_replace(coalesce("plateNumber", ''), '\s', '', 'g')), '');
 create index if not exists cars_plate_key_idx on public.cars (plate_key);
 
+-- 2. Finance's insurance cover for the Fleet page: each plate's latest coverage end among policies that are not
+--    cancelled (whoever paid). Admins only, like the rest of Finance; staff keep Fleet's own dates.
+create or replace function finance_private.insurance_cover() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform finance_private.require_admin();
+  return coalesce((select jsonb_agg(jsonb_build_object('plate_key', c.plate_key, 'coverage_end', c.coverage_end) order by c.plate_key)
+    from (select i.plate_key, max(i.coverage_end) as coverage_end from finance_private.insurance i
+          where i.cancelled_at is null and i.coverage_end is not null group by i.plate_key) c), '[]'::jsonb);
+end$$;
+create or replace function public.finance_insurance_cover() returns jsonb
+  language sql security invoker set search_path = '' as $$select finance_private.insurance_cover()$$;
+
+revoke all on function finance_private.insurance_cover() from public, anon, authenticated;
+grant execute on function finance_private.insurance_cover() to authenticated;
+revoke all on function public.finance_insurance_cover() from public, anon, authenticated;
+grant execute on function public.finance_insurance_cover() to authenticated;
+
 commit;

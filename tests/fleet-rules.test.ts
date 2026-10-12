@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  attentionCount, byUrgency, carFormError, carFromRow, carToRow, daysUntil, expiryStatus, findDuplicatePlate,
+  attentionCount, byUrgency, carFormError, carFromRow, carStatuses, carToRow, daysUntil, expiryStatus, financeInsurance, findDuplicatePlate,
   matchesSearch, needsAttention, newCar, type Car, type ExpiryStatus,
 } from '../services/fleet/rules.ts';
 
@@ -122,4 +122,42 @@ test('a new car starts empty as Own Fleet, with a fresh id each time', () => {
   assert.deepEqual([first.make, first.plateNumber, first.roadtaxExpiry, first.ownership], ['', '', '', 'Own Fleet']);
   assert.match(first.id, /^[0-9a-f-]{36}$/);
   assert.notEqual(first.id, second.id);
+});
+
+// B3 (owner's review, 12 Oct): Fleet reads Finance's insurance record for the same plate (Admins only).
+const insurance = (c: Car, cover?: ReadonlyMap<string, string>) => carStatuses(c, TODAY, cover)[1];
+
+test("a later Finance insurance date is shown and used for the reminder; Fleet's own date stays until it is accepted", () => {
+  const cover = new Map([['XAA1001', '2027-09-30']]);
+  const expiring = car({ plateNumber: 'xaa 1001', insuranceExpiry: '2026-10-05' });
+  assert.deepEqual(financeInsurance(expiring, cover), { date: '2027-09-30', relation: 'later' });
+  assert.deepEqual([insurance(expiring, cover).date, insurance(expiring, cover).tone], ['2027-09-30', 'ok']);
+  assert.equal(needsAttention(expiring, TODAY, cover), false);
+  assert.equal(attentionCount([expiring], TODAY, cover), 0, 'the Fleet tab count agrees with the card');
+  assert.equal(expiring.insuranceExpiry, '2026-10-05', 'nothing is written');
+  // A car without an insurance date takes Finance's.
+  const undated = car({ plateNumber: 'XAA1001', insuranceExpiry: '' });
+  assert.deepEqual(financeInsurance(undated, cover), { date: '2027-09-30', relation: 'later' });
+  assert.equal(insurance(undated, cover).tone, 'ok');
+  // The urgency order uses the same date.
+  const other = car({ id: 'c2', plateNumber: 'XAA1002', insuranceExpiry: '2026-12-01', roadtaxExpiry: '2027-06-01' });
+  assert.deepEqual(byUrgency([expiring, other], cover).map(c => c.id), ['c2', 'c1']);
+});
+
+test("an earlier Finance date is only a hint: Fleet's later date counts", () => {
+  const cover = new Map([['XAA1001', '2026-10-01']]);
+  const c = car({ plateNumber: 'XAA1001', insuranceExpiry: '2027-10-01' });
+  assert.deepEqual(financeInsurance(c, cover), { date: '2026-10-01', relation: 'earlier' });
+  assert.deepEqual([insurance(c, cover).date, insurance(c, cover).tone], ['2027-10-01', 'ok']);
+  assert.equal(needsAttention(c, TODAY, cover), false);
+});
+
+test('with no Finance record (staff, another plate, the same date or a bad date) Fleet behaves as before', () => {
+  const c = car({ plateNumber: 'XAA1001', insuranceExpiry: '2026-10-05' });
+  for (const cover of [undefined, new Map(), new Map([['XAA9999', '2027-01-01']]), new Map([['XAA1001', '2026-10-05']]), new Map([['XAA1001', '30/09/2027']])]) {
+    assert.equal(financeInsurance(c, cover), null);
+    assert.deepEqual(carStatuses(c, TODAY, cover), carStatuses(c, TODAY));
+    assert.equal(needsAttention(c, TODAY, cover), true);
+    assert.equal(attentionCount([c], TODAY, cover), 1);
+  }
 });

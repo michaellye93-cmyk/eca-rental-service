@@ -42,6 +42,9 @@ Notes:
 
 - **Drivers.** The Add / Edit Driver form is the one master input for a driver. One driver record per contract: a
   returning driver gets a new record, and the database allows one active driver per NRIC.
+- **Fleet.** The plate is typed on the car; the database keeps `cars.plate_key` (capitals, no spaces, as drivers and
+  Finance store plates). Admins also see Finance's insurance end date for the plate (`finance_insurance_cover`): a
+  later Finance date sets the reminder until "Use this date" saves it on the car. Nothing is written automatically.
 - **Agreements.** The PDF is made in the browser (jsPDF, A4) and never stored. It reads the driver, Fleet's
   `car_details` and `driver_deposits`; only signing-day details are typed. A text copy goes to `driver_agreements`
   so the driver can see and download it on their phone. The Grab and "other EHO" authorization letters live here too.

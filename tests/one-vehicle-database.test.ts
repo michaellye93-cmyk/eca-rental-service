@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { PGlite } from '@electric-sql/pglite';
-import { asUser, database, migrate } from './finance-db-fixture.ts';
+import { asUser, database, migrate, STAFF_ID } from './finance-db-fixture.ts';
 
 // Production as it stands after the 12 Oct files, then the one-vehicle file.
 const CHAIN = [
@@ -87,5 +87,34 @@ test('cars get a plate key in the drivers format, filled for existing cars and k
     await db.exec('reset role');
     await migrate(db, ONE_VEHICLE);
     assert.equal((await db.query<{ n: number }>(`select count(*)::int n from public.cars where plate_key is not null`)).rows[0].n, 4);
+  } finally { await db.close(); }
+});
+
+test("Fleet can read Finance's latest insurance cover per plate, for Admins only", async () => {
+  const db = await setup();
+  try {
+    await migrate(db, ONE_VEHICLE);
+    await db.exec(`reset role;
+      insert into finance_private.insurance(plate_key,premium,coverage_start,coverage_end,responsibility,cancelled_at) values
+        ('XAA1001',1200,'2025-10-16','2026-10-15','ECA_PAID',null),
+        ('XAA1001',1300,'2026-10-16','2027-10-15','ECA_PAID',null),
+        ('XAA1001',1300,'2027-10-16','2028-10-15','ECA_PAID',now()),
+        ('XAA1002',0,null,null,'OWNER_PAID',null),
+        ('XAA1002',0,'2026-03-01','2027-02-28','OWNER_PAID',null),
+        ('XAA1003',0,null,null,'OWNER_PAID',null);`);
+    await asUser(db);
+    const cover = (await db.query<{ value: unknown }>(`select public.finance_insurance_cover() value`)).rows[0].value;
+    // The latest end date of each plate's policies that are not cancelled, whoever paid; a plate without dates is left out.
+    assert.deepEqual(cover, [{ plate_key: 'XAA1001', coverage_end: '2027-10-15' }, { plate_key: 'XAA1002', coverage_end: '2027-02-28' }]);
+
+    await asUser(db, STAFF_ID);
+    await assert.rejects(db.query(`select public.finance_insurance_cover()`), /Admin/);
+    await db.exec(`reset role; select set_config('request.jwt.claims','',false); set role anon;`);
+    await assert.rejects(db.query(`select public.finance_insurance_cover()`), /permission denied/);
+
+    await db.exec('reset role');
+    await migrate(db, ONE_VEHICLE);
+    await asUser(db);
+    assert.equal((await db.query<{ n: number }>(`select jsonb_array_length(public.finance_insurance_cover()) n`)).rows[0].n, 2, 'runs twice');
   } finally { await db.close(); }
 });

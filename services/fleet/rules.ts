@@ -85,18 +85,52 @@ export const expiryStatus = (kind: ExpiryKind, date: string, today: string): Exp
   return { kind, date: stored, tone: 'ok', days, text: `${dayCount(days)} left`, needsAttention: false };
 };
 
-/** Road tax, insurance and inspection, in that order. */
-export const carStatuses = (car: Car, today: string): ExpiryStatus[] => [
-  expiryStatus('roadtax', car.roadtaxExpiry, today),
-  expiryStatus('insurance', car.insuranceExpiry, today),
-  expiryStatus('inspection', car.inspectionExpiry, today),
-];
+/**
+ * Finance's insurance cover, Admins only: each plate's latest policy end date (YYYY-MM-DD), keyed by the plate in the
+ * drivers format (capitals, no spaces). Staff have none, and Fleet then uses its own dates only.
+ */
+export type InsuranceCover = ReadonlyMap<string, string>;
+
+/** Finance's insurance end date for a car, when it differs from the car's own date. */
+export interface FinanceInsurance {
+  date: string;
+  /** later: Finance's date is after Fleet's (or Fleet has none), so the reminder uses it and Fleet can take it over.
+   *  earlier: Fleet's date is later, a hint to correct Finance. */
+  relation: 'later' | 'earlier';
+}
+
+/** How Finance's insurance record for the car's plate compares with Fleet's date; null when there is none or they agree. */
+export const financeInsurance = (car: Car, cover?: InsuranceCover): FinanceInsurance | null => {
+  const date = cover?.get(normalizePlate(car.plateNumber));
+  if (!date || dayNumber(date) === null) return null;
+  const own = text(car.insuranceExpiry);
+  if (dayNumber(own) === null || date > own) return { date, relation: 'later' };
+  return date < own ? { date, relation: 'earlier' } : null;
+};
+
+/** The car as its reminders see it: the later of Fleet's and Finance's insurance date. Nothing is saved. */
+const withFinanceInsurance = (car: Car, cover?: InsuranceCover): Car => {
+  const finance = financeInsurance(car, cover);
+  return finance?.relation === 'later' ? { ...car, insuranceExpiry: finance.date } : car;
+};
+
+/** Road tax, insurance and inspection, in that order. With Finance's cover, insurance uses the later date. */
+export const carStatuses = (car: Car, today: string, cover?: InsuranceCover): ExpiryStatus[] => {
+  const seen = withFinanceInsurance(car, cover);
+  return [
+    expiryStatus('roadtax', seen.roadtaxExpiry, today),
+    expiryStatus('insurance', seen.insuranceExpiry, today),
+    expiryStatus('inspection', seen.inspectionExpiry, today),
+  ];
+};
 
 /** A car needs attention when any of its dates does. */
-export const needsAttention = (car: Car, today: string): boolean => carStatuses(car, today).some(status => status.needsAttention);
+export const needsAttention = (car: Car, today: string, cover?: InsuranceCover): boolean =>
+  carStatuses(car, today, cover).some(status => status.needsAttention);
 
 /** How many cars need attention: the Fleet tab's red count and the "Needs attention" tile. */
-export const attentionCount = (cars: Car[], today: string): number => cars.filter(car => needsAttention(car, today)).length;
+export const attentionCount = (cars: Car[], today: string, cover?: InsuranceCover): number =>
+  cars.filter(car => needsAttention(car, today, cover)).length;
 
 /** The car's soonest set date; '' (first of all) when road tax or insurance is missing or not a date. */
 const urgencyKey = (car: Car): string => {
@@ -104,9 +138,11 @@ const urgencyKey = (car: Car): string => {
   return [car.roadtaxExpiry, car.insuranceExpiry, car.inspectionExpiry].map(text).filter(date => dayNumber(date) !== null).sort()[0];
 };
 
-/** Most urgent first; ties by plate. Returns a new array. */
-export const byUrgency = (cars: Car[]): Car[] =>
-  [...cars].sort((a, b) => urgencyKey(a).localeCompare(urgencyKey(b)) || normalizePlate(a.plateNumber).localeCompare(normalizePlate(b.plateNumber)));
+/** Most urgent first (insurance as carStatuses sees it); ties by plate. Returns a new array. */
+export const byUrgency = (cars: Car[], cover?: InsuranceCover): Car[] => {
+  const key = new Map(cars.map(car => [car, urgencyKey(withFinanceInsurance(car, cover))]));
+  return [...cars].sort((a, b) => key.get(a)!.localeCompare(key.get(b)!) || normalizePlate(a.plateNumber).localeCompare(normalizePlate(b.plateNumber)));
+};
 
 /** Search by plate (ignoring spaces and letter case), make, model or notes. An empty search matches every car. */
 export const matchesSearch = (car: Car, query: string): boolean => {

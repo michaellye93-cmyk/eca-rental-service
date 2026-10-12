@@ -69,3 +69,14 @@ test('details are read from car_details and saved by car, chassis and colour in 
   assert.deepEqual([row.car_id, row.chassis_no, row.registered_date, row.colour], ['car-1', 'FIXTURECHASSIS1', null, 'WHITE']);
   assert.deepEqual(saved.calls[1].args[1], { onConflict: 'car_id' });
 });
+
+test("Finance's insurance cover is read through its Admin-only function, keyed by plate in the drivers format", async () => {
+  const calls: unknown[][] = [];
+  const client = { from: () => { throw new Error('not used'); },
+    rpc: async (...args: unknown[]) => { calls.push(args); return { data: [{ plate_key: 'XAA1001', coverage_end: '2027-09-30' }, { plate_key: 'xaa 1002', coverage_end: '2027-01-31' }], error: null }; } };
+  const cover = await fleetApi(client).insuranceCover();
+  assert.deepEqual(calls, [['finance_insurance_cover']]);
+  assert.deepEqual([...cover], [['XAA1001', '2027-09-30'], ['XAA1002', '2027-01-31']]);
+  const refused = { from: () => { throw new Error('not used'); }, rpc: async () => ({ data: null, error: { message: 'Finance requires a valid authenticated Admin session' } }) };
+  await assert.rejects(fleetApi(refused).insuranceCover(), /Admin/);
+});

@@ -12,7 +12,7 @@ import { cashLine, type CashBalanceEntry, type CashOutlookData } from '../servic
 import { loadCashOutlook } from '../services/finance/api';
 import { buildTerminationReport } from '../terminationReport';
 import { fleet } from '../services/fleet/client';
-import { attentionCount, type Car as FleetCar } from '../services/fleet/rules';
+import { attentionCount, type Car as FleetCar, type InsuranceCover } from '../services/fleet/rules';
 import {
   LogOut,
   TrendingUp,
@@ -567,12 +567,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // The Fleet tab's red count: loaded once here, then kept current by the Fleet page. No count if the list can't
   // load (the Fleet page itself reports errors).
   const [fleetCars, setFleetCars] = useState<FleetCar[] | null>(null);
+  // Admins: Finance's insurance dates, so the count agrees with the Fleet page's cards.
+  const [fleetCover, setFleetCover] = useState<InsuranceCover | undefined>(undefined);
   useEffect(() => {
     let active = true;
     fleet.listCars().then(cars => { if (active) setFleetCars(cars); }).catch(() => {});
+    if (userRole === 'admin') fleet.insuranceCover().then(cover => { if (active) setFleetCover(cover); }).catch(() => {});
     return () => { active = false; };
-  }, []);
-  const fleetAttention = useMemo(() => (fleetCars ? attentionCount(fleetCars, todayStr) : 0), [fleetCars, todayStr]);
+  }, [userRole]);
+  const fleetAttention = useMemo(() => (fleetCars ? attentionCount(fleetCars, todayStr, fleetCover) : 0), [fleetCars, todayStr, fleetCover]);
   const todayNormalized = useMemo(() => parseDate(todayStr), [todayStr]);
   // The recovery bar on each row measures from the 1st of this month, e.g. "since 1 Sep"
   const recoverySinceLabel = `1 ${todayNormalized.toLocaleDateString('en-GB', { month: 'short' })}`;
@@ -1579,7 +1582,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <section aria-label="Fleet" className="min-h-[500px]">
             <ScreenLoadBoundary>
               <React.Suspense fallback={<div className="p-6">Loading Fleet…</div>}>
-                <FleetView today={todayStr} onCarsChange={setFleetCars} />
+                <FleetView today={todayStr} isAdmin={userRole === 'admin'} onCarsChange={setFleetCars} />
               </React.Suspense>
             </ScreenLoadBoundary>
           </section>

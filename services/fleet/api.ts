@@ -1,8 +1,10 @@
-import { carFromRow, carToRow, detailsFromRow, detailsToRow, type Car, type CarRow, type VehicleDetails, type VehicleDetailsRow } from './rules.ts';
+import { normalizePlate } from '../../utils.ts';
+import { carFromRow, carToRow, detailsFromRow, detailsToRow, type Car, type CarRow, type InsuranceCover, type VehicleDetails, type VehicleDetailsRow } from './rules.ts';
 
 /** The part of the Supabase client the Fleet page uses. */
 export interface FleetClient {
   from(table: 'cars' | 'car_details'): any;
+  rpc?(name: 'finance_insurance_cover'): PromiseLike<Result<unknown>>;
 }
 
 /** Shown when a save or delete finds no car with that id: someone else deleted it meanwhile. */
@@ -40,6 +42,21 @@ export function fleetApi(client: FleetClient) {
     /** Adds or replaces one car's details. */
     async saveDetails(details: VehicleDetails): Promise<void> {
       check(await client.from('car_details').upsert({ ...detailsToRow(details), updated_at: new Date().toISOString() }, { onConflict: 'car_id' }));
+    },
+    /**
+     * Finance's latest insurance end date per plate (supabase/migrations/20261012240000_one_vehicle.sql). Admins only:
+     * it rejects for staff, and for everyone until that file is run.
+     */
+    async insuranceCover(): Promise<InsuranceCover> {
+      if (!client.rpc) return new Map();
+      const rows = check(await client.rpc('finance_insurance_cover')) as { plate_key?: string | null; coverage_end?: string | null }[] | null;
+      const cover = new Map<string, string>();
+      for (const row of rows ?? []) {
+        const plate = normalizePlate(row.plate_key ?? '');
+        const end = (row.coverage_end ?? '').slice(0, 10);
+        if (plate && end && end > (cover.get(plate) ?? '')) cover.set(plate, end);
+      }
+      return cover;
     },
   };
 }
