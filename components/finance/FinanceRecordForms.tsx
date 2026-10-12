@@ -1,4 +1,5 @@
 import { formatCurrency, monthEnd, monthStart } from "../../services/fmt";
+import { useConfirm } from "../Dialog";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import FinanceDialog from "./FinanceDialog";
 import { insuranceProblems, insuranceStatus, insuranceCashOutflow, ownerPremiumReview, validInsuranceDate } from "../../services/finance/insurance";
@@ -166,6 +167,7 @@ export function ExpenseForm({
   onCancel,
   initialId,
 }: ExpenseProps) {
+  const { ask, askText, dialog } = useConfirm();
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<ExpenseValues>(() =>
     blankExpense(month),
@@ -254,6 +256,7 @@ export function ExpenseForm({
   };
   const locked = disabled || pending;
   return (
+    <>
     <form className="finance-form" onSubmit={save}>
       <Field label="Existing record">
         <select
@@ -378,14 +381,17 @@ export function ExpenseForm({
       <button className="finance-primary" disabled={locked}>
         {selected ? "Save changes" : "Save expense"}
       </button>
-      {recurring && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${recurring.category} for ${formatCurrency(recurring.amount)} from ${recurring.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this expense"); if (reason?.trim()) void onCancel(recurring, reason.trim()); }}>Delete expense</button>}
+      {recurring && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={async () => { if (!(await ask(`Delete ${recurring.category} for ${formatCurrency(recurring.amount)} from ${recurring.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`))) return; const reason = await askText("Reason for deleting this expense"); if (reason?.trim()) void onCancel(recurring, reason.trim()); }}>Delete expense</button>}
     </form>
+      {dialog}
+    </>
   );
 }
 
 export function VehicleForm({ input, month, disabled, onSave, onDelete, initialId }: MasterProps & {
   onDelete: (vehicle: FinanceVehicle) => Promise<boolean>;
 }) {
+  const { ask, dialog } = useConfirm();
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<VehicleValues>(blankVehicle);
   const [pending, setPending] = useState(false);
@@ -447,7 +453,7 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete, initialI
     // Vehicle Master check: a new or corrected plate that is an existing plate with two characters swapped is usually a typo.
     if (!original || isPlateCorrection) {
       const lookalike = vehicles.find((vehicle) => vehicle.plate_key !== original?.plate_key && swappedNeighbours(vehicle.plate_key, correctedPlate));
-      if (lookalike && !window.confirm(`${correctedPlate} looks like ${lookalike.display_plate} with two characters swapped. Save ${correctedPlate} as a separate car anyway?`)) return;
+      if (lookalike && !(await ask(`${correctedPlate} looks like ${lookalike.display_plate} with two characters swapped. Save ${correctedPlate} as a separate car anyway?`, { destructive: false }))) return;
     }
     const current = generation.current;
     setPending(true);
@@ -617,11 +623,13 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete, initialI
         </div>
       </FinanceDialog>
     )}
+      {dialog}
     </>
   );
 }
 
 export function RecurringForm({ input, month, disabled, onSave, initialId, onCancel }: MasterProps) {
+  const { ask, askText, dialog } = useConfirm();
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<CostValues>(() => blankCost(month));
   const [ending, setEnding] = useState(false);
@@ -685,6 +693,7 @@ export function RecurringForm({ input, month, disabled, onSave, initialId, onCan
   };
   const locked = disabled || pending;
   return (
+    <>
     <form
       className="finance-form"
       onSubmit={(event) => {
@@ -810,12 +819,12 @@ export function RecurringForm({ input, month, disabled, onSave, initialId, onCan
             type="button"
             className="finance-secondary"
             disabled={locked}
-            onClick={() => { if (window.confirm(`Stop ${original.cost_type} at ${formatCurrency(original.monthly_amount)} per month? The selected end month remains included; later open months stop contributing and closed reports stay unchanged.`)) setEnding(true); }}
+            onClick={async () => { if (await ask(`Stop ${original.cost_type} at ${formatCurrency(original.monthly_amount)} per month? The selected end month remains included; later open months stop contributing and closed reports stay unchanged.`)) setEnding(true); }}
           >
             End cost
           </button>
         )}
-        {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete ${original.cost_type} at ${formatCurrency(original.monthly_amount)} from open calculations for ${original.start_month.slice(0, 7)} through ${original.end_month?.slice(0, 7) ?? "ongoing"}? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this monthly cost"); if (reason?.trim()) void onCancel("recurring_cost", original, reason.trim()); }}>Delete cost</button>}
+        {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={async () => { if (!(await ask(`Delete ${original.cost_type} at ${formatCurrency(original.monthly_amount)} from open calculations for ${original.start_month.slice(0, 7)} through ${original.end_month?.slice(0, 7) ?? "ongoing"}? Closed snapshots and audit history remain unchanged.`))) return; const reason = await askText("Reason for deleting this monthly cost"); if (reason?.trim()) void onCancel("recurring_cost", original, reason.trim()); }}>Delete cost</button>}
         {ending && (
           <>
             <button
@@ -838,10 +847,13 @@ export function RecurringForm({ input, month, disabled, onSave, initialId, onCan
         )}
       </div>
     </form>
+      {dialog}
+    </>
   );
 }
 
 export function InsuranceForm({ input, month, disabled, onSave, initialId, onCancel }: MasterProps) {
+  const { ask, askText, dialog } = useConfirm();
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<PolicyValues>(blankPolicy);
   const [pending, setPending] = useState(false);
@@ -912,6 +924,7 @@ export function InsuranceForm({ input, month, disabled, onSave, initialId, onCan
   };
   const locked = disabled || pending;
   return (
+    <>
     <form className="finance-form" onSubmit={save}>
       <Field label="Existing record">
         <select
@@ -1027,8 +1040,10 @@ export function InsuranceForm({ input, month, disabled, onSave, initialId, onCan
           setValues({...blankPolicy(), plate_key: original.plate_key, coverage_start: start?.toISOString().slice(0, 10) ?? ""});
         }}>Add renewal</button>
       )}
-      {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={() => { if (!window.confirm(`Delete this ${formatCurrency(original.premium)} policy covering ${original.coverage_start ?? "no start date"} through ${original.coverage_end ?? "no end date"}? It stops contributing to open-month calculations; closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt("Reason for deleting this insurance policy"); if (reason?.trim()) void onCancel("insurance", original, reason.trim()); }}>Delete policy</button>}
+      {original && onCancel && <button type="button" className="finance-destructive" disabled={locked} onClick={async () => { if (!(await ask(`Delete this ${formatCurrency(original.premium)} policy covering ${original.coverage_start ?? "no start date"} through ${original.coverage_end ?? "no end date"}? It stops contributing to open-month calculations; closed snapshots and audit history remain unchanged.`))) return; const reason = await askText("Reason for deleting this insurance policy"); if (reason?.trim()) void onCancel("insurance", original, reason.trim()); }}>Delete policy</button>}
     </form>
+      {dialog}
+    </>
   );
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Driver } from '../types';
 import { formatCurrency, kualaLumpurToday } from '../utils';
 import { depositPanelEntries, movementError, receivedByKind } from '../services/depositTotals';
+import { useConfirm } from './Dialog';
 import { addDeposit, deleteDeposit, depositHeld, depositKindFor, depositKindLabel, loadDeposits, type DepositEntry, type DepositKind, type DriverDeposit } from '../services/depositsApi';
 
 const ENTRY_LABEL: Record<DepositEntry, string> = { RECEIVED: 'Received', REFUNDED: 'Refunded', FORFEITED: 'Forfeited (no rent owed)', CONTRA: 'Deposit forfeit (against rent)' };
@@ -22,6 +23,7 @@ export default function DriverDeposits({ driver, isAdmin, onContraPayment, onEdi
   const isBeli = depositKindFor(driver.category) === 'DOWNPAYMENT';
   const label = isBeli ? 'Downpayment and security deposit' : 'Deposit';
   const kindLabel = (kind: DepositKind) => (isBeli && kind === 'DEPOSIT' ? 'Security deposit' : depositKindLabel(kind));
+  const { ask, dialog } = useConfirm();
   const [rows, setRows] = useState<DriverDeposit[] | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -65,7 +67,7 @@ export default function DriverDeposits({ driver, isAdmin, onContraPayment, onEdi
     }
   };
   const remove = async (row: DriverDeposit) => {
-    if (!window.confirm(`Delete the ${ENTRY_LABEL[row.entry].toLowerCase()} ${kindLabel(row.kind).toLowerCase()} of ${formatCurrency(row.amount)} on ${row.entry_date}? The change is logged.`)) return;
+    if (!(await ask(`Delete the ${ENTRY_LABEL[row.entry].toLowerCase()} ${kindLabel(row.kind).toLowerCase()} of ${formatCurrency(row.amount)} on ${row.entry_date}? The change is logged.`))) return;
     setBusy(true);
     try {
       await deleteDeposit(row.id);
@@ -132,6 +134,7 @@ export default function DriverDeposits({ driver, isAdmin, onContraPayment, onEdi
         </div>
       )}
       {error && <p className="mt-2 text-red-700">{error}</p>}
+      {dialog}
     </section>
   );
 }

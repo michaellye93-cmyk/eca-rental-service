@@ -1,5 +1,6 @@
 import { kualaLumpurToday } from "../../utils";
 import { money, monthLong } from "../../services/fmt";
+import { useConfirm } from "../Dialog";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { EhailingPayment, FinanceInput } from "../../types/finance";
 import type {
@@ -88,6 +89,7 @@ export default function BankStatementPanel({
   /** Records a deposit or downpayment received and reloads the month; resolves with its id. */
   onRecordDeposit?: (driverId: string, amount: number, date: string, kind?: "DEPOSIT" | "DOWNPAYMENT") => Promise<string | undefined>;
 }) {
+  const { ask, dialog } = useConfirm();
   const [statements, setStatements] = useState<LoadedStatement[]>([]);
   const [active, setActive] = useState(0);
   // The rent check needs money in only, so money-out lines are skipped when a file is read (on by default).
@@ -227,8 +229,8 @@ export default function BankStatementPanel({
     return () => window.clearTimeout(timer);
   }, [statements, draftMonth, month]);
   useEffect(() => () => pendingSave.current?.(), []);
-  const discardDraft = () => {
-    if (!window.confirm("Discard the unposted statements and every match made on them?")) return;
+  const discardDraft = async () => {
+    if (!(await ask("Discard the unposted statements and every match made on them?"))) return;
     // The empty list is saved here and sent to the server as a clear, with the time of the discard.
     saveNow.current = true;
     setStatements([]);
@@ -530,14 +532,14 @@ export default function BankStatementPanel({
               {weakSuggestions > 0 && <span className="text-amber-800">{weakSuggestions} weak {weakSuggestions === 1 ? "match needs" : "matches need"} a look.</span>}
               {pendingRows("credit").length + pendingRows("debit").length > 0 && <span>{pendingRows("credit").length + pendingRows("debit").length} still to decide.</span>}
               {sureSuggestions.length > 0 && <button type="button" onClick={applyAllSuggestions} disabled={disabled || busy} className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold">Use all {sureSuggestions.length} certain and strong</button>}
-              {weakSuggestions > 0 && <button type="button" disabled={disabled || busy} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold" onClick={() => { if (window.confirm(`Use all ${weakSuggestions} weak matches? Each is the same amount from a looser name match, a wider date gap or a cash deposit. Only do this after looking through them.`)) [...suggestions.values()].filter((suggestion) => suggestion.confidence === "WEAK").forEach((suggestion) => applySuggestion(suggestion)); }}>Use the {weakSuggestions} weak ones too</button>}
+              {weakSuggestions > 0 && <button type="button" disabled={disabled || busy} className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold" onClick={async () => { if (await ask(`Use all ${weakSuggestions} weak matches? Each is the same amount from a looser name match, a wider date gap or a cash deposit. Only do this after looking through them.`, { destructive: false })) [...suggestions.values()].filter((suggestion) => suggestion.confidence === "WEAK").forEach((suggestion) => applySuggestion(suggestion)); }}>Use the {weakSuggestions} weak ones too</button>}
               {pendingRows("debit").length > 0 && (
                 <button type="button" disabled={disabled || busy} onClick={() => excludePending("debit", "Money out: payouts, loans and bills are recorded in Records, so not part of the rent check")} className="rounded border px-2 py-1 text-xs font-semibold">
                   Exclude all {pendingRows("debit").length} money-out lines
                 </button>
               )}
               {pendingRows("credit").length > 0 && (
-                <button type="button" disabled={disabled || busy} onClick={() => { if (weakSuggestions === 0 || window.confirm(`${weakSuggestions} of these money-in lines have a weak suggested match. Mark them Not rent too?`)) excludePending("credit", NOT_RENT); }} className="rounded border px-2 py-1 text-xs font-semibold">
+                <button type="button" disabled={disabled || busy} onClick={async () => { if (weakSuggestions === 0 || (await ask(`${weakSuggestions} of these money-in lines have a weak suggested match. Mark them Not rent too?`, { destructive: false }))) excludePending("credit", NOT_RENT); }} className="rounded border px-2 py-1 text-xs font-semibold">
                   Mark the other {pendingRows("credit").length} as Not rent
                 </button>
               )}
@@ -699,6 +701,7 @@ export default function BankStatementPanel({
           </button>
         </div>
       )}
+      {dialog}
     </section>
   );
 }
@@ -1081,6 +1084,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
   onOpen: (statement: number) => void;
   onMarkCash?: (paymentId: string) => unknown;
 }) {
+  const { ask, dialog } = useConfirm();
   const [filter, setFilter] = useState<PairFilter>("all");
   const [cashDepositsOnly, setCashDepositsOnly] = useState(false);
   if (!input) return null;
@@ -1172,7 +1176,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
                       <button type="button" className={pair.state === "suggested" || pair.sameName ? "is-primary" : ""} disabled={disabled} onClick={() => onMatch(bank.statement as number, bank.row.source_row, p.source_payment_id, pair.state === "suggested" ? "Suggested match confirmed" : "Matched by hand: same amount")}>Match</button>
                     )}
                     {onMarkCash && (pair.state === "suggested" || pair.state === "guess" || pair.state === "missing") && !isCashInHand(p) && (
-                      <button type="button" disabled={disabled} title="Changes this payment's method to Cash (in hand) on the Drivers page" onClick={() => { if (window.confirm(`Mark ${p.driver_name_snapshot ?? "this driver"}'s ${money(p.cash_amount)} on ${shortDate(p.payment_date)} as paid in cash (in hand)? Its payment method changes to Cash.`)) void onMarkCash(p.source_payment_id); }}>Paid in cash</button>
+                      <button type="button" disabled={disabled} title="Changes this payment's method to Cash (in hand) on the Drivers page" onClick={async () => { if (await ask(`Mark ${p.driver_name_snapshot ?? "this driver"}'s ${money(p.cash_amount)} on ${shortDate(p.payment_date)} as paid in cash (in hand)? Its payment method changes to Cash.`, { destructive: false })) void onMarkCash(p.source_payment_id); }}>Paid in cash</button>
                     )}
                   </td>
                 </tr>
@@ -1181,6 +1185,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
           </tbody>
         </table>
       </div>
+      {dialog}
     </section>
   );
 }

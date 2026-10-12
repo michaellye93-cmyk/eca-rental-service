@@ -1,5 +1,6 @@
 import { kualaLumpurNow, kualaLumpurToday } from "../../utils";
 import { money, monthLong, percent1, previousMonth } from "../../services/fmt";
+import { useConfirm } from "../Dialog";
 import React, {
   useCallback,
   useEffect,
@@ -136,6 +137,7 @@ export default function FinanceView(props: MoneyProps = {}) {
   >("checking");
   // Opens on the last completed month (Kuala Lumpur calendar).
   const [month, setMonth] = useState(() => previousMonth(kualaLumpurToday()));
+  const { ask, dialog } = useConfirm();
   const [input, setInput] = useState<FinanceInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -819,11 +821,11 @@ export default function FinanceView(props: MoneyProps = {}) {
               onLink={(summaryId: string, expenseId: string) => invoke(() => linkWorkshopAllocation(summaryId, expenseId, revise), "Workshop expense allocated.")}
               onFile={selectFile}
               onExport={(kind: FinanceEditableExportKind, rows: readonly Record<string, unknown>[]) => exportRecords(kind, rows)}
-              onSaveSetting={(kind: "vehicle" | "recurring_cost" | "insurance", record: any) => {
+              onSaveSetting={async (kind: "vehicle" | "recurring_cost" | "insurance", record: any) => {
                 const action = kind === "vehicle" && record.old_plate ? "CORRECT_PLATE" : (record.id || record.vehicle_id) ? "UPDATE" : "ADD";
                 let reason = record.correction_reason || (action === "ADD" ? "Added in Finance" : "Edited in Finance");
                 if (kind === "recurring_cost" && action === "ADD" && input.recurring_costs.some((row) => !row.cancelled_at && row.plate_key === record.plate_key && row.monthly_amount === record.monthly_amount && (row.payee ?? "") === (record.payee ?? "") && row.start_month === record.start_month && (row.end_month ?? "") === (record.end_month ?? ""))) {
-                  if (!window.confirm("A matching monthly obligation exists. Add this as a separate obligation?")) return Promise.resolve(false);
+                  if (!(await ask("A matching monthly obligation exists. Add this as a separate obligation?", { destructive: false }))) return false;
                   reason = "Explicit separate obligation confirmed in Finance";
                 }
                 return invoke(() => mutateRecord(kind, action, record, month, revise, reason), "Finance record saved.", true);
@@ -925,6 +927,7 @@ export default function FinanceView(props: MoneyProps = {}) {
           onClose={() => setSelectedVehicle(null)}
         />
       )}
+      {dialog}
     </main>
   );
 }
@@ -1188,6 +1191,7 @@ function Expenses({
   onSaveOtherIncome,
   onExportOtherIncome,
 }: any) {
+  const { ask, askText, dialog } = useConfirm();
   const [tab, setTab] = useState<ExpenseWorkspaceTab>(initialSource);
   const [editor, setEditor] = useState<string | null | undefined>(undefined);
   const groups: Array<[ExpenseWorkspaceTab, string, string]> = [
@@ -1286,7 +1290,7 @@ function Expenses({
                 <td>{row.category}</td>
                 <td>{row.supplier ?? "—"}</td>
                 <td className="finance-strong">{money(row.amount)}{tab === "Workshop Billing" && (input.workshop_summaries ?? []).some((summary: any) => !summary.cancelled_at && summary.finance_month.slice(0, 7) === month.slice(0, 7)) && <> {linkedExpenseIds.has(row.id ?? "") ? <span className="finance-tag is-good">Linked</span> : <span className="finance-tag">Not linked</span>}</>}</td>
-                <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={() => { if (!window.confirm(`Delete ${row.category} for ${money(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
+                <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={async () => { if (!(await ask(`Delete ${row.category} for ${money(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`))) return; const reason = await askText(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
               </tr>
             ))
           ) : (
@@ -1319,6 +1323,7 @@ function Expenses({
         </React.Suspense>
       )}
       {editor !== undefined && isExpenseTab && <Dialog title={editor ? "Edit expense" : "Add expense"} onClose={() => setEditor(undefined)}><ExpenseForm input={input} month={month} source={tab} disabled={disabled} onSave={async (record) => { const saved = await onSaveExpense(record); if (saved) setEditor(undefined); return saved; }} onCancel={async (record, reason) => { const saved = await onDeleteExpense(record, reason); if (saved) setEditor(undefined); return saved; }} initialId={editor ?? undefined} /></Dialog>}
+      {dialog}
     </div>
   );
 }
