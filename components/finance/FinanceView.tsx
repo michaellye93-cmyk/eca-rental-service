@@ -1,4 +1,5 @@
-import { formatCurrency, kualaLumpurNow, kualaLumpurToday, previousMonth } from "../../utils";
+import { kualaLumpurNow, kualaLumpurToday } from "../../utils";
+import { money, monthLong, percent1, previousMonth } from "../../services/fmt";
 import React, {
   useCallback,
   useEffect,
@@ -81,12 +82,6 @@ import "./finance-mobile.css";
 
 const CollectionsPage = React.lazy(() => import("../money/CollectionsPage"));
 const ServiceClaims = React.lazy(() => import("../money/ServiceClaims"));
-const formatMoney = (value = 0) => formatCurrency(Number(value || 0));
-const monthLabel = (month: string) =>
-  new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
-    month: "long",
-    year: "numeric",
-  });
 import { monthLoadNeeded, type Page } from "../../services/finance/pages";
 export type { Page } from "../../services/finance/pages";
 // Report → act → record → close: what happened, who owes, which cars earn, then the entries and the month close.
@@ -683,7 +678,7 @@ export default function FinanceView(props: MoneyProps = {}) {
       {monthBased(page) && error && <Message type="error">{error}</Message>}
       {monthBased(page) && notice && <Message type="success">{notice}</Message>}
       {report && (page === "overview" || page === "vehicles" || page === "close") && (report.totals.workshop_unallocated ?? 0) > 0 && (
-        <Message type="warning">{formatMoney(report.totals.workshop_unallocated)} workshop costs are not yet allocated to vehicles. Vehicle margins are incomplete until those costs are assigned.</Message>
+        <Message type="warning">{money(report.totals.workshop_unallocated)} workshop costs are not yet allocated to vehicles. Vehicle margins are incomplete until those costs are assigned.</Message>
       )}
       {!monthBased(page) ? null : !input ? (
         <section className="finance-panel">
@@ -913,8 +908,8 @@ export default function FinanceView(props: MoneyProps = {}) {
                 <td>{row.display_plate}</td>
                 <td>{row.pickup_date}</td>
                 <td>{row.return_date}</td>
-                <td>{formatMoney(row.gross_revenue)}</td>
-                <td>{formatMoney(row.commission)}</td>
+                <td>{money(row.gross_revenue)}</td>
+                <td>{money(row.commission)}</td>
                 <td>{row.status}</td>
               </tr>
             ))}
@@ -963,12 +958,12 @@ function Overview({
   // target (owner, 2026-10-06). Deposits used for rent (contra) are already rent revenue through their rent payment.
   const extraIncome = Math.round((input.deposits ?? []).filter((d) => (d.kind === "DOWNPAYMENT" && d.entry === "RECEIVED") || d.entry === "FORFEITED").reduce((sum, d) => sum + Number(d.amount), 0) * 100) / 100;
   const direct = directCostBreakdown(totals);
-  const pct = (value: number | null) => (value === null ? "—" : `${(value * 100).toFixed(1)}%`);
+  const pct = (value: number | null) => (value === null ? "—" : percent1(value));
   const businesses = (Object.entries(report.businesses) as Array<[string, FinanceReport["totals"]]>).filter(
     ([name, row]) => row.revenue || (name !== "UNMATCHED" && row.contribution),
   );
   const line = (label: string, value: number, className = "") => (
-    <tr key={label} className={className}><td>{label}</td><td className={value < 0 ? "finance-negative" : ""}>{formatMoney(value)}</td></tr>
+    <tr key={label} className={className}><td>{label}</td><td className={value < 0 ? "finance-negative" : ""}>{money(value)}</td></tr>
   );
   return (
     <div className="finance-content">
@@ -976,14 +971,14 @@ function Overview({
         <SectionHeading
           title="20% net margin target"
           detail={target.margin === null ? "No revenue is recorded for this month yet." : target.gap > 0
-            ? `${formatMoney(target.gap)} more profit this month would reach 20% (${formatMoney(target.target_profit)}).`
+            ? `${money(target.gap)} more profit this month would reach 20% (${money(target.target_profit)}).`
             : "This month reached the 20% target."}
         />
         <div className="finance-summary-grid is-four">
           <Total label="Net margin (target 20%)" value={pct(target.margin)} emphasis />
-          <Total label="Gap to 20%" value={formatMoney(target.gap)} negative={target.gap > 0} />
-          <Total label="Rent collected, cash and claims (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
-          <Total label={`Idle cars (${target.idle.count})`} value={formatMoney(-target.idle.cost)} negative={target.idle.cost > 0} />
+          <Total label="Gap to 20%" value={money(target.gap)} negative={target.gap > 0} />
+          <Total label="Rent collected, cash and claims (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${money(collection.billed)}`} />
+          <Total label={`Idle cars (${target.idle.count})`} value={money(-target.idle.cost)} negative={target.idle.cost > 0} />
         </div>
         <p className="finance-strip-note">
           <button className="finance-link" onClick={() => onGo("collections")}>Who owes rent <ChevronRightIcon /></button>{" "}
@@ -1005,10 +1000,10 @@ function Overview({
                 {line("Insurance", -direct.insurance, "is-indent")}
                 {line("Other (vehicle costs, commission)", -direct.other, "is-indent")}
                 {line("Total direct costs", -direct.total, "is-subtotal")}
-                <tr className="is-subtotal"><td>Contribution <small>({pct(target.contribution_margin)})</small></td><td>{formatMoney(totals.contribution)}</td></tr>
+                <tr className="is-subtotal"><td>Contribution <small>({pct(target.contribution_margin)})</small></td><td>{money(totals.contribution)}</td></tr>
                 {line("Operation Fix Cost", -report.corporate_opex)}
-                <tr className="is-total"><td>Operating profit <small>({pct(target.margin)})</small></td><td className={report.management_profit < 0 ? "finance-negative" : ""}>{formatMoney(report.management_profit)}</td></tr>
-                {extraIncome > 0 && <tr><td>Extra income: downpayments and forfeited deposits <small>(kept aside, not in revenue or the 20% target)</small></td><td>{formatMoney(extraIncome)}</td></tr>}
+                <tr className="is-total"><td>Operating profit <small>({pct(target.margin)})</small></td><td className={report.management_profit < 0 ? "finance-negative" : ""}>{money(report.management_profit)}</td></tr>
+                {extraIncome > 0 && <tr><td>Extra income: downpayments and forfeited deposits <small>(kept aside, not in revenue or the 20% target)</small></td><td>{money(extraIncome)}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1034,9 +1029,9 @@ function Overview({
                 {line(`Cash flow only${report.cash_flow_only_items.length ? ` (${report.cash_flow_only_items.map((item) => item.payee ? `${item.category} ${item.payee}` : item.category).join(", ")})` : ""}`, -cashFlow.out.cash_flow_only, "is-indent")}
                 {cashFlow.out.deposits_refunded !== 0 && line("Deposits refunded", -cashFlow.out.deposits_refunded, "is-indent")}
                 {line("Total out", -cashFlow.out.total, "is-subtotal")}
-                <tr className="is-total"><td>Net cash flow</td><td className={cashFlow.net < 0 ? "finance-negative" : ""}>{formatMoney(cashFlow.net)}</td></tr>
+                <tr className="is-total"><td>Net cash flow</td><td className={cashFlow.net < 0 ? "finance-negative" : ""}>{money(cashFlow.net)}</td></tr>
                 {input.deposits_held && Number(input.deposits_held.DEPOSIT) !== 0 && (
-                  <tr><td colSpan={2} className="text-xs text-slate-500">Deposits held at month end: {formatMoney(Number(input.deposits_held.DEPOSIT))}</td></tr>
+                  <tr><td colSpan={2} className="text-xs text-slate-500">Deposits held at month end: {money(Number(input.deposits_held.DEPOSIT))}</td></tr>
                 )}
               </tbody>
             </table>
@@ -1049,11 +1044,11 @@ function Overview({
           <DataTable headers={["Month", "Status", "Revenue", "Contribution", "Operating profit", "Net margin"]}>
             {[...trend].reverse().map((row) => (
               <tr key={row.month}>
-                <td className="finance-strong">{monthLabel(row.month)}</td>
+                <td className="finance-strong">{monthLong(row.month)}</td>
                 <td><span className={`finance-tag ${row.status === "CLOSED" ? "is-good" : ""}`}>{row.status === "READY FOR REVIEW" ? "Ready" : row.status === "CLOSED" ? "Closed" : "Draft"}</span></td>
-                <td>{formatMoney(row.revenue)}</td>
-                <td>{formatMoney(row.contribution)}</td>
-                <td className={row.profit < 0 ? "finance-negative finance-strong" : "finance-strong"}>{formatMoney(row.profit)}</td>
+                <td>{money(row.revenue)}</td>
+                <td>{money(row.contribution)}</td>
+                <td className={row.profit < 0 ? "finance-negative finance-strong" : "finance-strong"}>{money(row.profit)}</td>
                 <td>{row.margin === null ? "—" : <>{pct(row.margin)} {row.margin >= 0.2 ? <span className="finance-tag is-good">On target</span> : <span className="finance-tag is-warn">{((0.2 - row.margin) * 100).toFixed(1)} pts short</span>}</>}</td>
               </tr>
             ))}
@@ -1113,14 +1108,14 @@ function Vehicles({
             return (
               <tr key={business}>
                 <td className="finance-strong">{business}</td>
-                <td>{formatMoney(value.revenue)}</td>
-                <td>{formatMoney(-direct.monthly_vehicle)}</td>
-                <td>{formatMoney(-direct.service_maintenance)}</td>
-                <td>{formatMoney(-direct.insurance)}</td>
-                <td>{formatMoney(-direct.other)}</td>
-                <td className="finance-negative">{formatMoney(-direct.total)}</td>
-                <td className="finance-strong">{formatMoney(value.contribution)}</td>
-                <td>{value.margin === null ? "—" : `${(value.margin * 100).toFixed(1)}%`}</td>
+                <td>{money(value.revenue)}</td>
+                <td>{money(-direct.monthly_vehicle)}</td>
+                <td>{money(-direct.service_maintenance)}</td>
+                <td>{money(-direct.insurance)}</td>
+                <td>{money(-direct.other)}</td>
+                <td className="finance-negative">{money(-direct.total)}</td>
+                <td className="finance-strong">{money(value.contribution)}</td>
+                <td>{value.margin === null ? "—" : percent1(value.margin)}</td>
               </tr>
             );
           })}
@@ -1153,14 +1148,14 @@ function Vehicles({
             >
               <td className="finance-strong">{v.display_plate}{v.revenue === 0 && v.contribution < 0 && <> <span className="finance-tag">Idle</span></>}</td>
               <td>{v.business_unit}</td>
-              <td>{formatMoney(v.revenue)}</td>
-              <td>{formatMoney(-v.recurring)}</td>
-              <td>{formatMoney(-(v.workshop + v.service_claim))}</td>
-              <td>{formatMoney(-v.insurance)}</td>
-              <td>{formatMoney(-(v.direct_costs + v.commission))}</td>
-              <td className="finance-strong">{formatMoney(v.contribution)}</td>
+              <td>{money(v.revenue)}</td>
+              <td>{money(-v.recurring)}</td>
+              <td>{money(-(v.workshop + v.service_claim))}</td>
+              <td>{money(-v.insurance)}</td>
+              <td>{money(-(v.direct_costs + v.commission))}</td>
+              <td className="finance-strong">{money(v.contribution)}</td>
               <td>
-                {v.margin === null ? "—" : `${(v.margin * 100).toFixed(1)}%`}
+                {v.margin === null ? "—" : percent1(v.margin)}
               </td>
             </tr>
           ))}
@@ -1265,7 +1260,7 @@ function Expenses({
         <SectionHeading
           title={tab === "Corporate Opex" ? "One-off company costs" : groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
           detail={tab === "Corporate Opex" ? "Company costs that happen once. Monthly ones are in the list above. Excel columns: Frequency, Start Month, End Month, Expense Date, Category, Amount (RM)." : groups.find((x) => x[0] === tab)?.[2]}
-          summary={<p><strong>{formatMoney(displayedExpenses.reduce((sum: number, row: FinanceExpense) => sum + row.amount, 0))}</strong> this month</p>}
+          summary={<p><strong>{money(displayedExpenses.reduce((sum: number, row: FinanceExpense) => sum + row.amount, 0))}</strong> this month</p>}
           action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : tab === "Corporate Opex" ? "company_expenses" : "vehicle_expenses", displayedExpenses)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
               disabled={disabled}
               label="Upload Excel"
@@ -1290,8 +1285,8 @@ function Expenses({
                 </td>
                 <td>{row.category}</td>
                 <td>{row.supplier ?? "—"}</td>
-                <td className="finance-strong">{formatMoney(row.amount)}{tab === "Workshop Billing" && (input.workshop_summaries ?? []).some((summary: any) => !summary.cancelled_at && summary.finance_month.slice(0, 7) === month.slice(0, 7)) && <> {linkedExpenseIds.has(row.id ?? "") ? <span className="finance-tag is-good">Linked</span> : <span className="finance-tag">Not linked</span>}</>}</td>
-                <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={() => { if (!window.confirm(`Delete ${row.category} for ${formatMoney(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
+                <td className="finance-strong">{money(row.amount)}{tab === "Workshop Billing" && (input.workshop_summaries ?? []).some((summary: any) => !summary.cancelled_at && summary.finance_month.slice(0, 7) === month.slice(0, 7)) && <> {linkedExpenseIds.has(row.id ?? "") ? <span className="finance-tag is-good">Linked</span> : <span className="finance-tag">Not linked</span>}</>}</td>
+                <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={() => { if (!window.confirm(`Delete ${row.category} for ${money(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`)) return; const reason = window.prompt(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
               </tr>
             ))
           ) : (
@@ -1438,7 +1433,7 @@ function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCanc
           <SectionHeading
             title="Monthly Vehicle Costs"
             detail="Excel columns: Car Plate, Start Month, Cost Type, Monthly Amount. Active costs are applied automatically."
-            summary={<strong>Total cost: {formatMoney(monthlyCostTotal)}</strong>}
+            summary={<strong>Total cost: {money(monthlyCostTotal)}</strong>}
             action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("vehicle_monthly_costs", input.recurring_costs.filter((row: RecurringCost) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add monthly cost</button><FileButton
                 disabled={disabled}
                 label="Import Excel"
@@ -1463,7 +1458,7 @@ function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCanc
                   )?.display_plate ?? "Unmatched"}
                 </td>
                 <td>{x.cost_type}</td>
-                <td>{formatMoney(x.monthly_amount)}</td>
+                <td>{money(x.monthly_amount)}</td>
                 <td>{x.start_month.slice(0, 7)}</td>
                 <td>{x.end_month?.slice(0, 7) ?? "Ongoing"}</td>
                 <td><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(x.id ?? null)}>Edit</button></td>
@@ -1476,7 +1471,7 @@ function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCanc
           <SectionHeading
             title="Insurance"
             detail="Excel columns: Car Plate, Premium (RM), Coverage Start, Coverage End, RESPONSIBILITY. RM0 records may have blank coverage dates."
-            summary={<strong>Total cost: {formatMoney(insuranceCostTotal)}</strong>}
+            summary={<strong>Total cost: {money(insuranceCostTotal)}</strong>}
             action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("insurance", input.insurance.filter((row: Insurance) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add policy</button><FileButton
                 disabled={disabled}
                 label="Import Excel"
@@ -1499,11 +1494,11 @@ function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCanc
                   {x.responsibility?.replace("_", " ") ?? "Not specified"}
                   {problems.length > 0 && <small className="finance-inline-warning">{problems.join(" ")}</small>}
                 </td>
-                <td>{formatMoney(x.premium)}</td>
+                <td>{money(x.premium)}</td>
                 <td>
                   {x.coverage_start ?? "—"} – {x.coverage_end ?? "—"}
                 </td>
-                <td>{formatMoney(cashOutflow.amount)}{cashOutflow.date ? ` · ${cashOutflow.date}` : ""}</td>
+                <td>{money(cashOutflow.amount)}{cashOutflow.date ? ` · ${cashOutflow.date}` : ""}</td>
                 <td><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(x.id ?? null)}>Edit</button></td>
               </tr>;
             })}
@@ -1547,7 +1542,7 @@ function VehicleDialog({
   if (!vehicle) return null;
   return (
     <Dialog
-      title={`${vehicle.display_plate} — ${monthLabel(month)}`}
+      title={`${vehicle.display_plate} — ${monthLong(month)}`}
       onClose={onClose}
     >
       <p className="finance-dialog-copy">
@@ -1558,7 +1553,7 @@ function VehicleDialog({
         <DataTable headers={["Rental revenue", "Amount"]}>
           <tr>
             <td>Rental revenue</td>
-            <td>{formatMoney(vehicle.revenue)}</td>
+            <td>{money(vehicle.revenue)}</td>
           </tr>
         </DataTable>
       </section>
@@ -1567,43 +1562,43 @@ function VehicleDialog({
         <DataTable headers={["Cost", "Amount"]}>
           <tr>
             <td>Owner payout / loan</td>
-            <td>{formatMoney(-vehicle.recurring)}</td>
+            <td>{money(-vehicle.recurring)}</td>
           </tr>
           {vehicle.commission > 0 && (
             <tr>
               <td>Agent commission</td>
-              <td>{formatMoney(-vehicle.commission)}</td>
+              <td>{money(-vehicle.commission)}</td>
             </tr>
           )}
           <tr>
             <td>Service claim</td>
-            <td>{formatMoney(-vehicle.service_claim)}</td>
+            <td>{money(-vehicle.service_claim)}</td>
           </tr>
           <tr>
             <td>Workshop billing</td>
-            <td>{formatMoney(-vehicle.workshop)}</td>
+            <td>{money(-vehicle.workshop)}</td>
           </tr>
           <tr>
             <td>Insurance</td>
-            <td>{formatMoney(-vehicle.insurance)}</td>
+            <td>{money(-vehicle.insurance)}</td>
           </tr>
           <tr>
             <td>Other vehicle costs</td>
-            <td>{formatMoney(-vehicle.direct_costs)}</td>
+            <td>{money(-vehicle.direct_costs)}</td>
           </tr>
         </DataTable>
       </section>
       <section className="finance-preview-stats">
         <Total
           label="Vehicle contribution"
-          value={formatMoney(vehicle.contribution)}
+          value={money(vehicle.contribution)}
         />
         <Total
           label="Margin"
           value={
             vehicle.margin === null
               ? "—"
-              : `${(vehicle.margin * 100).toFixed(1)}%`
+              : percent1(vehicle.margin)
           }
         />
         <Total label="Business" value={vehicle.business_unit} />

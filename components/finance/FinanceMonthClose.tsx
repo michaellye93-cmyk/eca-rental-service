@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../utils";
+import { formatCurrency, monthLong } from "../../services/fmt";
 import BackupButton from "../money/BackupButton";
 import { bankCheck, bankCloseState, BANK_CHECK_TOLERANCE, type CashBalanceEntry } from "../../services/cashOutlook";
 import { loadCashOutlook } from "../../services/finance/api";
@@ -17,7 +17,8 @@ import type {
   WorkspaceSection,
 } from "../../services/finance/workspace";
 
-const money = (value: number) => formatCurrency(value);
+// Plain formatCurrency (not fmt's money): this screen has always shown a minus-zero total as "-RM 0.00".
+const money = formatCurrency;
 const updated = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString("en-MY", {
@@ -116,10 +117,7 @@ export default function FinanceMonthClose(p: Props) {
   const { input, month, busy, workspaceMeta } = p;
   const draft = input.month.status === "DRAFT",
     closed = input.month.status === "CLOSED";
-  const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString(
-    "en-MY",
-    { month: "long", year: "numeric" },
-  );
+  const monthName = monthLong(month);
   const issues = groupedIssues(p.report?.issues ?? []);
   const optional = [
     {

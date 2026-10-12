@@ -1,17 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import type { Driver } from '../../types';
-import { formatCurrency, formatDate } from '../../utils';
+import { formatDate } from '../../utils';
+import { addDays, formatCurrency, money, monthLong, percent, previousMonth } from '../../services/fmt';
 import {
-  arrearsScenarios, bankCheck, BANK_CHECK_TOLERANCE, COLLECTION_WEEKS, depositRefundsDue, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
+  arrearsScenarios, bankCheck, BANK_CHECK_TOLERANCE, COLLECTION_WEEKS, depositRefundsDue, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, currentCash,
   type CashBalanceEntry, type CashLineSummary, type CashOutlookData,
 } from '../../services/cashOutlook';
 import { cancelCashBalance, saveCashBalance } from '../../services/finance/api';
 import { CashStatusPill, sentenceBody } from './CashLine';
 
-const money = (n: number) => formatCurrency(n || 0);
 /** Money going out, shown in brackets as on a statement. */
 const out = (n: number) => (n ? `(${formatCurrency(n)})` : formatCurrency(0));
-const percent = (n: number) => `${Math.round(n * 100)}%`;
 
 interface CashPageProps {
   today: string;
@@ -219,14 +218,11 @@ function BalanceTable({ today, outlook, onBalancesChange }: { today: string; out
   );
 }
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const monthName = (month: string) => `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
-
 /** Bank at the start of the month plus the month's net cash flow should equal the bank at month end. */
 export function BankCheckBox({ balances, month, netCashFlow }: { balances: CashBalanceEntry[]; month: string; netCashFlow: number }) {
   const check = useMemo(() => bankCheck(balances, month, netCashFlow), [balances, month, netCashFlow]);
-  const name = monthName(month);
-  const previous = monthName(`${Number(month.slice(5, 7)) === 1 ? Number(month.slice(0, 4)) - 1 : month.slice(0, 4)}-${String(Number(month.slice(5, 7)) === 1 ? 12 : Number(month.slice(5, 7)) - 1).padStart(2, '0')}`);
+  const name = monthLong(month);
+  const previous = monthLong(previousMonth(month));
   const value = (n: number | null) => (n === null ? '—' : money(n));
   return (
     <section className="finance-panel" aria-labelledby="bank-check-heading">

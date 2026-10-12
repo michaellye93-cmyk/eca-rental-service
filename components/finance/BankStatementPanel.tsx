@@ -1,4 +1,5 @@
-import { formatCurrency, kualaLumpurToday } from "../../utils";
+import { kualaLumpurToday } from "../../utils";
+import { money, monthLong } from "../../services/fmt";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { EhailingPayment, FinanceInput } from "../../types/finance";
 import type {
@@ -44,7 +45,6 @@ const corporateCategories = [
   "General Software",
   "Other Corporate Cost",
 ];
-const money = (n: number) => formatCurrency(n || 0);
 
 /** One bank statement loaded for review: ECA has two bank accounts, so several can be open at once. */
 type LoadedStatement = BankStatementPreview & {
@@ -92,7 +92,7 @@ export default function BankStatementPanel({
   const [active, setActive] = useState(0);
   // The rent check needs money in only, so money-out lines are skipped when a file is read (on by default).
   const [moneyIn, setMoneyIn] = useState(true);
-  const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  const monthLabel = monthLong(month);
   const preview = statements[active] ?? null;
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState<
@@ -1197,7 +1197,7 @@ function ReconcileReport({ month, input, postedIds, paymentLabel, depositLabel }
   const open = unsolvedPayments(input.ehailing, postedIds);
   const cashInHand = open.filter(isCashInHand);
   const unsolved = open.filter((p) => !isCashInHand(p));
-  const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  const monthName = monthLong(month);
   return (
     <div className="reconcile-report" aria-hidden="true">
       <h2>Bank reconciliation, {monthName}</h2>

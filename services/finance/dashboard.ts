@@ -1,8 +1,8 @@
 import type { FinanceInput, FinanceReport } from '../../types/finance.ts';
 import { insuranceCashOutflow } from './insurance.ts';
 import { isCashMethod } from '../moneyDefinitions.ts';
+import { round2 } from '../fmt.ts';
 
-const cents = (value: number) => Math.round(value * 100) / 100;
 const monthKey = (value: string) => value.slice(0, 7);
 
 export interface MonthCashFlow {
@@ -21,32 +21,32 @@ export function monthCashFlow(input: FinanceInput, report: FinanceReport): Month
   const month = monthKey(input.month.finance_month);
   // Rent settled from a deposit (contra) moves no cash this month: the cash came in as the deposit.
   // Only money that reached the business (see moneyDefinitions): no deposit forfeits; claims are never in cash_amount.
-  const rent_cash = cents(input.ehailing.filter((payment) => isCashMethod(payment.payment_method)).reduce((sum, payment) => sum + payment.cash_amount, 0));
-  const smart_drive_net = cents(input.smart_rows.reduce((sum, row) => sum + row.gross_revenue - row.commission, 0));
-  const other_income = cents((input.other_income ?? [])
+  const rent_cash = round2(input.ehailing.filter((payment) => isCashMethod(payment.payment_method)).reduce((sum, payment) => sum + payment.cash_amount, 0));
+  const smart_drive_net = round2(input.smart_rows.reduce((sum, row) => sum + row.gross_revenue - row.commission, 0));
+  const other_income = round2((input.other_income ?? [])
     .filter((row) => row.status === 'CONFIRMED' && !row.cancelled_at && monthKey(row.finance_month) === month)
     .reduce((sum, row) => sum + row.amount, 0));
-  const insurance = cents(input.insurance.filter((policy) => !policy.cancelled_at).reduce((sum, policy) => {
+  const insurance = round2(input.insurance.filter((policy) => !policy.cancelled_at).reduce((sum, policy) => {
     const outflow = insuranceCashOutflow(policy, input.calculation_version ?? 1);
     return outflow.date && monthKey(outflow.date) === month ? sum + outflow.amount : sum;
   }, 0));
-  const depositsOf = (entry: string, kind: string) => cents((input.deposits ?? []).filter((row) => row.entry === entry && row.kind === kind && monthKey(row.entry_date) === month).reduce((sum, row) => sum + Number(row.amount), 0));
+  const depositsOf = (entry: string, kind: string) => round2((input.deposits ?? []).filter((row) => row.entry === entry && row.kind === kind && monthKey(row.entry_date) === month).reduce((sum, row) => sum + Number(row.amount), 0));
   // A downpayment is not a deposit: it is never held or refunded, it is extra income when received.
   const deposits = depositsOf('RECEIVED', 'DEPOSIT');
   const downpayments = depositsOf('RECEIVED', 'DOWNPAYMENT');
-  const cashIn = { rent_cash, smart_drive_net, other_income, deposits, downpayments, total: cents(rent_cash + smart_drive_net + other_income + deposits + downpayments) };
+  const cashIn = { rent_cash, smart_drive_net, other_income, deposits, downpayments, total: round2(rent_cash + smart_drive_net + other_income + deposits + downpayments) };
   const out = {
-    monthly_vehicle: cents(report.totals.recurring),
-    workshop: cents(report.totals.workshop),
-    other_vehicle: cents(report.totals.direct_costs),
+    monthly_vehicle: round2(report.totals.recurring),
+    workshop: round2(report.totals.workshop),
+    other_vehicle: round2(report.totals.direct_costs),
     insurance,
-    operation_fix: cents(report.corporate_opex),
-    cash_flow_only: cents(report.cash_flow_only ?? 0),
+    operation_fix: round2(report.corporate_opex),
+    cash_flow_only: round2(report.cash_flow_only ?? 0),
     deposits_refunded: depositsOf('REFUNDED', 'DEPOSIT'),
     total: 0,
   };
-  out.total = cents(out.monthly_vehicle + out.workshop + out.other_vehicle + out.insurance + out.operation_fix + out.cash_flow_only + out.deposits_refunded);
-  return { in: cashIn, out, net: cents(cashIn.total - out.total) };
+  out.total = round2(out.monthly_vehicle + out.workshop + out.other_vehicle + out.insurance + out.operation_fix + out.cash_flow_only + out.deposits_refunded);
+  return { in: cashIn, out, net: round2(cashIn.total - out.total) };
 }
 
 export interface MarginTarget {
@@ -66,7 +66,7 @@ export interface MarginTarget {
 export function marginTarget(report: FinanceReport, target = 0.2): MarginTarget {
   const revenue = report.totals.revenue;
   const profit = report.management_profit;
-  const target_profit = cents(revenue * target);
+  const target_profit = round2(revenue * target);
   const idleCars = report.vehicles.filter((vehicle) => vehicle.revenue === 0 && vehicle.contribution < 0);
   return {
     revenue,
@@ -75,10 +75,10 @@ export function marginTarget(report: FinanceReport, target = 0.2): MarginTarget 
     contribution_margin: revenue ? report.totals.contribution / revenue : null,
     target,
     target_profit,
-    gap: cents(Math.max(0, target_profit - profit)),
+    gap: round2(Math.max(0, target_profit - profit)),
     idle: {
       count: idleCars.length,
-      cost: cents(idleCars.reduce((sum, vehicle) => sum - vehicle.contribution, 0)),
+      cost: round2(idleCars.reduce((sum, vehicle) => sum - vehicle.contribution, 0)),
       plates: idleCars.map((vehicle) => vehicle.plate_key).sort(),
     },
   };

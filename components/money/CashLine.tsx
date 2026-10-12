@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CashLineSummary, CashStatus } from '../../services/cashOutlook';
-import { formatCurrency } from '../../utils';
+import { formatCurrency } from '../../services/fmt';
 
 /** Status colours are fixed (good / warning / serious / critical); every status also has its own icon and word. */
 const STATUS_LOOK: Record<CashStatus, { label: string; color: string; icon: 'alert' | 'watch' | 'check' }> = {

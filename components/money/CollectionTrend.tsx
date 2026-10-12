@@ -1,12 +1,10 @@
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { CollectionSplit } from '../../services/driverLedger';
-import { formatCurrency } from '../../utils';
+import { money, MONTH_SHORT, percent as wholePercent } from '../../services/fmt';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // Weeks are named by their Monday, e.g. "6 Oct".
-const label = (monday: string) => `${Number(monday.slice(8, 10))} ${MONTHS[Number(monday.slice(5, 7)) - 1]}`;
-const money = (n: number) => formatCurrency(n || 0);
-const percent = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : '—');
+const label = (monday: string) => `${Number(monday.slice(8, 10))} ${MONTH_SHORT[Number(monday.slice(5, 7)) - 1]}`;
+const percent = (part: number, whole: number) => (whole ? wholePercent(part / whole) : '—');
 
 // Stacked areas whose top edge is everything collected: emerald (good) for the week's own rent, amber for old arrears,
 // light grey for money paid ahead. The dashed grey line is the rent due, so the gap under it is the week's shortfall.

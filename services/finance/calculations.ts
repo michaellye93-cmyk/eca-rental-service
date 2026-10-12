@@ -1,9 +1,9 @@
 import type { BusinessUnit, FinanceInput, FinanceTotals, Insurance, QualityIssue, VehicleContribution } from '../../types/finance.ts';
 import { insuranceStatus, ownerPremiumReview } from './insurance.ts';
+import { round2 } from '../fmt.ts';
 
 const businessUnits: BusinessUnit[] = ['E-HAILING', 'DAILY RENTAL', 'SMART DRIVE', 'SAMBUNG BAYAR'];
 const zeroTotals = (): FinanceTotals => ({ cash: 0, revenue: 0, service_claim: 0, commission: 0, recurring: 0, workshop: 0, workshop_unallocated: 0, insurance: 0, direct_costs: 0, contribution: 0, margin: null });
-const cents = (value: number) => Math.round(value * 100) / 100;
 const monthKey = (value: string) => /^\d{4}-\d{2}/.test(value) ? value.slice(0, 7) : '';
 
 export function normalizePlate(value: string | null): string {
@@ -64,15 +64,15 @@ export function allocateInsurance(insurance: Insurance, month: string, calculati
   if (!totalWeight) return 0;
   const index = months.indexOf(month);
   if (index === months.length - 1) {
-    return cents(insurance.premium - months.slice(0, -1).reduce((sum, candidate) => sum + allocateInsurance(insurance, candidate, calculationVersion), 0));
+    return round2(insurance.premium - months.slice(0, -1).reduce((sum, candidate) => sum + allocateInsurance(insurance, candidate, calculationVersion), 0));
   }
-  return cents(insurance.premium * weights[index] / totalWeight);
+  return round2(insurance.premium * weights[index] / totalWeight);
 }
 
 function finalise(total: FinanceTotals): FinanceTotals {
-  total.contribution = cents(total.revenue - total.commission - total.recurring - total.service_claim - total.workshop - total.insurance - total.direct_costs);
+  total.contribution = round2(total.revenue - total.commission - total.recurring - total.service_claim - total.workshop - total.insurance - total.direct_costs);
   total.margin = total.revenue === 0 ? null : total.contribution / total.revenue;
-  for (const key of Object.keys(total) as Array<keyof FinanceTotals>) if (key !== 'margin' && typeof total[key] === 'number') total[key] = cents(total[key] as number) as never;
+  for (const key of Object.keys(total) as Array<keyof FinanceTotals>) if (key !== 'margin' && typeof total[key] === 'number') total[key] = round2(total[key] as number) as never;
   return total;
 }
 
@@ -169,16 +169,16 @@ export function calculateFinance(input: FinanceInput) {
   totals.workshop += fleetWorkshopUnallocated;
   totals.workshop_unallocated += fleetWorkshopUnallocated;
   finalise(totals);
-  const sourceCash = cents(input.ehailing.reduce((sum, payment) => sum + payment.cash_amount, 0));
-  const sourceClaims = cents(input.ehailing.reduce((sum, payment) => sum + payment.service_claim, 0));
+  const sourceCash = round2(input.ehailing.reduce((sum, payment) => sum + payment.cash_amount, 0));
+  const sourceClaims = round2(input.ehailing.reduce((sum, payment) => sum + payment.service_claim, 0));
   if (!input.month.refreshed_at || input.ehailing.some((payment) => !payment.refreshed_at)) issues.push({ code: 'MISSING_REFRESHED_AT', severity: 'warning', detail: 'Finance source refresh timestamp is missing' });
   if (input.month.source_count !== input.ehailing.length) issues.push({ code: 'SOURCE_COUNT_MISMATCH', severity: 'error', detail: 'Finance month source count does not match loaded E-hailing rows' });
-  if (cents(input.month.total_cash) !== sourceCash) issues.push({ code: 'SOURCE_CASH_MISMATCH', severity: 'error', detail: 'Finance month cash control does not match loaded E-hailing rows' });
-  if (cents(input.month.total_claim) !== sourceClaims) issues.push({ code: 'SOURCE_CLAIM_MISMATCH', severity: 'error', detail: 'Finance month service-claim control does not match loaded E-hailing rows' });
+  if (round2(input.month.total_cash) !== sourceCash) issues.push({ code: 'SOURCE_CASH_MISMATCH', severity: 'error', detail: 'Finance month cash control does not match loaded E-hailing rows' });
+  if (round2(input.month.total_claim) !== sourceClaims) issues.push({ code: 'SOURCE_CLAIM_MISMATCH', severity: 'error', detail: 'Finance month service-claim control does not match loaded E-hailing rows' });
   const activePlates = input.vehicles.filter((vehicle) => !vehicle.deleted_at).map((vehicle) => normalizePlate(vehicle.plate_key));
   for (const plate of activePlates) if (activePlates.some((other) => other !== plate && swappedNeighbours(plate, other))) issues.push({ code: 'SIMILAR_PLATE', severity: 'warning', detail: 'Plate differs from another vehicle only by two swapped characters; check for a typo', plate_key: plate });
   if (!input.smart_import) issues.push({ code: 'MISSING_SMART_IMPORT', severity: 'warning', detail: 'No approved Smart Drive import is linked to this Finance month' });
-  return { vehicles: [...contributions.values()], businesses, totals, corporate_opex: cents(corporateOpex), cash_flow_only: cents(cashFlowOnly), cash_flow_only_items: cashFlowOnlyItems, fleet_unallocated_workshop: cents(fleetWorkshopUnallocated), management_profit: cents(totals.contribution - corporateOpex), issues };
+  return { vehicles: [...contributions.values()], businesses, totals, corporate_opex: round2(corporateOpex), cash_flow_only: round2(cashFlowOnly), cash_flow_only_items: cashFlowOnlyItems, fleet_unallocated_workshop: round2(fleetWorkshopUnallocated), management_profit: round2(totals.contribution - corporateOpex), issues };
 }
 
 /**

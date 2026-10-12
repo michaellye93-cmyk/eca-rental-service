@@ -1,6 +1,7 @@
 import type { Driver } from '../types.ts';
 import { formatCurrency, parseDate, rentDueAndPaid } from '../utils.ts';
 import { cashOf } from './moneyDefinitions.ts';
+import { addDays, MONTH_SHORT, monthStart, percent, round2 } from './fmt.ts';
 import { sameBankAccount } from './finance/statementBalances.ts';
 
 // What finance_cash_outlook(today) returns (see supabase/migrations/20260927090000_cash_position_and_outlook.sql).
@@ -35,15 +36,10 @@ export const STALE_BALANCE_DAYS = 7;
 export const COLLECTION_WEEKS = 8;
 
 const DAY = 86_400_000;
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dayNumber = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return Date.UTC(y, m - 1, d) / DAY;
 };
-const isoOf = (n: number) => new Date(n * DAY).toISOString().slice(0, 10);
-/** A YYYY-MM-DD date moved by a number of days. */
-export const addDays = (iso: string, days: number) => isoOf(dayNumber(iso) + days);
-const monthStart = (iso: string) => `${iso.slice(0, 7)}-01`;
 const daysInMonth = (iso: string) => {
   const [y, m] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -52,7 +48,6 @@ const nextMonth = (month: string) => {
   const [y, m] = month.split('-').map(Number);
   return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 };
-const cents = (n: number) => Math.round(n * 100) / 100;
 const num = (value: unknown) => Number(value) || 0;
 const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}/.test(value);
 
@@ -75,7 +70,7 @@ export function currentCash(balances: CashBalanceEntry[], today: string): Curren
     asOf: entry.as_of.slice(0, 10),
     ageDays: Math.max(0, dayNumber(today) - dayNumber(entry.as_of)),
   }));
-  return { total: cents(accounts.reduce((sum, a) => sum + a.balance, 0)), ageDays: Math.max(...accounts.map(a => a.ageDays)), accounts };
+  return { total: round2(accounts.reduce((sum, a) => sum + a.balance, 0)), ageDays: Math.max(...accounts.map(a => a.ageDays)), accounts };
 }
 
 /**
@@ -94,7 +89,7 @@ export function collectionRate(drivers: Driver[], today: string): { rate: number
       if (day >= dayNumber(from) && day <= dayNumber(today)) cash += cashOf(payment);
     }
   }
-  return { rate: due > 0 ? Math.min(1, Math.max(0, cash / due)) : 1, cash: cents(cash), due: cents(due) };
+  return { rate: due > 0 ? Math.min(1, Math.max(0, cash / due)) : 1, cash: round2(cash), due: round2(due) };
 }
 
 export interface WindowRent { due: number; prepaid: number; full: number; expected: number }
@@ -106,7 +101,7 @@ export interface WindowRent { due: number; prepaid: number; full: number; expect
 export function windowRent(drivers: Driver[], from: string, to: string, today: string, rate: number): WindowRent {
   const { due, paid } = rentDueAndPaid(drivers, parseDate(from), parseDate(to), parseDate(today));
   const full = Math.max(0, due - paid);
-  return { due: cents(due), prepaid: cents(paid), full: cents(full), expected: cents(full * rate) };
+  return { due: round2(due), prepaid: round2(paid), full: round2(full), expected: round2(full * rate) };
 }
 
 /** Each calendar month a window touches, with the share of that month the window covers. */
@@ -153,12 +148,12 @@ export function depositsHeldByDriver(rows: DepositLedgerRow[]): Record<string, n
     if (row.kind !== 'DEPOSIT') continue;
     held.set(row.driver_id, (held.get(row.driver_id) ?? 0) + (row.entry === 'RECEIVED' ? 1 : -1) * num(row.amount));
   }
-  return Object.fromEntries([...held].map(([id, amount]) => [id, cents(amount)] as [string, number]).filter(([, amount]) => amount > 0));
+  return Object.fromEntries([...held].map(([id, amount]) => [id, round2(amount)] as [string, number]).filter(([, amount]) => amount > 0));
 }
 
 /** All drivers' deposits held, or null when the deposit ledger was not read. */
 export const depositsHeldTotal = (held: Record<string, number> | undefined) =>
-  held ? cents(Object.values(held).reduce((sum, amount) => sum + amount, 0)) : null;
+  held ? round2(Object.values(held).reduce((sum, amount) => sum + amount, 0)) : null;
 
 export interface DepositRefundDue {
   driver_id: string; name: string; plate: string; due_date: string; amount: number;
@@ -207,22 +202,22 @@ export function windowBills(outlook: CashOutlookData, from: string, to: string, 
     .filter(item => item.due_date.slice(0, 10) >= from && item.due_date.slice(0, 10) <= to)
     .reduce((sum, item) => sum + num(item.amount), 0);
   const bills = {
-    financing: cents(financing),
-    fixed: cents(fixed),
-    insurance: cents(insurance),
-    workshop: cents(avg.workshop * months),
-    vehicleCosts: cents(avg.vehicleCosts * months),
-    oneOffOpex: cents(avg.oneOffOpex * months),
-    depositRefunds: cents(depositRefundsDue(drivers, outlook.deposits_held, from, to, today).reduce((sum, r) => sum + r.amount, 0)),
+    financing: round2(financing),
+    fixed: round2(fixed),
+    insurance: round2(insurance),
+    workshop: round2(avg.workshop * months),
+    vehicleCosts: round2(avg.vehicleCosts * months),
+    oneOffOpex: round2(avg.oneOffOpex * months),
+    depositRefunds: round2(depositRefundsDue(drivers, outlook.deposits_held, from, to, today).reduce((sum, r) => sum + r.amount, 0)),
   };
-  return { ...bills, total: cents(Object.values(bills).reduce((sum, value) => sum + value, 0)) };
+  return { ...bills, total: round2(Object.values(bills).reduce((sum, value) => sum + value, 0)) };
 }
 
 /** Money expected in besides rent: Smart Drive (net of commission) and other income, as 3-month averages. */
 export function windowOtherIncome(outlook: CashOutlookData, from: string, to: string): number {
   const avg = averages(outlook);
   const months = monthShares(from, to).reduce((sum, m) => sum + m.share, 0);
-  return cents((avg.smartDriveNet + avg.otherIncome) * months);
+  return round2((avg.smartDriveNet + avg.otherIncome) * months);
 }
 
 export type CashStatus = 'SHORT' | 'TIGHT' | 'WATCH' | 'COVERED';
@@ -260,8 +255,6 @@ export interface CashLineSummary {
   leverPerTenPoints: number;
 }
 
-const percent = (value: number) => `${Math.round(value * 100)}%`;
-
 /**
  * The always-on cash line: the next WINDOW_DAYS days of bills against cash in bank and the money expected in, and one
  * plain sentence. Short: bills exceed cash plus money in. Tight: fewer than TIGHT_DAYS days of bills left. Watch: the
@@ -275,12 +268,12 @@ export function cashLine(input: CashLineInput): CashLineSummary {
   const rent = windowRent(input.drivers, from, to, input.today, rate);
   const otherIncome = windowOtherIncome(input.outlook, from, to);
   const bills = windowBills(input.outlook, from, to, input.drivers, input.today);
-  const expectedIn = cents(rent.expected + otherIncome);
-  const net = cents(expectedIn - bills.total);
-  const left = cash ? cents(cash.total + net) : null;
+  const expectedIn = round2(rent.expected + otherIncome);
+  const net = round2(expectedIn - bills.total);
+  const left = cash ? round2(cash.total + net) : null;
   const dailyBills = bills.total / WINDOW_DAYS;
   const daysLeft = left !== null && dailyBills > 0 ? left / dailyBills : null;
-  const leverPerTenPoints = cents(rent.full * Math.min(0.1, Math.max(0, 1 - rate)));
+  const leverPerTenPoints = round2(rent.full * Math.min(0.1, Math.max(0, 1 - rate)));
 
   const stale = cash !== null && cash.ageDays > STALE_BALANCE_DAYS;
   const staleText = cash ? `The bank balance is ${cash.ageDays} days old. Update it on the Cash page.` : '';
@@ -327,7 +320,7 @@ export function cashLine(input: CashLineInput): CashLineSummary {
 
   return {
     window: { from, to }, cash, depositsHeld: depositsHeldTotal(input.outlook.deposits_held), rate, rent, otherIncome, bills, expectedIn, net, left, daysLeft,
-    overdue: cents(input.overdue), overdueChange: cents(input.overdueChange), status, sentence, notes, leverPerTenPoints,
+    overdue: round2(input.overdue), overdueChange: round2(input.overdueChange), status, sentence, notes, leverPerTenPoints,
   };
 }
 
@@ -369,11 +362,11 @@ export function monthlyOutlook(input: {
     const otherIncome = windowOtherIncome(input.outlook, from, to);
     const bills = windowBills(input.outlook, from, to, input.drivers, input.today);
     const arrears = arrearsPerMonth * ((dayNumber(to) - dayNumber(from) + 1) / daysInMonth(month));
-    const moneyIn = cents(rent.expected + otherIncome + arrears);
-    const closing = cents(opening + moneyIn - bills.total);
-    const closingIfAllRentPaid = cents(openingIfAllPaid + rent.full + otherIncome + arrears - bills.total);
+    const moneyIn = round2(rent.expected + otherIncome + arrears);
+    const closing = round2(opening + moneyIn - bills.total);
+    const closingIfAllRentPaid = round2(openingIfAllPaid + rent.full + otherIncome + arrears - bills.total);
     const [year, monthNumber] = month.split('-').map(Number);
-    const label = from !== month ? `Rest of ${MONTHS[monthNumber - 1]}` : `${MONTHS[monthNumber - 1]} ${year}`;
+    const label = from !== month ? `Rest of ${MONTH_SHORT[monthNumber - 1]}` : `${MONTH_SHORT[monthNumber - 1]} ${year}`;
     buckets.push({ label, from, to, opening, rent, otherIncome, moneyIn, bills, closing, closingIfAllRentPaid });
     opening = closing;
     openingIfAllPaid = closingIfAllRentPaid;
@@ -404,7 +397,7 @@ export function arrearsScenarios(input: { today: string; outlook: CashOutlookDat
     run('current', `Today's pace (${percent(rate)} of rent)`, rate),
     run('rate85', 'Collect 85% of rent', 0.85),
     run('all', 'Collect all rent', 1),
-    run('allPlusArrears', 'All rent + 10% of arrears a month', 1, cents(Math.max(0, input.overdue) * 0.1)),
+    run('allPlusArrears', 'All rent + 10% of arrears a month', 1, round2(Math.max(0, input.overdue) * 0.1)),
   ];
 }
 
@@ -503,11 +496,11 @@ export function bankCheck(balances: CashBalanceEntry[], month: string, netCashFl
   }
   const startMissing = missing.some(m => m.when === 'start');
   const endMissing = missing.some(m => m.when === 'end');
-  const expected = startMissing || !accounts.length ? null : cents(opening + netCashFlow);
-  const closingTotal = endMissing || !accounts.length ? null : cents(closing);
-  const unexplained = expected === null || closingTotal === null ? null : cents(closingTotal - expected);
+  const expected = startMissing || !accounts.length ? null : round2(opening + netCashFlow);
+  const closingTotal = endMissing || !accounts.length ? null : round2(closing);
+  const unexplained = expected === null || closingTotal === null ? null : round2(closingTotal - expected);
   return {
-    month, opening: startMissing || !accounts.length ? null : cents(opening), netCashFlow: cents(netCashFlow), expected, closing: closingTotal,
+    month, opening: startMissing || !accounts.length ? null : round2(opening), netCashFlow: round2(netCashFlow), expected, closing: closingTotal,
     unexplained, flagged: unexplained !== null && Math.abs(unexplained) > BANK_CHECK_TOLERANCE, missing,
   };
 }

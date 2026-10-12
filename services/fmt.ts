@@ -2,9 +2,10 @@
  * The one home for how figures, percentages, month labels and calendar days are written. Screens import from here
  * instead of keeping their own copies, so the same number reads the same everywhere. No React, so tests load it.
  */
-import { formatCurrency } from '../utils.ts';
+import { formatCurrency, previousMonth } from '../utils.ts';
 
-export { formatCurrency };
+/** formatCurrency is the raw RM format (minus zero prints "-RM 0.00"); previousMonth is YYYY-MM(-DD) → the month before as YYYY-MM. */
+export { formatCurrency, previousMonth };
 
 /** Ringgit with two decimals ("RM 1,234.50"). A blank, not-a-number or minus-zero amount shows "RM 0.00". */
 export const money = (amount: number | null | undefined) => formatCurrency(Number(amount || 0));
@@ -45,14 +46,11 @@ const dayNumber = (iso: string) => {
 /** A YYYY-MM-DD date moved by a number of days. */
 export const addDays = (iso: string, days: number) => new Date((dayNumber(iso) + days) * DAY).toISOString().slice(0, 10);
 
+/** The first day of the month as YYYY-MM-01, from YYYY-MM or YYYY-MM-DD. */
+export const monthStart = (month: string) => `${month.slice(0, 7)}-01`;
+
 /** The last day of the month as YYYY-MM-DD, from YYYY-MM or YYYY-MM-DD. */
 export const monthEnd = (month: string) => {
   const [year, number] = month.slice(0, 7).split('-').map(Number);
   return `${month.slice(0, 7)}-${String(new Date(year, number, 0).getDate()).padStart(2, '0')}`;
-};
-
-/** The month before YYYY-MM, as YYYY-MM. */
-export const previousMonth = (month: string) => {
-  const [year, number] = month.split('-').map(Number);
-  return number === 1 ? `${year - 1}-12` : `${year}-${String(number - 1).padStart(2, '0')}`;
 };

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, isoDay, money, monthEnd, monthLong, monthShort, MONTH_SHORT, percent, percent1, previousMonth, round2 } from '../services/fmt.ts';
+import { addDays, isoDay, money, monthEnd, monthLong, monthStart, monthShort, MONTH_SHORT, percent, percent1, previousMonth, round2 } from '../services/fmt.ts';
 import { formatCurrency } from '../utils.ts';
 
 // Intl puts a no-break space between RM and the figure.
@@ -64,6 +64,12 @@ test('monthEnd gives the last day of the month as YYYY-MM-DD from YYYY-MM or YYY
   assert.equal(monthEnd('2026-12-01'), '2026-12-31');
   assert.equal(monthEnd('2028-02'), '2028-02-29');
   assert.equal(monthEnd('2026-02-15'), '2026-02-28');
+});
+
+test('monthStart gives the first day of the month as YYYY-MM-01 from YYYY-MM or YYYY-MM-DD', () => {
+  assert.equal(monthStart('2026-09'), '2026-09-01');
+  assert.equal(monthStart('2026-09-17'), '2026-09-01');
+  assert.equal(monthStart('2026-12-01'), '2026-12-01');
 });
 
 test('previousMonth steps back one month, across the year end', () => {

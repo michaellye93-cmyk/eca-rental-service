@@ -2,15 +2,7 @@
  * The bank balance at the two month ends a statement shows, so posting a statement fills in Cash's bank balances (and the
  * Bank check) instead of them being typed again. Only balances the statement prints or proves are used.
  */
-
-const lastDay = (month: string) => {
-  const [year, number] = month.split('-').map(Number);
-  return `${month}-${String(new Date(year, number, 0).getDate()).padStart(2, '0')}`;
-};
-const previousMonth = (month: string) => {
-  const [year, number] = month.split('-').map(Number);
-  return number === 1 ? `${year - 1}-12` : `${year}-${String(number - 1).padStart(2, '0')}`;
-};
+import { monthEnd, previousMonth } from '../fmt.ts';
 
 /**
  * Balance at the end of the month before `month` (opening) and at the end of `month` (closing), from each line's balance
@@ -30,7 +22,7 @@ export function monthEndBalances(lines: { date: string; balance: number | null }
     opening = before.length ? before[before.length - 1].balance : period.from === first ? printedOpening : null;
   }
   const lastInMonth = [...inMonth].reverse().find(l => l.balance !== null);
-  const closing = period.to >= lastDay(month) ? lastInMonth?.balance ?? null : null;
+  const closing = period.to >= monthEnd(month) ? lastInMonth?.balance ?? null : null;
   return { opening, closing };
 }
 
@@ -70,7 +62,7 @@ export function balanceEntries(s: { accountLabel: string; filename: string; mont
   }
   const account = match ?? label;
   const entries: BalanceEntry[] = [];
-  if (s.opening !== null) entries.push({ account, balance: s.opening, asOf: lastDay(previousMonth(s.month)), note: `Opening balance from bank statement ${s.filename}` });
-  if (s.closing !== null && lastDay(s.month) <= today) entries.push({ account, balance: s.closing, asOf: lastDay(s.month), note: `Closing balance from bank statement ${s.filename}` });
+  if (s.opening !== null) entries.push({ account, balance: s.opening, asOf: monthEnd(previousMonth(s.month)), note: `Opening balance from bank statement ${s.filename}` });
+  if (s.closing !== null && monthEnd(s.month) <= today) entries.push({ account, balance: s.closing, asOf: monthEnd(s.month), note: `Closing balance from bank statement ${s.filename}` });
   return { entries, reason: null };
 }

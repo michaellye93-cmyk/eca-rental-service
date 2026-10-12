@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../utils";
+import { formatCurrency, monthLong } from "../../services/fmt";
 import { useState } from "react";
 import { insuranceStatus } from "../../services/finance/insurance";
 import type {
@@ -65,10 +65,7 @@ export default function FinanceImportPreview({
       <p className="finance-dialog-copy">
         Posting to{" "}
         <strong>
-          {new Date(`${month}-01T00:00:00`).toLocaleDateString("en-MY", {
-            month: "long",
-            year: "numeric",
-          })}
+          {monthLong(month)}
         </strong>
         . Review the records and amounts before approving
         {smartExists && smart ? " this replacement" : ""}.

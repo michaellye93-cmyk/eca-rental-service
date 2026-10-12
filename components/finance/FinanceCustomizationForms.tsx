@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../utils";
+import { formatCurrency, monthStart } from "../../services/fmt";
 import React, { useMemo, useRef, useState } from "react";
 import type {
   BusinessUnit,
@@ -12,7 +12,6 @@ import type {
 import Dialog from "./FinanceDialog";
 
 
-const monthStart = (month: string) => `${month.slice(0, 7)}-01`;
 const nullable = (value: string) => value.trim() || null;
 const errorMessage = (cause: unknown) =>
   cause instanceof Error ? cause.message : "Unable to save this record.";

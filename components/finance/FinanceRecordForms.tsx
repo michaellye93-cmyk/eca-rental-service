@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../utils";
+import { formatCurrency, monthEnd, monthStart } from "../../services/fmt";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import FinanceDialog from "./FinanceDialog";
 import { insuranceProblems, insuranceStatus, insuranceCashOutflow, ownerPremiumReview, validInsuranceDate } from "../../services/finance/insurance";
@@ -120,11 +120,6 @@ type PolicyValues = {
   source: string;
 };
 
-const monthStart = (month: string) => `${month.slice(0, 7)}-01`;
-const monthEnd = (month: string) => {
-  const [year, numericMonth] = month.slice(0, 7).split("-").map(Number);
-  return `${month.slice(0, 7)}-${String(new Date(year, numericMonth, 0).getDate()).padStart(2, "0")}`;
-};
 const asMonth = (value: string | null | undefined) => value?.slice(0, 7) ?? "";
 const nullable = (value: string) => value.trim() || null;
 const Field = ({

@@ -1,8 +1,8 @@
 import type { Driver } from '../types.ts';
 import { generateDriverInvoices, rentAllocations } from '../utils.ts';
 import { collectedOf, notCashOf } from './moneyDefinitions.ts';
+import { isoDay, round2 } from './fmt.ts';
 
-const cents = (value: number) => Math.round(value * 100) / 100;
 const monthEnd = (month: string) => {
   const [year, number] = month.split('-').map(Number);
   return new Date(year, number, 0, 23, 59, 59);
@@ -30,13 +30,13 @@ export function driverMonthlyLedger(driver: Driver, months: string[], today: Dat
     // A month still in progress counts only up to today: rent not yet due is neither billed nor owed.
     const cutoff = [`${month}-31`, todayKey].sort()[0];
     const inMonth = (date: string) => date.slice(0, 7) === month && date <= cutoff;
-    const billed = cents(invoices.filter((invoice) => inMonth(invoice.dueDate)).reduce((sum, invoice) => sum + invoice.amount, 0));
-    const collected = cents(driver.paymentHistory.filter((payment) => inMonth(payment.date))
+    const billed = round2(invoices.filter((invoice) => inMonth(invoice.dueDate)).reduce((sum, invoice) => sum + invoice.amount, 0));
+    const collected = round2(driver.paymentHistory.filter((payment) => inMonth(payment.date))
       .reduce((sum, payment) => sum + collectedOf(payment), 0));
     const billedToDate = invoices.filter((invoice) => invoice.dueDate <= cutoff).reduce((sum, invoice) => sum + invoice.amount, 0);
     const collectedToDate = driver.paymentHistory.filter((payment) => payment.date <= cutoff)
       .reduce((sum, payment) => sum + collectedOf(payment), 0);
-    return { month, billed, collected, balance: cents(billedToDate - collectedToDate), rate: billed ? collected / billed : null };
+    return { month, billed, collected, balance: round2(billedToDate - collectedToDate), rate: billed ? collected / billed : null };
   });
 }
 
@@ -49,10 +49,8 @@ export function monthCollection(drivers: Driver[], month: string, today: Date): 
     billed += row.billed;
     collected += row.collected;
   }
-  return { billed: cents(billed), collected: cents(collected), rate: billed ? collected / billed : null };
+  return { billed: round2(billed), collected: round2(collected), rate: billed ? collected / billed : null };
 }
-
-const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 /** A stretch of calendar days, `from` to `to` inclusive (YYYY-MM-DD); `key` names it (its first day). */
 export interface Period { key: string; from: string; to: string }
@@ -120,8 +118,8 @@ export function collectionSplit(drivers: Driver[], periods: Period[], today: Dat
       if (row) row.notCash += notCashOf(payment);
     }
   }
-  return rows.map((row) => ({ period: row.period.key, due: cents(row.due), collected: cents(row.collected), current: cents(row.current),
-    arrears: cents(row.arrears), ahead: cents(row.ahead), notCash: cents(row.notCash) }));
+  return rows.map((row) => ({ period: row.period.key, due: round2(row.due), collected: round2(row.collected), current: round2(row.current),
+    arrears: round2(row.arrears), ahead: round2(row.ahead), notCash: round2(row.notCash) }));
 }
 
 export interface AgeingBucket { label: string; amount: number; drivers: number }
@@ -148,5 +146,5 @@ export function arrearsAgeing(drivers: Driver[], today: Date): AgeingBucket[] {
       bucket.ids.add(driver.id);
     }
   }
-  return buckets.map(({ label, amount, ids }) => ({ label, amount: cents(amount), drivers: ids.size }));
+  return buckets.map(({ label, amount, ids }) => ({ label, amount: round2(amount), drivers: ids.size }));
 }
