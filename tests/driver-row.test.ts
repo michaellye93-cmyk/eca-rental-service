@@ -101,3 +101,23 @@ test('fromDriverRow reads the WhatsApp group name back, and leaves it out when t
   assert.equal(fromDriverRow({ ...row, whatsapp_group: 'OTHER XAB2001 MON' }).whatsappGroup, 'OTHER XAB2001 MON');
   assert.equal('whatsappGroup' in fromDriverRow({ ...row, whatsapp_group: null }), false);
 });
+
+test('the collection arrangement, tone, language, contact window and note are written only when set or being cleared', () => {
+  const row = toDriverRow({ ...driver, collectionArrangement: ' Monthly RM1,400 by the 10th ', collectionTone: 'FIRM', collectionLanguage: 'BM', contactWindow: 'after 2pm', collectionNote: 'Fixture note' });
+  assert.deepEqual([row.collection_arrangement, row.collection_tone, row.collection_language, row.contact_window, row.collection_note],
+    ['Monthly RM1,400 by the 10th', 'FIRM', 'BM', 'after 2pm', 'Fixture note']);
+  const cleared = toDriverRow({ ...driver, collectionArrangement: '', collectionTone: '', collectionLanguage: '', contactWindow: ' ', collectionNote: '' });
+  assert.deepEqual([cleared.collection_arrangement, cleared.collection_tone, cleared.collection_language, cleared.contact_window, cleared.collection_note],
+    [null, null, null, null, null]);
+  // Untouched: saving a driver never depends on these columns before the database update is run
+  for (const column of ['collection_arrangement', 'collection_tone', 'collection_language', 'contact_window', 'collection_note']) {
+    assert.equal(column in toDriverRow(driver), false, column);
+  }
+});
+
+test('fromDriverRow reads the collection fields back, and leaves them out when empty', () => {
+  const back = fromDriverRow({ id: 'd1', ...toDriverRow({ ...driver, collectionArrangement: 'Weekly', collectionTone: 'SOFT', collectionLanguage: 'EN', contactWindow: 'after 2pm', collectionNote: 'Note' }) });
+  assert.deepEqual([back.collectionArrangement, back.collectionTone, back.collectionLanguage, back.contactWindow, back.collectionNote], ['Weekly', 'SOFT', 'EN', 'after 2pm', 'Note']);
+  const empty = fromDriverRow({ id: 'd1', ...toDriverRow(driver), collection_arrangement: null, collection_tone: null });
+  assert.equal('collectionArrangement' in empty || 'collectionTone' in empty, false);
+});

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import { buildLateAlerts, generateDriverInvoices, mondayToSunday, rentDueAndPaid } from '../utils.ts';
 import {
-  balanceTrend, buildCollectionsData, catchUpStatus, collectionsJson, promiseStatus, segmentHistory, statementMoney, whatsappStatement,
+  balanceTrend, buildCollectionsData, catchUpStatus, collectionSummary, collectionsJson, promiseStatus, segmentHistory, statementMoney, whatsappStatement,
   type CatchUpPlan, type PaymentPromise,
 } from '../services/collections.ts';
 
@@ -222,4 +222,20 @@ test('the summary matches the dashboard: risk counts, total outstanding, this we
 test('the invoice list the data view reads is the shared rent schedule', () => {
   const horizon = new Date(2026, 9, 31);
   assert.equal(generateDriverInvoices(ALPHA, NOW, horizon).find(inv => inv.dueDate === '2026-10-06')?.status, 'FUTURE');
+});
+
+test('F1: each driver carries the collection arrangement from the driver record; the statement text never includes it', () => {
+  const arranged: Driver = { ...BRAVO, collectionArrangement: 'Monthly RM1,500 by the 5th', collectionTone: 'FIRM', collectionLanguage: 'BM', contactWindow: 'after 2pm', collectionNote: 'Fixture note' };
+  const data = buildCollectionsData(dataInput({ drivers: [ALPHA, arranged, CHARLIE], bankIn: { SEWABELI: 'Fixture Bank 000 (ECA)', SEWA_BIASA: 'Fixture Bank 111' } }));
+  const [bravo, alpha] = data.drivers;
+  assert.deepEqual(bravo.collection, { arrangement: 'Monthly RM1,500 by the 5th', tone: 'FIRM', language: 'BM', contact_window: 'after 2pm', note: 'Fixture note' });
+  assert.deepEqual(alpha.collection, { arrangement: null, tone: null, language: null, contact_window: null, note: null });
+  assert.equal(bravo.statement, whatsappStatement(BRAVO, NOW, 'Fixture Bank 111'));
+  assert.ok(!bravo.statement!.includes('after 2pm') && !bravo.statement!.includes('Fixture note'));
+});
+
+test('F1: the arrangement summary for the driver row joins what is set, and is null when nothing is', () => {
+  assert.equal(collectionSummary({ collectionArrangement: 'Monthly RM1,400 by the 10th', collectionTone: 'FIRM', contactWindow: 'after 2pm' }), 'Monthly RM1,400 by the 10th · Firm · after 2pm');
+  assert.equal(collectionSummary({ collectionTone: 'SOFT', collectionLanguage: 'ZH' }), 'Soft · ZH');
+  assert.equal(collectionSummary({}), null);
 });

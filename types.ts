@@ -7,6 +7,9 @@ export const DriverStatus = {
 } as const;
 export type DriverStatus = typeof DriverStatus[keyof typeof DriverStatus];
 
+/** How firmly collection messages are worded for a driver. */
+export type CollectionTone = 'SOFT' | 'POLITE' | 'FIRM';
+
 export interface PaymentTransaction {
   id: string;
   date: string; // YYYY-MM-DD
@@ -27,6 +30,13 @@ export interface Driver {
   whatsappGroup?: string;
   name: string;
   address?: string;
+  /** How collections are made with this driver (typed only in Add / Edit Driver; never shown to the driver). An empty
+   * text means "being cleared" when saving. */
+  collectionArrangement?: string; // e.g. "Monthly RM1,400 by the 10th"
+  collectionTone?: CollectionTone | '';
+  collectionLanguage?: string; // BM, EN, ZH or MIXED
+  contactWindow?: string; // e.g. "after 2pm"
+  collectionNote?: string;
   /** Who to call when the driver can't be reached, and their phone; printed on the agreement. */
   emergencyContactName?: string;
   emergencyContactPhone?: string;

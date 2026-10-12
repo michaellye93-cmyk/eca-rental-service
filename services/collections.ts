@@ -91,6 +91,16 @@ export function whatsappStatement(driver: Driver, now: Date, bankIn: string): st
   return lines.join('\n');
 }
 
+const TONE_LABEL: Record<string, string> = { SOFT: 'Soft', POLITE: 'Polite', FIRM: 'Firm' };
+
+/** The driver's collection arrangement in one line for the driver row and the statement window, e.g.
+ * "Monthly RM1,400 by the 10th · Firm · after 2pm"; null when none of it is set. */
+export function collectionSummary(driver: Pick<Driver, 'collectionArrangement' | 'collectionTone' | 'collectionLanguage' | 'contactWindow'>): string | null {
+  const parts = [driver.collectionArrangement?.trim(), driver.collectionTone ? TONE_LABEL[driver.collectionTone] ?? driver.collectionTone : '',
+    driver.collectionLanguage?.trim(), driver.contactWindow?.trim()].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 export type PromiseState = 'OPEN' | 'KEPT' | 'MISSED';
 
 /**
@@ -246,6 +256,8 @@ export interface CollectionsDriver {
   day_tag: string | null;
   day_tag_ok: boolean;
   whatsapp_group: string | null;
+  /** How collections are made with this driver, from the driver record (Add / Edit Driver); null where not set. */
+  collection: { arrangement: string | null; tone: string | null; language: string | null; contact_window: string | null; note: string | null };
   rent: { cycle: Driver['rentalCycle']; amount: number; due_day: string | null; next_due_date: string | null; oldest_unpaid_due_date: string | null };
   status: { risk: string; outstanding: number; cycles_owed: number; last_payment_date: string | null; late_days: number | null; balance_change_7d: number; balance_change_28d: number; trend: Trend };
   last_cycles: { due: string; amount: number; status: Invoice['status']; paid: number }[];
@@ -315,6 +327,10 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
       day_tag: tagCheck?.tagged.join('/') || null,
       day_tag_ok: tagCheck?.ok ?? false,
       whatsapp_group: driver.whatsappGroup ?? null,
+      collection: {
+        arrangement: driver.collectionArrangement || null, tone: driver.collectionTone || null, language: driver.collectionLanguage || null,
+        contact_window: driver.contactWindow || null, note: driver.collectionNote || null,
+      },
       rent: {
         cycle: driver.rentalCycle,
         amount: driver.rentalRate,
