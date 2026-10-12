@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAdminPath, parseAdminPath, resolveAdminRoute, routeFromStored, type AdminRoute } from '../services/routes.ts';
+import { buildAdminPath, linkedWindowLeft, parseAdminPath, resolveAdminRoute, routeFromStored, type AdminRoute } from '../services/routes.ts';
 
 test('each page has its own address, and the address reads back as the same page', () => {
   const table: [string, AdminRoute][] = [
@@ -62,4 +62,19 @@ test('signed-in pages resolve to a real page: "/" from the saved tab, Finance fo
   assert.deepEqual(resolveAdminRoute({ kind: 'worklist' }, false, stored), { kind: 'worklist' }, 'staff use the worklist');
   assert.deepEqual(resolveAdminRoute({ kind: 'collections' }, false, stored), { kind: 'collections' }, 'the data view keeps its own admin check');
   assert.deepEqual(resolveAdminRoute({ kind: 'drivers', plate: 'XAA1001', action: 'pay' }, false, stored), { kind: 'drivers', plate: 'XAA1001', action: 'pay' });
+});
+
+test('Back from /drivers/<PLATE>/pay or /statement closes the window the address opened', () => {
+  const at = (path: string) => parseAdminPath(path);
+  const pay = { plate: 'XAA1001', action: 'pay' as const };
+  const statement = { plate: 'XAA1001', action: 'statement' as const };
+  assert.equal(linkedWindowLeft(pay, at('/drivers/XAA1001/pay')), false, 'still on the payment address');
+  assert.equal(linkedWindowLeft(pay, at('/drivers/xaa1001/pay')), false, 'the plate as typed');
+  assert.equal(linkedWindowLeft(pay, at('/drivers/XAA1001')), true, 'Back to the driver');
+  assert.equal(linkedWindowLeft(pay, at('/drivers')), true);
+  assert.equal(linkedWindowLeft(pay, at('/admin/worklist')), true, 'Back to the worklist');
+  assert.equal(linkedWindowLeft(statement, at('/drivers/XAA1001/statement')), false);
+  assert.equal(linkedWindowLeft(statement, at('/drivers/XAA1001/pay')), true, 'another window took its place');
+  assert.equal(linkedWindowLeft(statement, at('/drivers/XAB2001/statement')), true, 'another driver');
+  assert.equal(linkedWindowLeft(null, at('/drivers/XAA1001')), false, 'a window opened by a button is left alone');
 });

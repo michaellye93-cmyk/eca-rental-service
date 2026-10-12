@@ -41,6 +41,7 @@ import {
   MessageCircle,
   MessageSquareText,
   FileSignature,
+  ListChecks,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
 import { loadScreenedDriverIds, markScreened } from '../services/screening';
@@ -52,7 +53,7 @@ import { catchUpStatus, collectionSummary, latestPromise, promiseStatus, running
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
-import { buildAdminPath, storedFinancePage, type AdminRoute } from '../services/routes';
+import { buildAdminPath, linkedWindowLeft, storedFinancePage, type AdminRoute, type DriverAction } from '../services/routes';
 import { logContact } from '../services/collectionsApi';
 import { loadDeposits, loadDepositsHeld } from '../services/depositsApi';
 import { receivedByKind, upfrontToRecord, type UpfrontReceived } from '../services/depositTotals';
@@ -741,6 +742,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // a reload of the list does not open the window again; an unknown plate shows the list with a notice.
   const handledLink = useRef<string | null>(null);
   const [unknownPlate, setUnknownPlate] = useState<string | null>(null);
+  // The payment or statement window an address opened: Back (the address no longer names it) closes it
+  const linkedWindow = useRef<{ plate: string; action: DriverAction } | null>(null);
+  useEffect(() => {
+    const opened = linkedWindow.current;
+    if (!opened || !linkedWindowLeft(opened, route)) return;
+    linkedWindow.current = null;
+    if (opened.action === 'pay') {
+      setIsPaymentModalOpen(false); setPaymentError(null); setEditingTxId(null); setEditTxError(null); setDuplicateWarning(null);
+    } else {
+      setStatementDriver(null);
+    }
+  }, [route]);
   useEffect(() => {
     if (route.kind !== 'drivers' || !route.plate) {
       handledLink.current = null;
@@ -758,12 +771,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setUnknownPlate(null);
     showDriverRow(driver.id);
     setExpandedDriverIds(prev => (prev.includes(driver.id) ? prev : [...prev, driver.id]));
+    if (route.action) linkedWindow.current = { plate: route.plate, action: route.action };
     if (route.action === 'pay') handleOpenPaymentModal(driver);
     if (route.action === 'statement') setStatementDriver(driver);
     // Only a new address is handled; the driver list reloading must not reopen a window
   }, [route, driverData]);
   /** After a linked payment or statement window closes, the address goes back to the driver (so a reload does not reopen it). */
   function leaveDriverAction() {
+    linkedWindow.current = null;
     if (route.kind !== 'drivers' || !route.plate || !route.action) return;
     const back = buildAdminPath({ kind: 'drivers', plate: route.plate });
     handledLink.current = back;
@@ -1026,6 +1041,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </button>
             ))}
+            {/* The day's collection worklist (staff and admins), on its own page */}
+            <a
+              href={buildAdminPath({ kind: 'worklist' })}
+              onClick={event => {
+                if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                onNavigate(buildAdminPath({ kind: 'worklist' }));
+              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors text-gray-300 hover:text-white hover:bg-white/10"
+            >
+              <ListChecks className="w-4 h-4" aria-hidden="true" /> Worklist
+            </a>
           </nav>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-4">

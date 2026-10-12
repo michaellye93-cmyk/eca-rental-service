@@ -72,6 +72,15 @@ export function buildAdminPath(route: AdminRoute): string {
   }
 }
 
+/**
+ * Whether a payment or statement window that an address opened (/drivers/<PLATE>/pay or /statement) should close
+ * because the address no longer names it (Back, or another page). `opened` is null for a window opened by a button.
+ */
+export function linkedWindowLeft(opened: { plate: string; action: DriverAction } | null, route: AdminRoute): boolean {
+  if (!opened) return false;
+  return !(route.kind === 'drivers' && route.action === opened.action && route.plate === normalizePlate(opened.plate));
+}
+
 /** What this browser saved before addresses existed: the tab (eca_admin_section), the Money page and the older view key. */
 export interface StoredViews {
   section: string | null;
