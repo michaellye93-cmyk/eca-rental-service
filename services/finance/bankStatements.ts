@@ -23,7 +23,7 @@ export async function previewBankStatement(buffer: ArrayBuffer, filename: string
   const total_debits = cents(rows.reduce((sum, row) => sum + row.debit, 0)); const total_credits = cents(rows.reduce((sum, row) => sum + row.credit, 0));
   // RHB statements print their own deposit and withdrawal totals; a difference means a line was misread or missed.
   const control = data.rhb?.control; if (control && (cents(control.credits) !== total_credits || cents(control.debits) !== total_debits)) issues.push(issue('BANK_CONTROL_TOTAL_MISMATCH', `The statement prints deposits RM${control.credits.toFixed(2)} and withdrawals RM${control.debits.toFixed(2)}, but the lines read add up to RM${total_credits.toFixed(2)} and RM${total_debits.toFixed(2)}. Check the file before posting.`));
-  const balances = data.rhb ? monthEndBalances(data.rhb.balances, data.rhb.opening, month(financeMonth)) : { opening: null, closing: null };
+  const balances = data.rhb ? monthEndBalances(data.rhb.balances, data.rhb.opening, month(financeMonth), data.rhb.period) : { opening: null, closing: null };
   return { rows, issues, total_debits, total_credits, filename, account_label: mapping?.accountLabel || data.rhb?.accountLabel || '', finance_month: financeMonth, source_hash: sourceHash, opening_balance: balances.opening, closing_balance: balances.closing }; }
 export function validateBankReview(rows: BankReviewRow[], financeMonth: string, input: FinanceInput): QualityIssue[] {
   const issues: QualityIssue[] = [];
