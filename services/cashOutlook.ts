@@ -160,17 +160,27 @@ export function depositsHeldByDriver(rows: DepositLedgerRow[]): Record<string, n
 export const depositsHeldTotal = (held: Record<string, number> | undefined) =>
   held ? cents(Object.values(held).reduce((sum, amount) => sum + amount, 0)) : null;
 
-export interface DepositRefundDue { driver_id: string; name: string; plate: string; due_date: string; amount: number }
+export interface DepositRefundDue {
+  driver_id: string; name: string; plate: string; due_date: string; amount: number;
+  /** Set for an overdue refund: the contract ended (on `ended`) before today and the deposit is still held. */
+  overdue?: true; ended?: string;
+}
 
 /**
- * Expected deposit refunds between `from` and `to`: each active driver whose contract end date falls in the window and
- * who has a deposit held, on the end date. The deposit may be forfeited instead.
+ * Expected deposit refunds between `from` and `to`: each active driver with a deposit held whose contract end date falls
+ * in the window, on the end date. Given `today`, a contract that ended before it with the deposit still held is an overdue
+ * refund, counted on today (so only in the window holding today, never again in a later one); without `today`, only end
+ * dates in the window count. The deposit may be forfeited instead.
  */
-export function depositRefundsDue(drivers: Driver[], held: Record<string, number> | undefined, from: string, to: string): DepositRefundDue[] {
+export function depositRefundsDue(drivers: Driver[], held: Record<string, number> | undefined, from: string, to: string, today?: string): DepositRefundDue[] {
   if (!held) return [];
   return drivers
     .filter(d => !d.isDelisted && isIsoDate(d.contractEndDate ?? '') && (held[d.id] ?? 0) > 0)
-    .map(d => ({ driver_id: d.id, name: d.name, plate: d.carPlate, due_date: String(d.contractEndDate).slice(0, 10), amount: held[d.id] }))
+    .map((d): DepositRefundDue => {
+      const ended = String(d.contractEndDate).slice(0, 10);
+      const base = { driver_id: d.id, name: d.name, plate: d.carPlate, amount: held[d.id] };
+      return today && ended < today ? { ...base, due_date: today, overdue: true, ended } : { ...base, due_date: ended };
+    })
     .filter(r => r.due_date >= from && r.due_date <= to)
     .sort((a, b) => a.due_date.localeCompare(b.due_date) || a.name.localeCompare(b.name));
 }
@@ -180,9 +190,9 @@ export interface WindowBills { financing: number; fixed: number; insurance: numb
 /**
  * Bills between `from` and `to`: monthly vehicle costs and operation fix costs weighted by the days of each month the
  * window covers, insurance falling due in the window, and 3-month averages for workshop, other vehicle costs and one-off
- * company costs, and the deposit refunds expected in the window (see depositRefundsDue).
+ * company costs, and the deposit refunds expected in the window (see depositRefundsDue; `today` places overdue ones).
  */
-export function windowBills(outlook: CashOutlookData, from: string, to: string, drivers: Driver[] = []): WindowBills {
+export function windowBills(outlook: CashOutlookData, from: string, to: string, drivers: Driver[] = [], today?: string): WindowBills {
   const avg = averages(outlook);
   let financing = 0;
   let fixed = 0;
@@ -203,7 +213,7 @@ export function windowBills(outlook: CashOutlookData, from: string, to: string, 
     workshop: cents(avg.workshop * months),
     vehicleCosts: cents(avg.vehicleCosts * months),
     oneOffOpex: cents(avg.oneOffOpex * months),
-    depositRefunds: cents(depositRefundsDue(drivers, outlook.deposits_held, from, to).reduce((sum, r) => sum + r.amount, 0)),
+    depositRefunds: cents(depositRefundsDue(drivers, outlook.deposits_held, from, to, today).reduce((sum, r) => sum + r.amount, 0)),
   };
   return { ...bills, total: cents(Object.values(bills).reduce((sum, value) => sum + value, 0)) };
 }
@@ -264,7 +274,7 @@ export function cashLine(input: CashLineInput): CashLineSummary {
   const { rate } = collectionRate(input.drivers, input.today);
   const rent = windowRent(input.drivers, from, to, input.today, rate);
   const otherIncome = windowOtherIncome(input.outlook, from, to);
-  const bills = windowBills(input.outlook, from, to, input.drivers);
+  const bills = windowBills(input.outlook, from, to, input.drivers, input.today);
   const expectedIn = cents(rent.expected + otherIncome);
   const net = cents(expectedIn - bills.total);
   const left = cash ? cents(cash.total + net) : null;
@@ -357,7 +367,7 @@ export function monthlyOutlook(input: {
     const to = addDays(month, daysInMonth(month) - 1);
     const rent = windowRent(input.drivers, from, to, input.today, rate);
     const otherIncome = windowOtherIncome(input.outlook, from, to);
-    const bills = windowBills(input.outlook, from, to, input.drivers);
+    const bills = windowBills(input.outlook, from, to, input.drivers, input.today);
     const arrears = arrearsPerMonth * ((dayNumber(to) - dayNumber(from) + 1) / daysInMonth(month));
     const moneyIn = cents(rent.expected + otherIncome + arrears);
     const closing = cents(opening + moneyIn - bills.total);
