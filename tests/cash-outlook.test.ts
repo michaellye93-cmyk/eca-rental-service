@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arrearsScenarios, cashLine, collectionRate, currentCash, monthlyOutlook, windowBills, windowOtherIncome, type CashOutlookData } from '../services/cashOutlook.ts';
+import { arrearsScenarios, cashLine, collectionRate, currentCash, depositRefundsDue, depositsHeldByDriver, monthlyOutlook, windowBills, windowOtherIncome, type CashOutlookData } from '../services/cashOutlook.ts';
 import type { Driver, PaymentTransaction } from '../types.ts';
 
 const plain = (text: string) => text.replace(/ /g, ' ');
@@ -74,7 +74,7 @@ test('a deposit forfeited against rent is not cash, so it does not lift the cash
 test('bills for a window weight each month by the days it covers and add insurance falling due', () => {
   const bills = windowBills(outlook(), '2026-11-01', '2026-11-30');
   // Averages use only months with data (September and October).
-  assert.deepEqual(bills, { financing: 3000, fixed: 900, insurance: 1200, workshop: 900, vehicleCosts: 300, oneOffOpex: 300, total: 6600 });
+  assert.deepEqual(bills, { financing: 3000, fixed: 900, insurance: 1200, workshop: 900, vehicleCosts: 300, oneOffOpex: 300, depositRefunds: 0, total: 6600 });
   const half = windowBills(outlook(), '2026-11-16', '2026-11-30');
   assert.equal(half.financing, 1500);
   assert.equal(half.insurance, 1200);
@@ -184,4 +184,51 @@ test('arrears scenarios show closing cash each month at different collection rat
   assert.equal(round(scenarios[3].closing[0] - scenarios[2].closing[0]), 100);
   assert.equal(round(scenarios[3].closing[3] - scenarios[2].closing[3]), 700);
   assert.equal(scenarios[3].months.length, 4);
+});
+
+// Deposits (Sewa Biasa) are owed back to drivers; downpayments (Sewa Beli) never are.
+const ledger = [
+  { driver_id: 'd1', kind: 'DEPOSIT', entry: 'RECEIVED', amount: 1000 },
+  { driver_id: 'd1', kind: 'DEPOSIT', entry: 'CONTRA', amount: 300 },
+  { driver_id: 'd1', kind: 'DOWNPAYMENT', entry: 'RECEIVED', amount: 5000 },
+  { driver_id: 'd3', kind: 'DEPOSIT', entry: 'RECEIVED', amount: 800 },
+  { driver_id: 'd4', kind: 'DEPOSIT', entry: 'RECEIVED', amount: 500 },
+  { driver_id: 'd4', kind: 'DEPOSIT', entry: 'REFUNDED', amount: 500 },
+  { driver_id: 'd5', kind: 'DEPOSIT', entry: 'RECEIVED', amount: 600 },
+  { driver_id: 'd5', kind: 'DEPOSIT', entry: 'FORFEITED', amount: 600 },
+];
+const ending = (id: string, name: string, contractEndDate: string, extra: Partial<Driver> = {}): Driver =>
+  ({ ...weekly, id, name, carPlate: 'XAC3001', contractEndDate, paymentHistory: [], ...extra });
+
+test('deposits held: received less used for rent, refunded or forfeited; downpayments are not held', () => {
+  assert.deepEqual(depositsHeldByDriver(ledger), { d1: 700, d3: 800 });
+  assert.deepEqual(depositsHeldByDriver([]), {});
+});
+
+test('an active driver whose contract ends in the window with a deposit held brings an expected refund on the end date', () => {
+  const held = depositsHeldByDriver(ledger);
+  const drivers = [
+    ending('d1', 'Fixture Driver A', '2026-11-20'),
+    ending('d3', 'Fixture Driver B', '2027-01-10'),                          // ends after the window
+    ending('d4', 'Fixture Driver C', '2026-11-05'),                          // deposit already refunded
+    ending('d3', 'Fixture Driver D', '2026-11-12', { id: 'd6' }),            // no deposit held
+    ending('d1', 'Fixture Driver E', '2026-11-25', { id: 'd3', isDelisted: true }), // delisted: settled at delisting
+  ];
+  assert.deepEqual(depositRefundsDue(drivers, held, TODAY, '2026-11-30'), [
+    { driver_id: 'd1', name: 'Fixture Driver A', plate: 'XAC3001', due_date: '2026-11-20', amount: 700 },
+  ]);
+  assert.deepEqual(depositRefundsDue(drivers, undefined, TODAY, '2026-11-30'), [], 'no deposit ledger read: nothing listed');
+
+  // The refund counts in the bills of the window it falls in, so the cash line and the outlook allow for it.
+  const data = outlook({ deposits_held: held, balances: [balance('1', 'Maybank operating', 20000, '2026-10-31')] });
+  assert.equal(windowBills(data, TODAY, '2026-11-30', drivers).depositRefunds, 700);
+  assert.equal(windowBills(data, TODAY, '2026-11-30', drivers).total, 7300);
+  assert.equal(windowBills(data, '2026-12-01', '2026-12-31', drivers).depositRefunds, 0);
+  const line = cashLine({ today: TODAY, outlook: data, drivers: [weekly, ...drivers], overdue: 0, overdueChange: 0 });
+  assert.equal(line.bills.depositRefunds, 700);
+  assert.equal(line.depositsHeld, 1500, 'of the cash in bank, RM1,500 is drivers deposits held');
+  const months = monthlyOutlook({ today: TODAY, outlook: data, drivers });
+  assert.equal(months[0].bills.depositRefunds, 700);
+  // Without the deposit ledger nothing changes and no figure is shown.
+  assert.equal(cashLine({ today: TODAY, outlook: outlook(), drivers: [weekly], overdue: 0, overdueChange: 0 }).depositsHeld, null);
 });

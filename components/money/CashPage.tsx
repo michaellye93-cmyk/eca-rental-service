@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { Driver } from '../../types';
 import { formatCurrency, formatDate } from '../../utils';
 import {
-  arrearsScenarios, bankCheck, BANK_CHECK_TOLERANCE, COLLECTION_WEEKS, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
+  arrearsScenarios, bankCheck, BANK_CHECK_TOLERANCE, COLLECTION_WEEKS, depositRefundsDue, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
   type CashBalanceEntry, type CashLineSummary, type CashOutlookData,
 } from '../../services/cashOutlook';
 import { cancelCashBalance, saveCashBalance } from '../../services/finance/api';
@@ -48,7 +48,7 @@ export default function CashPage({ today, drivers, outlook, outlookState, summar
       {bank && <BankCheckBox balances={outlook.balances} month={bank.month} netCashFlow={bank.netCashFlow} />}
       <OutlookTable today={today} outlook={outlook} drivers={drivers} rate={summary.rate} />
       <ScenarioTable today={today} outlook={outlook} drivers={drivers} overdue={summary.overdue} />
-      <BillsComing today={today} outlook={outlook} />
+      <BillsComing today={today} outlook={outlook} drivers={drivers} />
       <Method summary={summary} outlook={outlook} />
     </div>
   );
@@ -67,7 +67,8 @@ function StatusBlock({ summary }: { summary: CashLineSummary }) {
         {summary.notes.length > 0 && <ul className="cash-notes">{summary.notes.map(note => <li key={note}>{note}</li>)}</ul>}
       </section>
       <section className="finance-summary-grid" aria-label={`Cash figures for the next ${WINDOW_DAYS} days`}>
-        <Figure label="Cash in bank" value={summary.cash ? money(summary.cash.total) : 'Not entered'} />
+        <Figure label="Cash in bank" value={summary.cash ? money(summary.cash.total) : 'Not entered'}
+          hint={summary.cash && summary.depositsHeld ? `Of which ${money(summary.depositsHeld)} is drivers' deposits held (owed back to them)` : undefined} />
         <Figure label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
         <Figure label={`Bills, next ${WINDOW_DAYS} days`} value={out(summary.bills.total)} negative />
         <Figure label="Left after those bills" value={summary.left === null ? '—' : money(summary.left)} negative={summary.left !== null && summary.left < 0} emphasis />
@@ -330,6 +331,7 @@ function OutlookTable({ today, outlook, drivers, rate }: { today: string; outloo
             {row('Workshop (3-month average)', buckets.map(b => out(b.bills.workshop)))}
             {row('Other vehicle costs (3-month average)', buckets.map(b => out(b.bills.vehicleCosts)))}
             {row('One-off company costs (3-month average)', buckets.map(b => out(b.bills.oneOffOpex)))}
+            {buckets.some(b => b.bills.depositRefunds > 0) && row('Deposit refunds expected (contracts ending)', buckets.map(b => out(b.bills.depositRefunds)))}
             <tr className="cash-total-row">
               <th scope="row">Cash at end</th>
               {buckets.map(b => <td key={b.from} className={`${b.closing < 0 ? 'finance-negative' : ''} ${b.closing === lowest ? 'cash-lowest' : ''}`}>{money(b.closing)}</td>)}
@@ -341,9 +343,17 @@ function OutlookTable({ today, outlook, drivers, rate }: { today: string; outloo
   );
 }
 
-function BillsComing({ today, outlook }: { today: string; outlook: CashOutlookData }) {
+function BillsComing({ today, outlook, drivers }: { today: string; outlook: CashOutlookData; drivers: Driver[] }) {
   const until = addDays(today, 59);
   const insurance = outlook.insurance.filter(item => item.due_date.slice(0, 10) >= today && item.due_date.slice(0, 10) <= until);
+  const refunds = depositRefundsDue(drivers, outlook.deposits_held, today, until);
+  // Insurance and expected deposit refunds, by due date.
+  const lines = [
+    ...insurance.map(item => ({ key: `${item.plate_key}-${item.due_date}-${item.kind}`, due: item.due_date.slice(0, 10), who: item.display_plate,
+      what: item.kind === 'RENEWAL' ? 'Insurance renewal (last premium)' : 'Insurance policy starting', amount: Number(item.amount) })),
+    ...refunds.map(item => ({ key: `deposit-${item.driver_id}`, due: item.due_date, who: `${item.name}${item.plate ? ` · ${item.plate}` : ''}`,
+      what: 'Expected deposit refund, contract ends (it may be forfeited instead)', amount: item.amount })),
+  ].sort((a, b) => a.due.localeCompare(b.due));
   const thisMonth = outlook.months[0];
   return (
     <section className="finance-panel" aria-labelledby="cash-bills-heading">
@@ -352,22 +362,22 @@ function BillsComing({ today, outlook }: { today: string; outlook: CashOutlookDa
           <h3 id="cash-bills-heading">Bills coming up</h3>
           <p>
             Every month: {money(Number(thisMonth?.recurring ?? 0))} financing and owner payouts, and {money(Number(thisMonth?.fixed ?? 0))} operation
-            fix cost. Insurance due in the next 60 days is listed below.
+            fix cost. Insurance and the deposits of drivers whose contract ends in the next 60 days are listed below.
           </p>
         </div>
       </div>
       <div className="finance-table-wrap">
         <table className="finance-table">
-          <thead><tr><th scope="col">Due</th><th scope="col">Vehicle</th><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
+          <thead><tr><th scope="col">Due</th><th scope="col">Vehicle or driver</th><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
           <tbody>
-            {insurance.length ? insurance.map(item => (
-              <tr key={`${item.plate_key}-${item.due_date}-${item.kind}`}>
-                <td>{formatDate(item.due_date)}</td>
-                <td className="finance-strong">{item.display_plate}</td>
-                <td>{item.kind === 'RENEWAL' ? 'Insurance renewal (last premium)' : 'Insurance policy starting'}</td>
-                <td>{out(Number(item.amount))}</td>
+            {lines.length ? lines.map(item => (
+              <tr key={item.key}>
+                <td>{formatDate(item.due)}</td>
+                <td className="finance-strong">{item.who}</td>
+                <td>{item.what}</td>
+                <td>{out(item.amount)}</td>
               </tr>
-            )) : <tr><td colSpan={4}><p className="finance-empty">No ECA-paid insurance falls due in the next 60 days.</p></td></tr>}
+            )) : <tr><td colSpan={4}><p className="finance-empty">No ECA-paid insurance or deposit refund falls due in the next 60 days.</p></td></tr>}
           </tbody>
         </table>
       </div>
@@ -387,6 +397,7 @@ function Method({ summary, outlook }: { summary: CashLineSummary; outlook: CashO
         <li>Cash collection rate: cash received (bank transfer, cash deposit or cash in hand; service claims and deposit forfeits settle rent but are not cash) divided by rent due over the last {COLLECTION_WEEKS} weeks, for active drivers, capped at 100%. It is {percent(summary.rate)} now.</li>
         <li>Rent due comes from the same rent schedule as the driver list, including drivers past their recorded contract length (rent continues until an end date or delist). Rent paid in advance is already in the bank, so it is not counted again.</li>
         <li>Bills: monthly vehicle costs and operation fix costs from Finance, insurance on each policy's start date (Finance's date for premiums, so a policy you paid early still shows until it starts), and 3-month averages for workshop, other vehicle costs and one-off company costs{months.length ? ` (${months.join(', ')})` : ' (no months with Finance data yet)'}.</li>
+        <li>Deposits: Sewa Biasa deposits received, less those used for rent, refunded or forfeited, are still owed back to drivers, so part of the cash in bank is theirs. A refund is expected on the contract end date of each active driver with a deposit held, and counted as a bill (it may be forfeited instead). Sewa Beli downpayments are never refunded.</li>
         <li>Status: Short when bills are more than cash plus money in; Tight when fewer than {TIGHT_DAYS} days of bills would be left; Watch when the bank balance is missing or more than {STALE_BALANCE_DAYS} days old, or overdue rent grew this week; otherwise Covered.</li>
       </ul>
     </details>

@@ -72,6 +72,9 @@ export default function CashLine({ summary, state, onOpen }: { summary: CashLine
         <dl className="hidden md:flex items-stretch -ml-4">
           <Tile label="Cash in bank">
             {summary.cash ? <>{formatCurrency(summary.cash.total)} <span className="text-xs font-medium text-gray-600">· {ageText(summary.cash.ageDays)}</span></> : <span className="text-gray-600">Not entered</span>}
+            {summary.cash && summary.depositsHeld !== null && summary.depositsHeld > 0 && (
+              <span className="block text-[11px] font-medium text-gray-600">of which {formatCurrency(summary.depositsHeld)} is drivers' deposits held</span>
+            )}
           </Tile>
           <Tile label="Next 30 days">
             {summary.left !== null
