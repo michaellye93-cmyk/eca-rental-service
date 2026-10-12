@@ -27,6 +27,7 @@ const vehicleCategories = [
   "Accident",
   "Towing",
   "Restoration",
+  "GPS Renewal",
   "Other Vehicle Cost",
 ];
 const corporateCategories = [
