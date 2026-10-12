@@ -52,6 +52,7 @@ import { catchUpStatus, collectionSummary, latestPromise, promiseStatus, running
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
+import { buildAdminPath, storedFinancePage, type AdminRoute } from '../services/routes';
 import { logContact } from '../services/collectionsApi';
 import { loadDeposits, loadDepositsHeld } from '../services/depositsApi';
 import { receivedByKind, upfrontToRecord } from '../services/depositTotals';
@@ -68,6 +69,10 @@ interface AdminDashboardProps {
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
   onLogout: () => void;
+  /** The page at the current address (drivers, fleet, agreements or a Finance page; see services/routes.ts). */
+  route: AdminRoute;
+  /** Goes to an address (a new history entry, or with `replace` the current one changed). */
+  onNavigate: (path: string, options?: { replace?: boolean }) => void;
 }
 
 /**
@@ -120,24 +125,8 @@ class ScreenLoadBoundary extends React.Component<{ children: React.ReactNode }, 
 
 type Section = 'DRIVERS' | 'FLEET' | 'AGREEMENTS' | 'MONEY';
 
-/** Saved tab values, including the ones used before the Drivers section existed. */
-const SECTION_FROM_STORED: Record<string, Section> = {
-  DRIVERS: 'DRIVERS',
-  FLEET: 'FLEET',
-  AGREEMENTS: 'AGREEMENTS',
-  ACTIVE: 'DRIVERS',
-  DELISTED: 'DRIVERS',
-  DRIVER_LIST: 'DRIVERS',
-  ANALYTICS: 'MONEY',
-  RECONCILE: 'MONEY',
-  FINANCE: 'MONEY',
-  MONEY: 'MONEY',
-};
-/** The Money page to open when an older saved tab is carried over (Analytics, Bank Recon, Finance). */
-const MONEY_PAGE_FROM_STORED: Record<string, MoneyPage> = { ANALYTICS: 'collections', RECONCILE: 'reconcile', FINANCE: 'overview' };
-const MONEY_PAGES: MoneyPage[] = ['cash', 'collections', 'overview', 'vehicles', 'close', 'expenses', 'reconcile'];
-const sectionFromStored = (stored: string | null): Section | null =>
-  stored !== null && Object.hasOwn(SECTION_FROM_STORED, stored) ? SECTION_FROM_STORED[stored] : null;
+/** The section a page belongs to (the old saved tab values are read in services/routes.ts). */
+const SECTION_OF_ROUTE: Partial<Record<AdminRoute['kind'], Section>> = { drivers: 'DRIVERS', fleet: 'FLEET', agreements: 'AGREEMENTS', finance: 'MONEY' };
 
 const SECTIONS: { id: Section; label: string; Icon: typeof Users }[] = [
   { id: 'DRIVERS', label: 'Drivers', Icon: Users },
@@ -248,24 +237,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDelistDriver,
   onDeleteDriver,
   onLogout,
+  route,
+  onNavigate,
 }) => {
-  // The tab and list view are remembered in this browser between visits. Search and filters start empty on every
-  // visit, so an old search never hides drivers (the values older versions saved are removed below).
+  // The section and Finance page come from the address (services/routes.ts); they are still remembered in this browser
+  // so "/" opens where you left off. The list view is remembered too. Search and filters start empty on every visit,
+  // so an old search never hides drivers (the values older versions saved are removed below).
   const [searchTerm, setSearchTerm] = useState('');
   // The tab saved before the Drivers section (ACTIVE, DELISTED, DRIVER_LIST, ...) is read once to carry it over and
   // never written again, so an older version of the app still finds a value it understands.
   const [legacyView] = useState<string | null>(() => {
     try { return localStorage.getItem('eca_admin_view_mode'); } catch { return null; }
   });
-  const [storedSection] = useState<string | null>(() => {
-    try { return localStorage.getItem('eca_admin_section'); } catch { return null; }
+  const section: Section = SECTION_OF_ROUTE[route.kind] ?? 'DRIVERS';
+  // The Finance page last opened, for the Finance tab
+  const [lastMoneyPage, setLastMoneyPage] = useState<MoneyPage>(() => {
+    const read = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+    return storedFinancePage({ section: read('eca_admin_section'), moneyPage: read('eca_admin_money_page'), legacyView });
   });
-  const [section, setSection] = usePersistedState<Section>('eca_admin_section', sectionFromStored(legacyView) ?? 'DRIVERS', sectionFromStored);
-  const [moneyPage, setMoneyPage] = usePersistedState<MoneyPage>(
-    'eca_admin_money_page',
-    MONEY_PAGE_FROM_STORED[storedSection ?? ''] ?? MONEY_PAGE_FROM_STORED[legacyView ?? ''] ?? 'cash',
-    stored => (MONEY_PAGES as string[]).includes(stored) ? stored as MoneyPage : null,
-  );
+  const moneyPage: MoneyPage = route.kind === 'finance' && route.page ? route.page : lastMoneyPage;
+  useEffect(() => {
+    if (!SECTION_OF_ROUTE[route.kind]) return;
+    if (route.kind === 'finance' && route.page) setLastMoneyPage(route.page);
+    try {
+      localStorage.setItem('eca_admin_section', section);
+      if (route.kind === 'finance' && route.page) localStorage.setItem('eca_admin_money_page', route.page);
+    } catch { /* storage unavailable: the address still works */ }
+  }, [route, section]);
+  // Changing tab or Finance page adds a history entry, so Back returns to the previous one
+  const setSection = (next: Section) => onNavigate(buildAdminPath(
+    next === 'MONEY' ? { kind: 'finance', page: lastMoneyPage } : { kind: next === 'FLEET' ? 'fleet' : next === 'AGREEMENTS' ? 'agreements' : 'drivers' },
+  ));
+  const setMoneyPage = (page: MoneyPage) => onNavigate(buildAdminPath({ kind: 'finance', page }));
   const [storedScope, setDriverScope] = usePersistedState<'ACTIVE' | 'DELISTED' | 'TERMINATION'>('eca_admin_driver_scope', legacyView === 'DELISTED' ? 'DELISTED' : 'ACTIVE', stored => stored === 'ACTIVE' || stored === 'DELISTED' || stored === 'TERMINATION' ? stored : null);
   // The termination review is for admins; staff always see Active or Delisted
   const driverScope = storedScope === 'TERMINATION' && userRole !== 'admin' ? 'ACTIVE' : storedScope;
@@ -615,7 +618,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const overdueWeekAgo = active.reduce((sum, d) => sum + overdueRent(d, weekAgo), 0);
     return cashLine({ today: todayStr, outlook, drivers: driverData, overdue, overdueChange: overdue - overdueWeekAgo });
   }, [outlook, driverData, todayStr, todayNormalized]);
-  const openCashPage = () => { setSection('MONEY'); setMoneyPage('cash'); };
+  const openCashPage = () => setMoneyPage('cash');
 
   // Termination review count (admins); the review itself loads its own snapshot when opened
   const terminationCount = useMemo(
@@ -728,7 +731,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPaymentError(null);
     setEditingTxId(null);
     setEditTxError(null);
+    leaveDriverAction();
   };
+
+  // Links to a driver (/drivers/<PLATE>, .../pay, .../statement): the active driver with that plate is shown in the
+  // list, opened and scrolled into view, and the payment or statement window opens. Each address is handled once, so
+  // a reload of the list does not open the window again; an unknown plate shows the list with a notice.
+  const handledLink = useRef<string | null>(null);
+  const [unknownPlate, setUnknownPlate] = useState<string | null>(null);
+  useEffect(() => {
+    if (route.kind !== 'drivers' || !route.plate) {
+      handledLink.current = null;
+      setUnknownPlate(null);
+      return;
+    }
+    const link = buildAdminPath(route);
+    if (handledLink.current === link) return;
+    handledLink.current = link;
+    const driver = driverData.find(d => !d.isDelisted && normalizePlate(d.carPlate) === route.plate);
+    if (!driver) {
+      setUnknownPlate(route.plate);
+      return;
+    }
+    setUnknownPlate(null);
+    showDriverRow(driver.id);
+    setExpandedDriverIds(prev => (prev.includes(driver.id) ? prev : [...prev, driver.id]));
+    if (route.action === 'pay') handleOpenPaymentModal(driver);
+    if (route.action === 'statement') setStatementDriver(driver);
+    // Only a new address is handled; the driver list reloading must not reopen a window
+  }, [route, driverData]);
+  /** After a linked payment or statement window closes, the address goes back to the driver (so a reload does not reopen it). */
+  function leaveDriverAction() {
+    if (route.kind !== 'drivers' || !route.plate || !route.action) return;
+    const back = buildAdminPath({ kind: 'drivers', plate: route.plate });
+    handledLink.current = back;
+    onNavigate(back, { replace: true });
+  }
 
   const handleDelistClick = (driver: Driver) => { setDriverToDelist(driver); };
   const confirmDelist = () => { if (driverToDelist) { onDelistDriver(driverToDelist.id); setDriverToDelist(null); } };
@@ -764,6 +802,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (duplicates.length > 0 && (!confirmDuplicates || referenceTaken)) { setDuplicateWarning(duplicates); return; }
     onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod, reference || undefined);
     setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null); setPaymentReference(''); setDuplicateWarning(null);
+    leaveDriverAction();
   };
 
   const handleStartEditTx = (tx: any) => {
@@ -1009,6 +1048,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3 print:p-0 print:m-0 print:w-full print:max-w-none">
         {activeSection === 'DRIVERS' ? (
           <>
+            {unknownPlate && (
+              <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">
+                No active driver with plate {unknownPlate}.
+              </p>
+            )}
             {/* Fleet overview, rent targets and late alerts (active fleet). Wide screens: one row. Tablets: fleet
                 health and late alerts side by side, the two targets below. Phones: stacked. */}
             <section aria-label="Fleet overview" className="grid grid-cols-1 md:grid-cols-12 md:grid-flow-row-dense gap-3 print:hidden">
@@ -1727,7 +1771,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           driver={drivers.find(d => d.id === statementDriver.id) ?? statementDriver}
           bankIn={extras.bankIn}
           isAdmin={userRole === 'admin'}
-          onClose={() => setStatementDriver(null)}
+          onClose={() => { setStatementDriver(null); leaveDriverAction(); }}
           onBankInSaved={extras.reload}
           onLogSent={extras.contacts === null ? undefined : async (text, runSlot) => {
             await logContact({ driverId: statementDriver.id, kind: 'STATEMENT', runSlot, message: text });

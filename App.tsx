@@ -16,6 +16,7 @@ import { addDeposit } from './services/depositsApi';
 import { writeTodaysSnapshotOnce } from './services/dailyStatus';
 import { saveDailyStatus } from './services/collectionsApi';
 import Notice, { type NoticeMessage } from './components/Notice';
+import { buildAdminPath, parseAdminPath, resolveAdminRoute, type StoredViews } from './services/routes';
 
 /** This browser's storage, or null when the browser blocks it. */
 const browserStorage = (): Storage | null => {
@@ -25,8 +26,11 @@ const browserStorage = (): Storage | null => {
 /** The day this page last tried to write the daily status snapshot (see writeTodaysSnapshotOnce). */
 const snapshotAttempt = { day: null as string | null };
 
-/** The read-only collections data view (admins, after the normal sign-in). */
-const isCollectionsDataPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin/collections';
+/** The tabs this browser saved before pages had addresses; they still pick the first page for "/" or "/admin". */
+const storedViews = (): StoredViews => {
+  const read = (key: string) => { try { return browserStorage()?.getItem(key) ?? null; } catch { return null; } };
+  return { section: read('eca_admin_section'), moneyPage: read('eca_admin_money_page'), legacyView: read('eca_admin_view_mode') };
+};
 
 const App: React.FC = () => {
   // Driver and payment records load only after a staff or admin signs in, and are cleared when they sign out.
@@ -36,6 +40,22 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [currentView, setCurrentView] = useState<'LOGIN' | 'DRIVER' | 'ADMIN'>('LOGIN');
+  // The address (History API): admin pages have their own; the login and the driver's phone page stay on "/". A link
+  // opened while signed out keeps its address, so it opens after the staff or admin sign-in.
+  const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const followHistory = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', followHistory);
+    return () => window.removeEventListener('popstate', followHistory);
+  }, []);
+  /** Goes to an address: a new history entry, or with `replace` the current one changed (no extra Back step). */
+  const navigate = useCallback((to: string, options: { replace?: boolean } = {}) => {
+    if (to !== window.location.pathname) {
+      if (options.replace) window.history.replaceState(null, '', to);
+      else window.history.pushState(null, '', to);
+    }
+    setPath(to);
+  }, []);
   // A signed-in driver's own record, from the driver sign-in (never the driver list). The NRIC typed this visit is kept
   // in memory only, for Refresh; a remembered phone holds a 30-day token instead.
   const [portal, setPortal] = useState<{ driver: Driver; agreement: PortalSignIn['agreement']; nric: string; loadedAt: Date } | null>(null);
@@ -207,6 +227,7 @@ const App: React.FC = () => {
         setUserRole(null);
         setCurrentView('LOGIN');
         setIsAuthChecking(false);
+        if (window.location.pathname !== '/') { window.history.replaceState(null, '', '/'); setPath('/'); }
         return;
       }
 
@@ -294,6 +315,7 @@ const App: React.FC = () => {
     setDataLoaded(false);
     setUserRole(null);
     setNotice(null);
+    navigate('/', { replace: true });
   };
 
   // --- CRUD Operations (Passed to AdminDashboard) ---
@@ -428,6 +450,14 @@ const App: React.FC = () => {
     }
   };
 
+  // The page a signed-in person sees at this address ("/" opens the saved tab; Finance is for admins)
+  const adminRoute = useMemo(() => resolveAdminRoute(parseAdminPath(path), userRole === 'admin', storedViews()), [path, userRole]);
+  useEffect(() => {
+    if (currentView === 'ADMIN' && userRole) navigate(buildAdminPath(adminRoute), { replace: true });
+    // The driver's phone page stays on "/"
+    if (currentView === 'DRIVER') navigate('/', { replace: true });
+  }, [adminRoute, currentView, userRole, navigate]);
+
   // --- Rendering ---
 
   if (loading || isAuthChecking || (currentView === 'ADMIN' && !dataLoaded && !error)) {
@@ -505,7 +535,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (currentView === 'ADMIN' && isCollectionsDataPath()) {
+  if (currentView === 'ADMIN' && adminRoute.kind === 'collections') {
     return <CollectionsDataPage drivers={drivers} userRole={userRole || 'staff'} />;
   }
 
@@ -522,6 +552,8 @@ const App: React.FC = () => {
           onDelistDriver={handleDelistDriver}
           onDeleteDriver={handleDeleteDriver}
           onLogout={handleLogout}
+          route={adminRoute}
+          onNavigate={navigate}
         />
         <Notice notice={notice} onDismiss={dismissNotice} />
       </>
