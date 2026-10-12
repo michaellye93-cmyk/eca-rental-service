@@ -309,17 +309,17 @@ export default function BankStatementPanel({
     }
     return issues;
   };
-  // A posted statement's month-end balances go into Cash's bank balances (same account when the last four digits
-  // match), so they are not typed again and the Bank check can run. A failure here never undoes the post.
-  const saveStatementBalances = async (statement: LoadedStatement): Promise<number> => {
-    if (statement.opening_balance == null && statement.closing_balance == null) return 0;
+  // A posted statement's month-end balances go into Cash's bank balances (under the same bank account, see
+  // sameBankAccount), so they are not typed again and the Bank check can run. A failure here never undoes the post.
+  const saveStatementBalances = async (statement: LoadedStatement): Promise<{ saved: number; reason: string | null }> => {
+    if (statement.opening_balance == null && statement.closing_balance == null) return { saved: 0, reason: null };
     try {
       const existing = (await loadCashOutlook(kualaLumpurToday())).balances.map((b) => b.account_label);
-      const entries = balanceEntries({ accountLabel: statement.account_label, filename: statement.filename, month, opening: statement.opening_balance ?? null, closing: statement.closing_balance ?? null }, existing, kualaLumpurToday());
+      const { entries, reason } = balanceEntries({ accountLabel: statement.account_label, filename: statement.filename, month, opening: statement.opening_balance ?? null, closing: statement.closing_balance ?? null }, existing, kualaLumpurToday());
       for (const entry of entries) await saveCashBalance(entry.account, entry.balance, entry.asOf, entry.note);
-      return entries.length;
+      return { saved: entries.length, reason };
     } catch {
-      return 0;
+      return { saved: 0, reason: null };
     }
   };
   // Posts the chosen statements one after another; each post moves the month to a new revision.
@@ -331,6 +331,7 @@ export default function BankStatementPanel({
     let latest: FinanceInput | null = null;
     let failure = "";
     let balancesSaved = 0;
+    const balanceReasons: string[] = [];
     try {
       for (const index of indexes) {
         const problems = problemsOf(statements[index]);
@@ -342,7 +343,9 @@ export default function BankStatementPanel({
         latest = await postBankStatement(month, statement.filename, statement.account_label.trim(), statement.rows, revision, statement.source_hash);
         revision = latest.month.revision;
         posted.push(index);
-        balancesSaved += await saveStatementBalances(statement);
+        const balances = await saveStatementBalances(statement);
+        balancesSaved += balances.saved;
+        if (balances.reason) balanceReasons.push(balances.reason);
       }
     } catch (e) {
       failure = e instanceof Error ? e.message : "Bank statement could not be posted.";
@@ -351,7 +354,8 @@ export default function BankStatementPanel({
       if (current === generation.current) {
         if (latest) {
           const done = (posted.length === 1 ? "1 bank statement posted." : `${posted.length} bank statements posted.`)
-            + (balancesSaved ? ` Its month-end bank balance${balancesSaved === 1 ? " was" : "s were"} added to Cash.` : "");
+            + (balancesSaved ? ` Its month-end bank balance${balancesSaved === 1 ? " was" : "s were"} added to Cash.` : "")
+            + balanceReasons.map((reason) => ` ${reason}`).join("");
           // After a partial "Post all", the failure goes in the same notice so it is not hidden by the success message.
           onPosted(latest, failure ? `${done} Not posted (still loaded below): ${failure}` : done);
           // The posted statements leave the saved draft (server and browser) straight away.

@@ -1,6 +1,7 @@
 import type { Driver } from '../types.ts';
 import { formatCurrency, parseDate, rentDueAndPaid } from '../utils.ts';
 import { cashOf } from './moneyDefinitions.ts';
+import { sameBankAccount } from './finance/statementBalances.ts';
 
 // What finance_cash_outlook(today) returns (see supabase/migrations/20260927090000_cash_position_and_outlook.sql).
 export interface CashBalanceEntry { id: string; account_label: string; balance: number; as_of: string; note: string | null; entered_at: string }
@@ -428,12 +429,10 @@ function accountsInUse(balances: CashBalanceEntry[], month: string): string[] {
 
 /**
  * The bank accounts in use for the month (as above) with no posted bank statement for it. A statement belongs to an
- * account with the same name or the same last four digits.
+ * account when sameBankAccount says so (same name, or the same last four digits).
  */
 export function accountsWithoutStatement(balances: CashBalanceEntry[], imports: { account_label: string }[], month: string): string[] {
-  const lastFour = (label: string) => label.replace(/\D/g, '').slice(-4);
-  return accountsInUse(balances, month).filter(account => !imports.some(item =>
-    item.account_label.trim() === account || (lastFour(account).length === 4 && lastFour(item.account_label) === lastFour(account))));
+  return accountsInUse(balances, month).filter(account => !imports.some(item => sameBankAccount(item.account_label, account)));
 }
 
 /**

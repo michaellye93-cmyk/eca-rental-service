@@ -51,4 +51,7 @@ test('Month close names each bank account in use that has no posted statement fo
   assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …9999' }], '2026-08'), ['Fixture Bank B 8888']);
   assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …9999' }, { account_label: 'Fixture Bank B 8888' }], '2026-08'), []);
   assert.deepEqual(accountsWithoutStatement([], [], '2026-08'), []);
+  // The same rule as statement balances (sameBankAccount): same trimmed name, or the same last four digits.
+  const wallet = [entry('Fixture Wallet ', 1, '2026-08-31'), entry('Fixture Cash 99', 1, '2026-08-31')];
+  assert.deepEqual(accountsWithoutStatement(wallet, [{ account_label: 'Fixture Wallet' }, { account_label: 'Fixture Bank 1099' }], '2026-08'), ['Fixture Cash 99']);
 });
