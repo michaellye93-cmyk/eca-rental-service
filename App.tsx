@@ -349,7 +349,7 @@ const App: React.FC = () => {
     }
   };
 
-  /** Records deposit/downpayment received in the Deposits panel; reports (but does not throw) a failure. */
+  /** Records the deposit/downpayment received at signing (typed only in Add / Edit Driver); reports (but does not throw) a failure. */
   const recordUpfront = async (driverId: string, upfront: { deposit: number; downpayment: number } | undefined, note: string, saved: string) => {
     const entries = [
       ...(upfront?.downpayment ? [{ kind: 'DOWNPAYMENT' as const, amount: upfront.downpayment }] : []),
@@ -360,7 +360,7 @@ const App: React.FC = () => {
         await addDeposit({ driver_id: driverId, kind: entry.kind, entry: 'RECEIVED', entry_date: kualaLumpurToday(), amount: entry.amount, note });
       }
     } catch (err: any) {
-      setNotice({ type: 'error', text: `${saved}, but the deposit/downpayment was not recorded: ${err.message}. Record it in the driver's Deposits panel.` });
+      setNotice({ type: 'error', text: `${saved}, but the deposit/downpayment was not recorded: ${err.message}. Open Edit Driver and save it again.` });
     }
   };
 
@@ -375,7 +375,7 @@ const App: React.FC = () => {
       setNotice({ type: 'error', text: `Driver not created: ${err.message}` });
       throw err; // keeps the form open with the details still filled in
     }
-    // The money received at sign-up goes to the Deposits panel; the driver stays created even if this fails
+    // The money received at signing is recorded with the driver; the driver stays created even if this fails
     await recordUpfront(driverId, upfront, 'Recorded with Add Driver', 'Driver created');
     await fetchDriversAndPayments(true);
   };

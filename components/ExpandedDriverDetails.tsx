@@ -11,11 +11,13 @@ import { Phone, User, FileText, Clock, DollarSign, History } from 'lucide-react'
 
 interface ExpandedDriverDetailsProps {
   driver: Driver;
-  /** Admins may delete deposit lines; staff only add them. */
+  /** Admins may delete deposit lines; staff only add refunds and forfeits. */
   isAdmin: boolean;
   onLogPaymentClick: () => void;
   /** Records a rent payment settled from the driver's deposit (contra) on delisting. */
   onContraPayment?: (amount: number, date: string) => unknown;
+  /** Opens Edit Driver (where money received at signing is entered). */
+  onEditDriver?: () => void;
 }
 
 /** Who changed the driver's profile and what, newest first; nothing before the change log existed. */
@@ -51,7 +53,7 @@ function ProfileHistory({ driver }: { driver: Driver }) {
   );
 }
 
-export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ driver, isAdmin, onLogPaymentClick, onContraPayment }) => {
+export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ driver, isAdmin, onLogPaymentClick, onContraPayment, onEditDriver }) => {
   // The latest six obligations from the shared rent schedule, newest first
   const billingSchedule = useMemo(() => latestInvoices(driver), [driver]);
   // Who recorded and changed each payment (payments from before the change log carry nothing)
@@ -166,7 +168,7 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 border-t border-gray-200/60 pt-6">
         {/* Deposits and payments */}
         <div className="lg:col-span-2 space-y-4">
-          <DriverDeposits driver={driver} isAdmin={isAdmin} onContraPayment={onContraPayment} />
+          <DriverDeposits driver={driver} isAdmin={isAdmin} onContraPayment={onContraPayment} onEditDriver={onEditDriver} />
           <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-500" aria-hidden="true" />
             Payments

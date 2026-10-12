@@ -61,7 +61,7 @@ interface AdminDashboardProps {
   userRole: 'admin' | 'staff'; // Role passed from parent
   onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void;
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void | Promise<void>;
-  /** Creates the driver; with `upfront`, also records the money received (Deposits panel) once the driver exists. */
+  /** Creates the driver; with `upfront`, also records the money received at signing once the driver exists. */
   onCreateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
   /** Saves the driver; with `upfront`, also records extra deposit/downpayment received (Deposits panel). */
   onUpdateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
@@ -367,7 +367,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     collectionLanguage: '',
     contactWindow: '',
     collectionNote: '',
-    // Money received at sign-up (new drivers only; later changes go in the driver's Deposits panel)
+    // Money received at signing: entered only in this form (the Deposits panel records refunds and forfeits later)
     upfrontDeposit: '',
     upfrontDownpayment: '',
     nric: '',
@@ -1471,7 +1471,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                           {expanded && (
                             <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 sm:p-4">
-                              <ExpandedDriverDetails driver={driver} isAdmin={userRole === 'admin'} onLogPaymentClick={() => handleOpenPaymentModal(driver)} onContraPayment={(amount, date) => onUpdatePayment(driver.id, amount, date, 0, 'DEPOSIT CONTRA', 'Deposit contra')} />
+                              <ExpandedDriverDetails driver={driver} isAdmin={userRole === 'admin'} onLogPaymentClick={() => handleOpenPaymentModal(driver)} onContraPayment={(amount, date) => onUpdatePayment(driver.id, amount, date, 0, 'DEPOSIT CONTRA', 'Deposit contra')} onEditDriver={() => handleOpenEditModal(driver)} />
                               {!driver.isDelisted && <CollectionsPanels driver={driver} extras={extras} isAdmin={userRole === 'admin'} today={todayStr} now={kualaLumpurNow()} />}
                             </div>
                           )}
@@ -1673,8 +1673,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <p className="text-xs text-gray-500 sm:col-span-2 -mt-2">
                   {editingId
-                    ? 'Shows what the Deposits panel has received. Raise it to record money not yet entered (with today\'s date); refunds and corrections are made in the Deposits panel.'
-                    : 'Recorded in the driver\'s Deposits panel with today\'s date. Refunds and later changes are made there.'}
+                    ? 'Money received at signing is entered only here. This shows what is already recorded; raise it to add money not yet entered (with today\'s date). Refunds and forfeits go in the driver\'s Deposits panel, where an admin can also delete a wrong entry.'
+                    : 'Money received at signing is entered only here, with today\'s date. Refunds and forfeits later go in the driver\'s Deposits panel.'}
                 </p>
               </div>
             )}

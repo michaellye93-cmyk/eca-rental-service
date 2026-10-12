@@ -1,26 +1,32 @@
 import { useEffect, useState } from 'react';
 import type { Driver } from '../types';
 import { formatCurrency, kualaLumpurToday } from '../utils';
-import { receivedByKind } from '../services/depositTotals';
+import { depositPanelEntries, movementError, receivedByKind } from '../services/depositTotals';
 import { addDeposit, deleteDeposit, depositHeld, depositKindFor, depositKindLabel, loadDeposits, type DepositEntry, type DepositKind, type DriverDeposit } from '../services/depositsApi';
 
 const ENTRY_LABEL: Record<DepositEntry, string> = { RECEIVED: 'Received', REFUNDED: 'Refunded', FORFEITED: 'Forfeited (no rent owed)', CONTRA: 'Deposit forfeit (against rent)' };
 
 /**
  * The driver's deposit (Sewa Biasa), or downpayment and security deposit (Sewa Beli, either or both): what was
- * received, refunded or forfeited, and what is still held. Kept apart from rent; every change is logged with who made it. "Deposit forfeit" is for termination:
- * the deposit is set against rent owed, so a matching rent payment (method Deposit contra) is recorded with it.
+ * received, refunded or forfeited, and what is still held. Kept apart from rent; every change is logged with who made it.
+ * Money received at signing is entered once, in Add / Edit Driver; this panel lists it (admins can delete a wrong line)
+ * and records only later movements of the security deposit. "Deposit forfeit" is for termination: the deposit is set
+ * against rent owed, so a matching rent payment (method Deposit contra) is recorded with it.
  */
-export default function DriverDeposits({ driver, isAdmin, onContraPayment }: { driver: Pick<Driver, 'id' | 'category'>; isAdmin: boolean; onContraPayment?: (amount: number, date: string) => unknown }) {
+export default function DriverDeposits({ driver, isAdmin, onContraPayment, onEditDriver }: {
+  driver: Pick<Driver, 'id' | 'category'>; isAdmin: boolean; onContraPayment?: (amount: number, date: string) => unknown;
+  /** Opens Edit Driver, where money received at signing is entered. */
+  onEditDriver?: () => void;
+}) {
   // Sewa Beli may take a downpayment, a security deposit, or both; Sewa Biasa a deposit
   const isBeli = depositKindFor(driver.category) === 'DOWNPAYMENT';
   const label = isBeli ? 'Downpayment and security deposit' : 'Deposit';
   const kindLabel = (kind: DepositKind) => (isBeli && kind === 'DEPOSIT' ? 'Security deposit' : depositKindLabel(kind));
-  const [kind, setKind] = useState<DepositKind>(() => depositKindFor(driver.category));
   const [rows, setRows] = useState<DriverDeposit[] | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [entry, setEntry] = useState<DepositEntry>('RECEIVED');
+  const entries = depositPanelEntries(Boolean(onContraPayment));
+  const [entry, setEntry] = useState<DepositEntry>('REFUNDED');
   const [date, setDate] = useState(() => kualaLumpurToday());
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -43,15 +49,15 @@ export default function DriverDeposits({ driver, isAdmin, onContraPayment }: { d
     setBusy(true);
     setError('');
     try {
-      if (entry === 'CONTRA' && value > held + 0.001) { setError(`Only ${formatCurrency(held)} is held.`); return; }
-      const saved = await addDeposit({ driver_id: driver.id, kind, entry, entry_date: date, amount: value, note: note.trim() || null });
+      const tooMuch = movementError(value, held);
+      if (tooMuch) { setError(tooMuch); return; }
+      const saved = await addDeposit({ driver_id: driver.id, kind: 'DEPOSIT', entry, entry_date: date, amount: value, note: note.trim() || null });
       if (entry === 'CONTRA') await onContraPayment?.(value, date);
       setRows((list) => [saved, ...(list ?? [])].sort((a, b) => b.entry_date.localeCompare(a.entry_date)));
       setAdding(false);
       setAmount('');
       setNote('');
-      setEntry('RECEIVED');
-      setKind(depositKindFor(driver.category));
+      setEntry('REFUNDED');
     } catch (e: any) {
       setError(`Not saved: ${e?.message ?? 'please try again'}`);
     } finally {
@@ -78,8 +84,14 @@ export default function DriverDeposits({ driver, isAdmin, onContraPayment }: { d
           {isBeli && <>Downpayment received: <b className="font-mono text-gray-900">{formatCurrency(received.DOWNPAYMENT)}</b> · Security deposit held: </>}
           {!isBeli && 'Held: '}<b className="font-mono text-gray-900">{formatCurrency(held)}</b>
         </span>
-        {!adding && <button type="button" onClick={() => setAdding(true)} className="rounded border border-gray-300 px-2 py-1 font-semibold hover:bg-gray-50">Record {isBeli ? 'money' : 'deposit'}</button>}
+        {!adding && held > 0.001 && <button type="button" onClick={() => setAdding(true)} className="rounded border border-gray-300 px-2 py-1 font-semibold hover:bg-gray-50">Record refund or forfeit</button>}
       </div>
+      {rows !== null && received.DEPOSIT + (isBeli ? received.DOWNPAYMENT : 0) <= 0.001 && (
+        <p className="mt-2 text-gray-600">
+          {isBeli ? 'Downpayment or security deposit received at signing' : 'Deposit received at signing'} not recorded? Enter it with Edit Driver{' '}
+          {onEditDriver && <button type="button" onClick={onEditDriver} className="font-semibold text-blue-700 underline">Open Edit Driver</button>}
+        </p>
+      )}
       {rows === null ? <p className="mt-2 text-gray-500">Loading…</p> : rows.length === 0 && !adding ? (
         <p className="mt-2 text-gray-500">No {label.toLowerCase()} recorded yet.</p>
       ) : (
@@ -98,20 +110,9 @@ export default function DriverDeposits({ driver, isAdmin, onContraPayment }: { d
       )}
       {adding && (
         <div className="mt-2 grid gap-2 sm:grid-cols-4">
-          {isBeli && (
-            <label className="block sm:col-span-4">For
-              <select value={kind} onChange={(e) => { setKind(e.target.value as DepositKind); setEntry('RECEIVED'); }} className="mt-0.5 w-full rounded border border-gray-300 p-1">
-                <option value="DOWNPAYMENT">Downpayment (not refundable)</option>
-                <option value="DEPOSIT">Security deposit (refundable)</option>
-              </select>
-            </label>
-          )}
           <label className="block">Type
             <select value={entry} onChange={(e) => setEntry(e.target.value as DepositEntry)} className="mt-0.5 w-full rounded border border-gray-300 p-1">
-              <option value="RECEIVED">Received</option>
-              {kind === 'DEPOSIT' && <option value="REFUNDED">Refunded</option>}
-              {kind === 'DEPOSIT' && <option value="FORFEITED">Forfeited (no rent owed)</option>}
-              {kind === 'DEPOSIT' && onContraPayment && <option value="CONTRA">Deposit forfeit (set against rent owed)</option>}
+              {entries.map(option => <option key={option} value={option}>{option === 'CONTRA' ? 'Deposit forfeit (set against rent owed)' : ENTRY_LABEL[option]}</option>)}
             </select>
           </label>
           <label className="block">Date
