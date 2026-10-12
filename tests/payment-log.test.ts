@@ -85,3 +85,13 @@ test('each payment is tagged with the account that recorded it, not whoever edit
   ]);
   assert.deepEqual([...recorders], [['p1', 'Staff'], ['p2', 'Admin'], ['p3', 'Database (SQL Editor)']]);
 });
+
+test('only bank transfers and cash deposits with an amount are bank receipts (their reference may be recorded once)', async () => {
+  const { isBankReceipt } = await import('../services/paymentLog.ts');
+  assert.equal(isBankReceipt(400, 'BANK TRANSFER'), true);
+  assert.equal(isBankReceipt(400, 'CASH DEPOSIT'), true);
+  assert.equal(isBankReceipt(400, undefined), true, 'no method reads as bank transfer');
+  assert.equal(isBankReceipt(400, 'DEPOSIT CONTRA'), false);
+  assert.equal(isBankReceipt(400, 'CASH'), false);
+  assert.equal(isBankReceipt(0, 'BANK TRANSFER'), false, 'a claim-only line');
+});

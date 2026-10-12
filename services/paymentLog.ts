@@ -94,6 +94,13 @@ export interface PossibleDuplicate {
   reason: 'SAME_AMOUNT_AND_DATE' | 'SAME_REFERENCE';
 }
 
+/**
+ * A payment that came through the bank with a receipt (bank transfer or cash deposit, with an amount): the only kind
+ * whose reference may be recorded once (as the database's payments_reference_once rule). No method reads as bank transfer.
+ */
+export const isBankReceipt = (amount: number, method?: string | null): boolean =>
+  amount > 0 && ['BANK TRANSFER', 'CASH DEPOSIT'].includes((method || 'BANK TRANSFER').trim().toUpperCase());
+
 /** A reference as compared: capitals without spaces. */
 export const referenceKey = (reference?: string | null): string => (reference || '').toUpperCase().replace(/\s+/g, '');
 

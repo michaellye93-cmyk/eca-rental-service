@@ -47,7 +47,7 @@ import { loadScreenedDriverIds, markScreened } from '../services/screening';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { BankBadge, PaymentNoteLines, useBankStatus, usePaymentLog } from './PaymentNotes';
-import { findPossibleDuplicates, type PossibleDuplicate } from '../services/paymentLog';
+import { findPossibleDuplicates, isBankReceipt, type PossibleDuplicate } from '../services/paymentLog';
 import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
@@ -751,7 +751,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const reference = paymentReference.trim();
     const duplicates = findPossibleDuplicates(drivers, selectedDriverForPayment.id, { amount, serviceClaim, date: paymentDate, reference });
     // The same bank reference on a cash payment is never saved twice (the database refuses it too)
-    const referenceTaken = amount > 0 && duplicates.some(found => found.reason === 'SAME_REFERENCE' && found.payment.amount > 0);
+    const referenceTaken = isBankReceipt(amount, finalMethod) && duplicates.some(found => found.reason === 'SAME_REFERENCE' && isBankReceipt(found.payment.amount, found.payment.paymentMethod));
     if (duplicates.length > 0 && (!confirmDuplicates || referenceTaken)) { setDuplicateWarning(duplicates); return; }
     onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod, reference || undefined);
     setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null); setPaymentReference(''); setDuplicateWarning(null);
@@ -1752,7 +1752,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </ul>
                       <div className="flex gap-2 pt-1">
                         <button type="button" onClick={() => setDuplicateWarning(null)} className="flex-1 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg">Go back</button>
-                        {duplicateWarning.some(found => found.reason === 'SAME_REFERENCE' && found.payment.amount > 0) && (parseFloat(paymentAmount) || 0) > 0
+                        {duplicateWarning.some(found => found.reason === 'SAME_REFERENCE' && isBankReceipt(found.payment.amount, found.payment.paymentMethod)) && isBankReceipt(parseFloat(paymentAmount) || 0, paymentMethod)
                           ? <p className="flex-1 self-center text-xs font-semibold">A bank reference can be recorded once. Check the receipt, or fix the reference.</p>
                           : <button type="button" onClick={() => submitPayment(true)} className="flex-1 py-2 text-sm font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg">Save anyway</button>}
                       </div>

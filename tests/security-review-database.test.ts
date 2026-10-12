@@ -64,9 +64,9 @@ async function setup(beforeRelease?: (db: PGlite) => Promise<void>) {
 const rows = async <T,>(db: PGlite, sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows;
 const count = async (db: PGlite, sql: string, params: unknown[] = []) => (await rows<{ n: number }>(db, sql, params))[0].n;
 const asAnon = (db: PGlite) => db.exec(`reset role; select set_config('request.jwt.claims','',false); set role anon`);
-const pay = (db: PGlite, id: string, driver: string, amount: number, reference: string | null, claim = 0) =>
-  db.query(`insert into public.payments(id,driver_id,date,amount,service_claim,payment_method,reference) values($1,$2,'2026-10-01',$3,$4,'BANK TRANSFER',$5)`,
-    [id, driver, amount, claim, reference]);
+const pay = (db: PGlite, id: string, driver: string, amount: number, reference: string | null, claim = 0, method: string | null = 'BANK TRANSFER') =>
+  db.query(`insert into public.payments(id,driver_id,date,amount,service_claim,payment_method,reference) values($1,$2,'2026-10-01',$3,$4,$5,$6)`,
+    [id, driver, amount, claim, method, reference]);
 
 test('staff read, add and edit drivers, payments and deposits, but only admins delete them', async () => {
   const db = await setup();
@@ -131,12 +131,21 @@ test('a bank reference can be recorded once, whatever its spacing or capitals; c
     await pay(db, '20000000-0000-4000-8000-000000000005', DRIVER_A, 400, null);
     await pay(db, '20000000-0000-4000-8000-000000000006', DRIVER_A, 400, '  ');
     await pay(db, '20000000-0000-4000-8000-000000000007', DRIVER_A, 400, null);
-    assert.equal(await count(db, `select count(*)::int n from public.payments`), 5);
+    // Deposit forfeits all carry the label "Deposit contra"; cash in hand has no bank receipt
+    await pay(db, '20000000-0000-4000-8000-000000000008', DRIVER_A, 300, 'Deposit contra', 0, 'DEPOSIT CONTRA');
+    await pay(db, '20000000-0000-4000-8000-000000000009', DRIVER_B, 500, 'Deposit contra', 0, 'DEPOSIT CONTRA');
+    await pay(db, '20000000-0000-4000-8000-000000000010', DRIVER_A, 50, 'AB123', 0, 'CASH');
+    // A cash deposit slip is a bank receipt too, and a missing method counts as bank transfer
+    await assert.rejects(pay(db, '20000000-0000-4000-8000-000000000011', DRIVER_A, 400, 'AB123', 0, 'CASH DEPOSIT'), /payments_reference_once/);
+    await assert.rejects(pay(db, '20000000-0000-4000-8000-000000000012', DRIVER_A, 400, 'AB123', 0, null), /payments_reference_once/);
+    assert.equal(await count(db, `select count(*)::int n from public.payments`), 8);
   } finally { await db.close(); }
 });
 
 test('when two payments already share a reference the rule is not switched on, and the file still runs', async () => {
   const db = await setup(async db => {
+    await pay(db, '20000000-0000-4000-8000-000000000003', DRIVER_A, 300, 'Deposit contra', 0, 'DEPOSIT CONTRA');
+    await pay(db, '20000000-0000-4000-8000-000000000004', DRIVER_B, 300, 'Deposit contra', 0, 'DEPOSIT CONTRA');
     await pay(db, '20000000-0000-4000-8000-000000000001', DRIVER_A, 400, 'DUP1');
     await pay(db, '20000000-0000-4000-8000-000000000002', DRIVER_A, 400, 'dup 1');
   });
@@ -144,7 +153,7 @@ test('when two payments already share a reference the rule is not switched on, a
     assert.equal(await count(db, `select count(*)::int n from pg_indexes where indexname = 'payments_reference_once'`), 0);
     await db.exec(`reset role; delete from public.payments where id = '20000000-0000-4000-8000-000000000002'`);
     await migrate(db, RELEASE);
-    assert.equal(await count(db, `select count(*)::int n from pg_indexes where indexname = 'payments_reference_once'`), 1, 'switched on once fixed');
+    assert.equal(await count(db, `select count(*)::int n from pg_indexes where indexname = 'payments_reference_once'`), 1, 'switched on once fixed (deposit forfeits never count as a clash)');
   } finally { await db.close(); }
 });
 

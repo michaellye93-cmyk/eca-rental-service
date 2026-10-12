@@ -2,8 +2,9 @@
 --
 -- A3  Only admins may permanently delete a driver, a payment or a deposit line. Staff keep reading, adding and editing.
 -- A4  Every change to a driver record is logged (who, when, which fields, before and after), like payments already are.
--- F5  A bank reference can be recorded once: a second payment carrying the same reference (any spacing or capitals) is
---     refused. Claim-only lines (no cash) are not checked, since they often reuse the receipt's reference. If two
+-- F5  A bank reference can be recorded once: a second bank transfer or cash deposit carrying the same reference (any
+--     spacing or capitals) is refused. Claim-only lines, cash in hand and deposit forfeits are not checked: they are
+--     not bank receipts, and forfeits all carry the label "Deposit contra". If two
 --     payments already share a reference the rule is NOT switched on; the SQL Editor output says how many, and the query
 --     at the end of this file lists them so they can be fixed and the file run again.
 -- E3  The sign-in limit for all phones together goes from 120 to 600 tries a minute, so one caller cannot lock every
@@ -91,6 +92,13 @@ language sql immutable set search_path = '' as $$
   select nullif(upper(regexp_replace(coalesce(p_reference, ''), '\s', '', 'g')), '')
 $$;
 grant execute on function public.payment_reference_key(text) to authenticated;
+-- A payment that came through the bank with a receipt: an amount, paid by bank transfer or cash deposit (no method
+-- recorded counts as bank transfer, as the app reads it).
+create or replace function public.payment_is_bank_receipt(p_amount numeric, p_method text) returns boolean
+language sql immutable set search_path = '' as $$
+  select coalesce(p_amount, 0) > 0 and upper(coalesce(nullif(btrim(p_method), ''), 'BANK TRANSFER')) in ('BANK TRANSFER', 'CASH DEPOSIT')
+$$;
+grant execute on function public.payment_is_bank_receipt(numeric, text) to authenticated;
 
 do $$
 declare clashes integer;
@@ -98,13 +106,13 @@ begin
   if to_regclass('public.payments_reference_once') is not null then return; end if;
   select count(*) into clashes from (
     select public.payment_reference_key(reference) from public.payments
-    where amount > 0 and public.payment_reference_key(reference) is not null
+    where public.payment_is_bank_receipt(amount, payment_method) and public.payment_reference_key(reference) is not null
     group by 1 having count(*) > 1) dup;
   if clashes > 0 then
     raise notice 'NOT switched on: % reference(s) are already used by more than one payment. List them with the query at the end of this file, fix them, and run the file again.', clashes;
   else
     execute 'create unique index payments_reference_once on public.payments (public.payment_reference_key(reference))
-      where amount > 0 and public.payment_reference_key(reference) is not null';
+      where public.payment_is_bank_receipt(amount, payment_method) and public.payment_reference_key(reference) is not null';
     raise notice 'Switched on: each bank reference can now be recorded once.';
   end if;
 end $$;
@@ -179,7 +187,8 @@ commit;
 -- F5 clash list (run on its own if the notice said "NOT switched on"):
 --   select public.payment_reference_key(p.reference) as reference, p.id, p.driver_id, d.name, p.date, p.amount
 --   from public.payments p join public.drivers d on d.id = p.driver_id
---   where p.amount > 0 and public.payment_reference_key(p.reference) in (
+--   where public.payment_is_bank_receipt(p.amount, p.payment_method) and public.payment_reference_key(p.reference) in (
 --     select public.payment_reference_key(reference) from public.payments
---     where amount > 0 and public.payment_reference_key(reference) is not null group by 1 having count(*) > 1)
+--     where public.payment_is_bank_receipt(amount, payment_method) and public.payment_reference_key(reference) is not null
+--     group by 1 having count(*) > 1)
 --   order by 1, p.date;
