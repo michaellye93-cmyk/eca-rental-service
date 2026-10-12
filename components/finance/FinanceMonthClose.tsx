@@ -1,6 +1,6 @@
 import { formatCurrency } from "../../utils";
 import BackupButton from "../money/BackupButton";
-import { accountsWithoutStatement, bankCheck, BANK_CHECK_TOLERANCE, type CashBalanceEntry } from "../../services/cashOutlook";
+import { bankCheck, bankCloseState, BANK_CHECK_TOLERANCE, type CashBalanceEntry } from "../../services/cashOutlook";
 import { loadCashOutlook } from "../../services/finance/api";
 import { monthCashFlow } from "../../services/finance/dashboard";
 import { kualaLumpurToday } from "../../utils";
@@ -103,12 +103,16 @@ type Props = {
 export default function FinanceMonthClose(p: Props) {
   const [workshopAcknowledged, setWorkshopAcknowledged] = React.useState(false);
   // Cash's bank balances: which accounts are in use, for the per-account reconcile check and the bank check.
-  const [balances, setBalances] = React.useState<CashBalanceEntry[] | null>(null);
+  // undefined while loading, null when they could not be read.
+  const [balances, setBalances] = React.useState<CashBalanceEntry[] | null | undefined>(undefined);
   React.useEffect(() => {
     let live = true;
+    setBalances(undefined);
     loadCashOutlook(kualaLumpurToday()).then((outlook) => { if (live) setBalances(outlook.balances); }).catch(() => { if (live) setBalances(null); });
     return () => { live = false; };
   }, [p.input.month.revision]);
+  // Accounts with no statement this month are confirmed by a tick; it is cleared when the month or that list changes.
+  const [accountsAcknowledged, setAccountsAcknowledged] = React.useState(false);
   const { input, month, busy, workspaceMeta } = p;
   const draft = input.month.status === "DRAFT",
     closed = input.month.status === "CLOSED";
@@ -149,10 +153,14 @@ export default function FinanceMonthClose(p: Props) {
   const noBlockingIssues = !p.report?.issues.some(
     (issue) => issue.severity === "error",
   );
-  // Reconcile is a required step for every bank account in use (one with a balance on Cash near this month): every
-  // line of a posted statement is already matched, posted or excluded. Without balances on Cash, one statement will do.
-  const unreconciled = balances ? accountsWithoutStatement(balances, input.bank_imports ?? [], month) : [];
-  const bankReconciled = (input.bank_imports ?? []).length > 0 && unreconciled.length === 0;
+  // Reconcile is a required step: at least one statement posted (every line of it matched, posted or excluded). A bank
+  // account in use (a balance on Cash near this month) with no statement of its own is listed and ticked as checked
+  // before closing, so cash in hand, an e-wallet or a new account never blocks the close.
+  const bank = bankCloseState(balances, input.bank_imports ?? [], month, monthName);
+  const bankReconciled = (input.bank_imports ?? []).length > 0;
+  const accountsKey = bank.accounts.join("|");
+  React.useEffect(() => { setAccountsAcknowledged(false); }, [month, accountsKey]);
+  const bankReadyToClose = bank.status === "reconciled" || (bank.status === "needs-ack" && accountsAcknowledged);
   const check = balances && p.report ? bankCheck(balances, month, monthCashFlow(input, p.report).net) : null;
   const activeCosts = input.recurring_costs.some(
     (cost) =>
@@ -176,7 +184,7 @@ export default function FinanceMonthClose(p: Props) {
   );
   const unallocatedWorkshop = p.report?.totals.workshop_unallocated ?? 0;
   const hasUnallocatedWorkshop = unallocatedWorkshop > 0;
-  const checks: [boolean, string][] = [
+  const checks: [boolean, string, boolean?][] = [
     [Boolean(input.month.refreshed_at), "E-Hailing revenue refreshed"],
     [Boolean(input.smart_import), "Smart Drive Sales Report approved"],
     [activeCosts, "Monthly vehicle costs available"],
@@ -184,7 +192,8 @@ export default function FinanceMonthClose(p: Props) {
     ...optional.map(
       (s) => [isReviewed(s.key), `${s.title} reviewed`] as [boolean, string],
     ),
-    [bankReconciled, unreconciled.length ? `Bank statement reconciled for every account (Reconcile tab): still ${unreconciled.join(", ")}` : "Bank statement reconciled for every account (Reconcile tab)"],
+    // While Cash is loading the line reads "checking…", neither ticked nor shown as still to do.
+    [bank.ready, bank.label, bank.status === "checking"],
     [noBlockingIssues, "Blocking data exceptions cleared"],
   ];
   // The bank check is shown, not required: the cash flow is built from the month's records, so timing can differ.
@@ -447,8 +456,8 @@ export default function FinanceMonthClose(p: Props) {
       <section className="finance-panel finance-checklist">
         <h3>{monthName} closing checklist</h3>
         <ul>
-          {checks.map(([ready, label]) => (
-            <li className={ready ? "" : "is-pending"} key={label}>
+          {checks.map(([ready, label, checking]) => (
+            <li className={ready || checking ? "" : "is-pending"} key={label}>
               {ready ? <CheckIcon /> : <CircleIcon />}
               {label}
             </li>
@@ -471,6 +480,12 @@ export default function FinanceMonthClose(p: Props) {
           </button>
           {input.month.status === "READY FOR REVIEW" && (
             <>
+              {bank.status === "needs-ack" && (
+                <label>
+                  <input type="checkbox" checked={accountsAcknowledged} onChange={(e) => setAccountsAcknowledged(e.target.checked)} />{" "}
+                  {bank.acknowledgement}
+                </label>
+              )}
               {hasUnallocatedWorkshop && (
                 <label>
                   <input type="checkbox" checked={workshopAcknowledged} onChange={(e) => setWorkshopAcknowledged(e.target.checked)} />{" "}
@@ -487,7 +502,7 @@ export default function FinanceMonthClose(p: Props) {
               </label>
               <button
                 className="finance-primary"
-                disabled={busy || !prepared || !p.acknowledged || (hasUnallocatedWorkshop && !workshopAcknowledged)}
+                disabled={busy || !prepared || !bankReadyToClose || !p.acknowledged || (hasUnallocatedWorkshop && !workshopAcknowledged)}
                 onClick={() => p.onClose(workshopAcknowledged)}
               >
                 Close {monthName}

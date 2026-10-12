@@ -445,6 +445,36 @@ export function accountsWithoutStatement(balances: CashBalanceEntry[], imports: 
   return accountsInUse(balances, month).filter(account => !imports.some(item => sameBankAccount(item.account_label, account)));
 }
 
+export interface BankCloseState {
+  /** checking: Cash balances still loading; missing: no statement posted; needs-ack: some accounts in use have none. */
+  status: 'checking' | 'missing' | 'needs-ack' | 'reconciled';
+  /** The checklist line is ticked: at least one statement is posted (and Cash is not still loading). */
+  ready: boolean;
+  accounts: string[];
+  label: string;
+  /** What Admin ticks before closing when some accounts have no statement. */
+  acknowledgement: string | null;
+}
+
+/**
+ * The bank line of Month close. At least one posted statement is required. An account in use with no statement of its
+ * own (cash in hand, an e-wallet, a new account) does not block the close: it is listed and Admin ticks that it was
+ * checked. `balances`: Cash's balances, undefined while loading, null when they could not be read (one statement will do).
+ */
+export function bankCloseState(balances: CashBalanceEntry[] | null | undefined, imports: { account_label: string }[], month: string, monthName: string): BankCloseState {
+  const label = 'Bank statement reconciled (Reconcile tab)';
+  if (balances === undefined) return { status: 'checking', ready: false, accounts: [], label: `${label}: checking…`, acknowledgement: null };
+  if (!imports.length) return { status: 'missing', ready: false, accounts: [], label, acknowledgement: null };
+  const accounts = balances ? accountsWithoutStatement(balances, imports, month) : [];
+  if (!accounts.length) return { status: 'reconciled', ready: true, accounts, label, acknowledgement: null };
+  const names = accounts.join(', ');
+  return {
+    status: 'needs-ack', ready: true, accounts,
+    label: `${label}. No statement for ${names}: confirm them before closing`,
+    acknowledgement: `These accounts have no bank statement for ${monthName}: ${names}. I have checked them.`,
+  };
+}
+
 /**
  * The bank check for month YYYY-MM: the balances at the start of the month plus the month's net cash flow should equal
  * the balances at month end. A balance counts for a month boundary when it is dated the last day of the month or the

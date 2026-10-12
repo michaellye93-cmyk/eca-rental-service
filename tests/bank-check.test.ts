@@ -55,3 +55,22 @@ test('Month close names each bank account in use that has no posted statement fo
   const wallet = [entry('Fixture Wallet ', 1, '2026-08-31'), entry('Fixture Cash 99', 1, '2026-08-31')];
   assert.deepEqual(accountsWithoutStatement(wallet, [{ account_label: 'Fixture Wallet' }, { account_label: 'Fixture Bank 1099' }], '2026-08'), ['Fixture Cash 99']);
 });
+
+test('Month close: one posted statement is required; accounts without one need a tick, and nothing shows as reconciled while Cash is loading', async () => {
+  const { bankCloseState } = await import('../services/cashOutlook.ts');
+  const balances = [entry('Fixture Bank A 9999', 1, '2026-08-31'), entry('Fixture Wallet', 1, '2026-08-31'), entry('Fixture Cash in hand', 1, '2026-08-31')];
+  const imports = [{ account_label: 'RHB …9999' }];
+  assert.deepEqual(bankCloseState(undefined, imports, '2026-08', 'August 2026'),
+    { status: 'checking', ready: false, accounts: [], label: 'Bank statement reconciled (Reconcile tab): checking…', acknowledgement: null });
+  assert.deepEqual(bankCloseState(balances, [], '2026-08', 'August 2026'),
+    { status: 'missing', ready: false, accounts: [], label: 'Bank statement reconciled (Reconcile tab)', acknowledgement: null });
+  assert.deepEqual(bankCloseState(balances, imports, '2026-08', 'August 2026'), {
+    status: 'needs-ack', ready: true, accounts: ['Fixture Cash in hand', 'Fixture Wallet'],
+    label: 'Bank statement reconciled (Reconcile tab). No statement for Fixture Cash in hand, Fixture Wallet: confirm them before closing',
+    acknowledgement: 'These accounts have no bank statement for August 2026: Fixture Cash in hand, Fixture Wallet. I have checked them.',
+  });
+  const all = [...imports, { account_label: 'Fixture Wallet' }, { account_label: 'Fixture Cash in hand' }];
+  assert.deepEqual(bankCloseState(balances, all, '2026-08', 'August 2026'),
+    { status: 'reconciled', ready: true, accounts: [], label: 'Bank statement reconciled (Reconcile tab)', acknowledgement: null });
+  assert.equal(bankCloseState(null, imports, '2026-08', 'August 2026').status, 'reconciled', 'Cash could not be read: one statement will do, as before');
+});
