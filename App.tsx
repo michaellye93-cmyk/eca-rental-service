@@ -3,6 +3,7 @@ import LoginView from './components/LoginView';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import CollectionsDataPage from './components/CollectionsDataPage';
+import WorklistPage from './components/WorklistPage';
 import type { Driver, PaymentTransaction } from './types';
 import { kualaLumpurNow, kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
 import { driverPortalSession, type PortalSignIn } from './services/driverPortalSession';
@@ -537,6 +538,10 @@ const App: React.FC = () => {
 
   if (currentView === 'ADMIN' && adminRoute.kind === 'collections') {
     return <CollectionsDataPage drivers={drivers} userRole={userRole || 'staff'} />;
+  }
+
+  if (currentView === 'ADMIN' && adminRoute.kind === 'worklist') {
+    return <WorklistPage drivers={drivers} onNavigate={navigate} />;
   }
 
   if (currentView === 'ADMIN') {
