@@ -1,4 +1,4 @@
-import { formatCurrency } from "../../utils";
+import { formatCurrency, kualaLumpurToday } from "../../utils";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { EhailingPayment, FinanceInput } from "../../types/finance";
 import type {
@@ -12,7 +12,8 @@ import {
   readBankStatement,
   validateBankReview,
 } from "../../services/finance/bankStatements";
-import { postBankStatement, reviewBankMatch } from "../../services/finance/api";
+import { loadCashOutlook, postBankStatement, reviewBankMatch, saveCashBalance } from "../../services/finance/api";
+import { balanceEntries } from "../../services/finance/statementBalances";
 import { senderLooksLike, senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
 import { clearReconcileDraft, loadReconcileDraft, saveReconcileDraft } from "../../services/finance/reconcileDraft";
 import { applySureMatches, isCashInHand, matchItems, matchRow, moneyInOnly, reconcilePairs, rowDepositIds, rowPaymentIds, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
@@ -264,6 +265,19 @@ export default function BankStatementPanel({
     }
     return issues;
   };
+  // A posted statement's month-end balances go into Cash's bank balances (same account when the last four digits
+  // match), so they are not typed again and the Bank check can run. A failure here never undoes the post.
+  const saveStatementBalances = async (statement: LoadedStatement): Promise<number> => {
+    if (statement.opening_balance == null && statement.closing_balance == null) return 0;
+    try {
+      const existing = (await loadCashOutlook(kualaLumpurToday())).balances.map((b) => b.account_label);
+      const entries = balanceEntries({ accountLabel: statement.account_label, filename: statement.filename, month, opening: statement.opening_balance ?? null, closing: statement.closing_balance ?? null }, existing, kualaLumpurToday());
+      for (const entry of entries) await saveCashBalance(entry.account, entry.balance, entry.asOf, entry.note);
+      return entries.length;
+    } catch {
+      return 0;
+    }
+  };
   // Posts the chosen statements one after another; each post moves the month to a new revision.
   const post = async (indexes: number[]) => {
     if (!input || input.month.status !== "DRAFT" || !indexes.length) return;
@@ -272,6 +286,7 @@ export default function BankStatementPanel({
     const posted: number[] = [];
     let latest: FinanceInput | null = null;
     let failure = "";
+    let balancesSaved = 0;
     try {
       for (const index of indexes) {
         const problems = problemsOf(statements[index]);
@@ -283,6 +298,7 @@ export default function BankStatementPanel({
         latest = await postBankStatement(month, statement.filename, statement.account_label.trim(), statement.rows, revision, statement.source_hash);
         revision = latest.month.revision;
         posted.push(index);
+        balancesSaved += await saveStatementBalances(statement);
       }
     } catch (e) {
       failure = e instanceof Error ? e.message : "Bank statement could not be posted.";
@@ -290,7 +306,8 @@ export default function BankStatementPanel({
     } finally {
       if (current === generation.current) {
         if (latest) {
-          const done = posted.length === 1 ? "1 bank statement posted." : `${posted.length} bank statements posted.`;
+          const done = (posted.length === 1 ? "1 bank statement posted." : `${posted.length} bank statements posted.`)
+            + (balancesSaved ? ` Its month-end bank balance${balancesSaved === 1 ? " was" : "s were"} added to Cash.` : "");
           // After a partial "Post all", the failure goes in the same notice so it is not hidden by the success message.
           onPosted(latest, failure ? `${done} Not posted (still loaded below): ${failure}` : done);
           setStatements((list) => list.filter((_, i) => !posted.includes(i)));

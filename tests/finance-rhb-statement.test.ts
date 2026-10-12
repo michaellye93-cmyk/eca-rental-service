@@ -75,3 +75,9 @@ test('payments are suggested for RHB lines by plate or sender name', async () =>
     [preview.rows[0].source_row, 'p1'], [preview.rows[2].source_row, 'p2'], [preview.rows[3].source_row, 'p3'],
   ].sort());
 });
+
+test('an RHB statement gives the bank balance at the end of the month before and at the end of the month', async () => {
+  const preview = await previewBankStatement(arrayBuffer(await rhbWorkbook()), 'AUG.xlsx', '2026-08', input);
+  assert.equal(preview.opening_balance, 1000);
+  assert.equal(preview.closing_balance, 1829.5);
+});
