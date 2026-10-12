@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import { buildLateAlerts, generateDriverInvoices, mondayToSunday, rentDueAndPaid } from '../utils.ts';
 import {
-  balanceTrend, buildCollectionsData, catchUpStatus, collectionSummary, collectionsJson, contactsForDriver, lastAskAt, latestContact, promiseStatus,
+  balanceTrend, buildCollectionsData, catchUpStatus, collectionSummary, collectionsHygiene, collectionsJson, contactsForDriver, lastAskAt, latestContact, promiseStatus,
   runSlotAt, segmentHistory, statementMoney, whatsappStatement, type CatchUpPlan, type CollectionContact, type PaymentPromise,
 } from '../services/collections.ts';
 
@@ -279,4 +279,25 @@ test('F2: a statement logged during a daily run is labelled with that run', () =
   assert.equal(runSlotAt(new Date(2026, 9, 12, 21, 30)), '9PM');
   assert.equal(runSlotAt(new Date(2026, 9, 12, 10, 0)), null);
   assert.equal(runSlotAt(new Date(2026, 9, 12, 18, 0)), null);
+});
+
+test('F7: hygiene lists active drivers without a WhatsApp group, a phone, or (monthly rent) an arrangement, and each missing bank-in line', () => {
+  const monthlyTagged: Driver = { ...ALPHA, id: 'd', carPlate: 'XAD4001', name: 'Fixture Driver Delta', tags: ['MONTHLY'], whatsappGroup: undefined, phone: undefined };
+  const arranged: Driver = { ...BRAVO, collectionArrangement: 'Monthly by the 5th', phone: '60123000000', whatsappGroup: 'XAB2001 FIXTURE SAT' };
+  const hygiene = collectionsHygiene([ALPHA, BRAVO, CHARLIE, monthlyTagged], { SEWABELI: 'Fixture Bank 000', SEWA_BIASA: null });
+  assert.deepEqual(hygiene.noGroup.map(d => d.plate), ['XAB2001', 'XAD4001']);
+  assert.deepEqual(hygiene.noPhone.map(d => d.plate), ['XAB2001', 'XAD4001'], 'delisted drivers are left out');
+  assert.deepEqual(hygiene.noArrangement.map(d => d.plate), ['XAB2001', 'XAD4001'], 'monthly rent or a MONTHLY tag; weekly drivers need none');
+  assert.deepEqual(hygiene.bankInMissing, ['SEWA_BIASA']);
+  assert.deepEqual(collectionsHygiene([ALPHA, arranged], { SEWABELI: 'x', SEWA_BIASA: 'y' }), { noGroup: [], noPhone: [], noArrangement: [], bankInMissing: [], bankInUnknown: false });
+  assert.equal(collectionsHygiene([ALPHA], null).bankInUnknown, true);
+});
+
+test('F7: the data view adds the hygiene findings to its warnings, keeping them a list of sentences', () => {
+  const data = buildCollectionsData(dataInput());
+  assert.ok(data.warnings.every(w => typeof w === 'string'));
+  assert.ok(data.warnings.some(w => /WhatsApp group/.test(w) && w.includes('XAB2001')));
+  assert.ok(data.warnings.some(w => /phone/.test(w) && w.includes('XAB2001')));
+  assert.ok(data.warnings.some(w => /arrangement/.test(w) && w.includes('XAB2001')));
+  assert.ok(!data.warnings.some(w => /WhatsApp group/.test(w) && w.includes('XAA1001')), 'Alpha has a group');
 });
