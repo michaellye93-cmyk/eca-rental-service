@@ -1,6 +1,7 @@
 import { kualaLumpurNow, kualaLumpurToday } from "../../utils";
 import { money, monthLong, percent1, previousMonth } from "../../services/fmt";
 import { useConfirm } from "../Dialog";
+import StatTile from "../StatTile";
 import React, {
   useCallback,
   useEffect,
@@ -978,10 +979,10 @@ function Overview({
             : "This month reached the 20% target."}
         />
         <div className="finance-summary-grid is-four">
-          <Total label="Net margin (target 20%)" value={pct(target.margin)} emphasis />
-          <Total label="Gap to 20%" value={money(target.gap)} negative={target.gap > 0} />
-          <Total label="Rent collected, cash and claims (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${money(collection.billed)}`} />
-          <Total label={`Idle cars (${target.idle.count})`} value={money(-target.idle.cost)} negative={target.idle.cost > 0} />
+          <StatTile label="Net margin (target 20%)" value={pct(target.margin)} emphasis />
+          <StatTile label="Gap to 20%" value={money(target.gap)} negative={target.gap > 0} />
+          <StatTile label="Rent collected, cash and claims (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${money(collection.billed)}`} />
+          <StatTile label={`Idle cars (${target.idle.count})`} value={money(-target.idle.cost)} negative={target.idle.cost > 0} />
         </div>
         <p className="finance-strip-note">
           <button className="finance-link" onClick={() => onGo("collections")}>Who owes rent <ChevronRightIcon /></button>{" "}
@@ -1594,11 +1595,11 @@ function VehicleDialog({
         </DataTable>
       </section>
       <section className="finance-preview-stats">
-        <Total
+        <StatTile
           label="Vehicle contribution"
           value={money(vehicle.contribution)}
         />
-        <Total
+        <StatTile
           label="Margin"
           value={
             vehicle.margin === null
@@ -1606,7 +1607,7 @@ function VehicleDialog({
               : percent1(vehicle.margin)
           }
         />
-        <Total label="Business" value={vehicle.business_unit} />
+        <StatTile label="Business" value={vehicle.business_unit} />
       </section>
     </Dialog>
   );
@@ -1671,24 +1672,6 @@ function DataTable({
         </thead>
         <tbody>{children}</tbody>
       </table>
-    </div>
-  );
-}
-function Total({
-  label,
-  value,
-  negative = false,
-  emphasis = false,
-}: {
-  label: string;
-  value: string;
-  negative?: boolean;
-  emphasis?: boolean;
-}) {
-  return (
-    <div className={`finance-total ${emphasis ? "is-emphasis" : ""}`}>
-      <span>{label}</span>
-      <strong className={negative ? "finance-negative" : ""}>{value}</strong>
     </div>
   );
 }

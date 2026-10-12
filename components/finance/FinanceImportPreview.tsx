@@ -1,4 +1,5 @@
 import { formatCurrency, monthLong } from "../../services/fmt";
+import StatTile from "../StatTile";
 import { useState } from "react";
 import { insuranceStatus } from "../../services/finance/insurance";
 import type {
@@ -115,19 +116,19 @@ export default function FinanceImportPreview({
         </details>
       )}
       {insuranceSummary ? <div className="finance-preview-stats">
-        <Stat label="Records" value={String(insuranceSummary.records)} />
-        <Stat label="Total ECA Premium" value={money(insuranceSummary.total_eca_premium)} />
-        <Stat label="Valid ECA Paid policies" value={String(insuranceSummary.valid_eca_policies)} />
-        <Stat label="Future ECA renewal responsibility" value={String(insuranceSummary.future_eca_renewals)} />
-        <Stat label="Owner Paid / No ECA Cost" value={String(insuranceSummary.owner_paid_no_cost)} />
-        <Stat label="Review Items" value={String(insuranceSummary.review_items)} />
+        <StatTile label="Records" value={String(insuranceSummary.records)} />
+        <StatTile label="Total ECA Premium" value={money(insuranceSummary.total_eca_premium)} />
+        <StatTile label="Valid ECA Paid policies" value={String(insuranceSummary.valid_eca_policies)} />
+        <StatTile label="Future ECA renewal responsibility" value={String(insuranceSummary.future_eca_renewals)} />
+        <StatTile label="Owner Paid / No ECA Cost" value={String(insuranceSummary.owner_paid_no_cost)} />
+        <StatTile label="Review Items" value={String(insuranceSummary.review_items)} />
       </div> : <div className="finance-preview-stats">
-        <Stat label="Records" value={String(value.total_rows ?? rows.length)} />
-        <Stat label="Total amount" value={money(total)} />
+        <StatTile label="Records" value={String(value.total_rows ?? rows.length)} />
+        <StatTile label="Total amount" value={money(total)} />
         {smart ? (
-          <Stat label="Commission" value={money(value.commission ?? 0)} />
+          <StatTile label="Commission" value={money(value.commission ?? 0)} />
         ) : (
-          <Stat
+          <StatTile
             label="Review items"
             value={String(value.issues?.length ?? 0)}
           />
@@ -135,12 +136,12 @@ export default function FinanceImportPreview({
       </div>}
       {!!value.skipped_rows && <p className="finance-dialog-copy">{value.skipped_rows} recurring {value.skipped_rows === 1 ? "row is" : "rows are"} outside the selected month and will not be posted.</p>}
       {safe && <div className="finance-preview-stats">
-        <Stat label="New" value={String(safe.counts.new)} />
-        <Stat label="Updated" value={String(safe.counts.updated)} />
-        <Stat label="Unchanged" value={String(safe.counts.unchanged)} />
-        <Stat label="Needs review" value={String(safe.counts.needs_review)} />
-        <Stat label="Current total" value={money(safe.current_total)} />
-        <Stat label="Proposed total" value={money(safe.proposed_total)} />
+        <StatTile label="New" value={String(safe.counts.new)} />
+        <StatTile label="Updated" value={String(safe.counts.updated)} />
+        <StatTile label="Unchanged" value={String(safe.counts.unchanged)} />
+        <StatTile label="Needs review" value={String(safe.counts.needs_review)} />
+        <StatTile label="Current total" value={money(safe.current_total)} />
+        <StatTile label="Proposed total" value={money(safe.proposed_total)} />
       </div>}
       {safe && safe.counts.unchanged > 0 && safe.counts.new === 0 && safe.counts.updated === 0 && safe.counts.cancelled === 0 && safe.counts.needs_review === 0 && (
         <p className="finance-dialog-copy" role="status">Already imported — no changes</p>
@@ -306,13 +307,5 @@ export default function FinanceImportPreview({
         </button>
       </div>
     </>
-  );
-}
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="finance-total">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }

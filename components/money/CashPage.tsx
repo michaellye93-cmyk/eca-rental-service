@@ -8,6 +8,7 @@ import {
 } from '../../services/cashOutlook';
 import { cancelCashBalance, saveCashBalance } from '../../services/finance/api';
 import { CashStatusPill, sentenceBody } from './CashLine';
+import StatTile from '../StatTile';
 
 /** Money going out, shown in brackets as on a statement. */
 const out = (n: number) => (n ? `(${formatCurrency(n)})` : formatCurrency(0));
@@ -66,25 +67,15 @@ function StatusBlock({ summary }: { summary: CashLineSummary }) {
         {summary.notes.length > 0 && <ul className="cash-notes">{summary.notes.map(note => <li key={note}>{note}</li>)}</ul>}
       </section>
       <section className="finance-summary-grid" aria-label={`Cash figures for the next ${WINDOW_DAYS} days`}>
-        <Figure label="Cash in bank" value={summary.cash ? money(summary.cash.total) : 'Not entered'}
+        <StatTile label="Cash in bank" value={summary.cash ? money(summary.cash.total) : 'Not entered'}
           hint={summary.cash && summary.depositsHeld ? `Of which ${money(summary.depositsHeld)} is drivers' deposits held (owed back to them)` : undefined} />
-        <Figure label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
-        <Figure label={`Bills, next ${WINDOW_DAYS} days`} value={out(summary.bills.total)} negative />
-        <Figure label="Left after those bills" value={summary.left === null ? '—' : money(summary.left)} negative={summary.left !== null && summary.left < 0} emphasis />
-        <Figure label="Full days of bills left" value={summary.daysLeft === null ? '—' : summary.daysLeft < 0 ? 'None' : String(Math.floor(summary.daysLeft))} />
-        <Figure label="Overdue rent" value={money(summary.overdue)} hint={change > 0.005 ? `Up ${money(change)} this week` : change < -0.005 ? `Down ${money(-change)} this week` : 'No change this week'} />
+        <StatTile label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
+        <StatTile label={`Bills, next ${WINDOW_DAYS} days`} value={out(summary.bills.total)} negative />
+        <StatTile label="Left after those bills" value={summary.left === null ? '—' : money(summary.left)} negative={summary.left !== null && summary.left < 0} emphasis />
+        <StatTile label="Full days of bills left" value={summary.daysLeft === null ? '—' : summary.daysLeft < 0 ? 'None' : String(Math.floor(summary.daysLeft))} />
+        <StatTile label="Overdue rent" value={money(summary.overdue)} hint={change > 0.005 ? `Up ${money(change)} this week` : change < -0.005 ? `Down ${money(-change)} this week` : 'No change this week'} />
       </section>
     </>
-  );
-}
-
-function Figure({ label, value, hint, negative = false, emphasis = false }: { label: string; value: string; hint?: string; negative?: boolean; emphasis?: boolean }) {
-  return (
-    <div className={`finance-total ${emphasis ? 'is-emphasis' : ''}`}>
-      <span>{label}</span>
-      <strong className={negative ? 'finance-negative' : ''}>{value}</strong>
-      {hint && <small className="cash-hint">{hint}</small>}
-    </div>
   );
 }
 
