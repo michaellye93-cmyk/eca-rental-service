@@ -1,4 +1,6 @@
 import { supabase } from '../supabaseClient';
+import { readAllRows } from './pagedRead';
+import { depositsHeldByDriver, type DepositLedgerRow } from './cashOutlook';
 
 /**
  * Deposits (Sewa Biasa) and downpayments (Sewa Beli), kept apart from rent payments in public.driver_deposits
@@ -28,6 +30,12 @@ export const depositKindLabel = (kind: DepositKind) => (kind === 'DOWNPAYMENT' ?
 /** Money still held for the driver: received less refunded and forfeited. */
 export const depositHeld = (rows: Array<Pick<DriverDeposit, 'entry' | 'amount'>>) =>
   Math.round(rows.reduce((sum, row) => sum + (row.entry === 'RECEIVED' ? 1 : -1) * Number(row.amount), 0) * 100) / 100;
+
+/** Deposits held per driver across the whole ledger (one paged read), for the cash line and the Cash page. */
+export async function loadDepositsHeld(): Promise<Record<string, number>> {
+  const rows = await readAllRows<DepositLedgerRow>(() => supabase.from('driver_deposits').select('id,driver_id,kind,entry,amount').eq('kind', 'DEPOSIT'), 'entry_date', true);
+  return depositsHeldByDriver(rows);
+}
 
 export async function loadDeposits(driverId: string): Promise<DriverDeposit[]> {
   const { data, error } = await supabase.from('driver_deposits').select(COLUMNS).eq('driver_id', driverId).order('entry_date', { ascending: false });

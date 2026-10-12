@@ -52,7 +52,7 @@ import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpS
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
-import { loadDeposits } from '../services/depositsApi';
+import { loadDeposits, loadDepositsHeld } from '../services/depositsApi';
 import { receivedByKind, upfrontToRecord } from '../services/depositTotals';
 
 interface AdminDashboardProps {
@@ -588,7 +588,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const reloadOutlook = useCallback(async () => {
     if (userRole !== 'admin') return;
     try {
-      setOutlook(await loadCashOutlook(kualaLumpurToday()));
+      // Deposits held come from the deposit ledger, read once with the outlook; without it no deposit figures show.
+      const [data, depositsHeld] = await Promise.all([loadCashOutlook(kualaLumpurToday()), loadDepositsHeld().catch(() => undefined)]);
+      setOutlook({ ...data, deposits_held: depositsHeld });
       setOutlookState('ready');
     } catch {
       setOutlookState('unavailable');
