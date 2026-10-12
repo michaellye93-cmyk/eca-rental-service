@@ -42,7 +42,10 @@ const check = <T>(result: Result<T>): T | null => {
 
 const templateKey = (kind: AgreementKind) => `template:${kind}`;
 
-/** Reads and saves the agreement templates and company details. Agreements themselves are never stored. */
+/**
+ * Reads and saves the agreement templates and company details, and keeps a text copy of each downloaded agreement
+ * (public.driver_agreements) for the driver's phone page. The PDF itself is made in the browser and never stored.
+ */
 export function agreementApi(client: AgreementClient) {
   const settings = () => client.from('agreement_settings');
   const save = async (key: string, value: unknown) => {

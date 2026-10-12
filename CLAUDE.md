@@ -19,7 +19,7 @@ Claude owns this project end to end. Finish approved work with minimal process, 
 - One driver record per contract: a returning driver gets a new record; the database allows one active driver per 12-digit NRIC.
 - **Rent rules have one home:** `buildRentSchedule` in `utils.ts`, used by `calculateDriverMetrics`, `generateDriverInvoices`, `getNextDueDate` and `latestInvoices`. Never add another schedule or payment-allocation copy. The termination report (`terminationReport.ts`) is a deliberate independent snapshot that must follow the same rules.
 - Agreed rent rule: with no contract end date, rent keeps accruing past the recorded contract length until an end date or delist.
-- Supabase: SQL in `supabase/migrations/`, Edge Functions in `supabase/functions/`.
+- Supabase: SQL in `supabase/migrations/` (retired files in `supabase/archive/`), Edge Functions in `supabase/functions/`. Current map: `docs/architecture.md`.
 
 ## 4. Commands and verification
 - `npm run dev` (port 3000) · `npm run lint` (tsc) · `npm test` (node --test) · `npm run build`.
