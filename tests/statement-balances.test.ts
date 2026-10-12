@@ -20,12 +20,12 @@ test('without a printed opening balance or running balances nothing is guessed',
 });
 
 test('balances are saved under the account already used on Cash when the last four digits match, else the statement name', () => {
-  const entries = balanceEntries({ accountLabel: 'RHB …4281', filename: 'sep.xlsx', month: '2026-09', opening: 1000, closing: 900 }, ['RHB Sewa Beli 4281', 'RHB Biasa 1109']);
+  const entries = balanceEntries({ accountLabel: 'RHB …9999', filename: 'sep.xlsx', month: '2026-09', opening: 1000, closing: 900 }, ['Fixture Bank A 9999', 'Fixture Bank B 8888']);
   assert.deepEqual(entries, [
-    { account: 'RHB Sewa Beli 4281', balance: 1000, asOf: '2026-08-31', note: 'Opening balance from bank statement sep.xlsx' },
-    { account: 'RHB Sewa Beli 4281', balance: 900, asOf: '2026-09-30', note: 'Closing balance from bank statement sep.xlsx' },
+    { account: 'Fixture Bank A 9999', balance: 1000, asOf: '2026-08-31', note: 'Opening balance from bank statement sep.xlsx' },
+    { account: 'Fixture Bank A 9999', balance: 900, asOf: '2026-09-30', note: 'Closing balance from bank statement sep.xlsx' },
   ]);
-  const unknown = balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-02', opening: null, closing: 50 }, ['RHB Sewa Beli 4281']);
+  const unknown = balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-02', opening: null, closing: 50 }, ['Fixture Bank A 9999']);
   assert.deepEqual(unknown, [{ account: 'RHB …7777', balance: 50, asOf: '2026-02-28', note: 'Closing balance from bank statement x.xlsx' }]);
   assert.deepEqual(balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-10', opening: 10, closing: 50 }, [], '2026-10-12').map(e => e.asOf), ['2026-09-30'],
     'a month still running has no month-end balance yet');
