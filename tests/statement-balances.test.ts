@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { balanceEntries, monthEndBalances } from '../services/finance/statementBalances.ts';
+import { balanceEntries, monthEndBalances, sameBankAccount } from '../services/finance/statementBalances.ts';
 
 const line = (date: string, balance: number | null) => ({ date, balance });
 
@@ -19,14 +19,41 @@ test('without a printed opening balance or running balances nothing is guessed',
   assert.deepEqual(monthEndBalances([], 1000, '2026-09'), { opening: null, closing: null }, 'no line in the month: no claim about the month');
 });
 
-test('balances are saved under the account already used on Cash when the last four digits match, else the statement name', () => {
-  const entries = balanceEntries({ accountLabel: 'RHB …9999', filename: 'sep.xlsx', month: '2026-09', opening: 1000, closing: 900 }, ['Fixture Bank A 9999', 'Fixture Bank B 8888']);
+test('balances are saved under the account on Cash that is the same bank account (same last four digits)', () => {
+  const { entries, reason } = balanceEntries({ accountLabel: 'RHB …9999', filename: 'sep.xlsx', month: '2026-09', opening: 1000, closing: 900 }, ['Fixture Bank A 9999', 'Fixture Bank B 8888', 'Fixture Bank A 9999']);
   assert.deepEqual(entries, [
     { account: 'Fixture Bank A 9999', balance: 1000, asOf: '2026-08-31', note: 'Opening balance from bank statement sep.xlsx' },
     { account: 'Fixture Bank A 9999', balance: 900, asOf: '2026-09-30', note: 'Closing balance from bank statement sep.xlsx' },
   ]);
-  const unknown = balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-02', opening: null, closing: 50 }, ['Fixture Bank A 9999']);
-  assert.deepEqual(unknown, [{ account: 'RHB …7777', balance: 50, asOf: '2026-02-28', note: 'Closing balance from bank statement x.xlsx' }]);
-  assert.deepEqual(balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-10', opening: 10, closing: 50 }, [], '2026-10-12').map(e => e.asOf), ['2026-09-30'],
+  assert.equal(reason, null);
+  assert.deepEqual(balanceEntries({ accountLabel: ' Fixture Wallet ', filename: 'w.xlsx', month: '2026-02', opening: null, closing: 50 }, ['Fixture Wallet']).entries.map(e => e.account), ['Fixture Wallet'],
+    'the same name (trimmed) is the same account');
+});
+
+test('with no account on Cash yet, the statement’s own label becomes the account', () => {
+  const { entries, reason } = balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-02', opening: null, closing: 50 }, []);
+  assert.deepEqual(entries, [{ account: 'RHB …7777', balance: 50, asOf: '2026-02-28', note: 'Closing balance from bank statement x.xlsx' }]);
+  assert.equal(reason, null);
+  assert.deepEqual(balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-10', opening: 10, closing: 50 }, [], '2026-10-12').entries.map(e => e.asOf), ['2026-09-30'],
     'a month still running has no month-end balance yet');
+});
+
+test('when Cash has accounts but none is this bank account, nothing is saved (no second label for one account) and the reason is given', () => {
+  const { entries, reason } = balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-02', opening: 10, closing: 50 }, ['Fixture Bank A 9999', 'Fixture Bank B 8888']);
+  assert.deepEqual(entries, []);
+  assert.equal(reason, 'Bank balances not added: no account on Cash ends in 7777. Rename the account on Cash to end in those digits, or enter the balances by hand.');
+  const typed = balanceEntries({ accountLabel: 'Fixture Wallet', filename: 'w.csv', month: '2026-02', opening: 10, closing: 50 }, ['Fixture Bank A 9999']);
+  assert.deepEqual(typed.entries, []);
+  assert.match(typed.reason ?? '', /^Bank balances not added: no account on Cash is named "Fixture Wallet"\./);
+  assert.deepEqual(balanceEntries({ accountLabel: 'RHB …7777', filename: 'x.xlsx', month: '2026-02', opening: null, closing: null }, ['Fixture Bank A 9999']), { entries: [], reason: null },
+    'a statement without balances has nothing to add and nothing to explain');
+});
+
+test('one rule says whether two labels are the same bank account, for statement balances and for Month close', () => {
+  assert.equal(sameBankAccount('RHB …9999', 'Fixture Bank A 9999'), true);
+  assert.equal(sameBankAccount(' Fixture Wallet', 'Fixture Wallet '), true);
+  assert.equal(sameBankAccount('Fixture Bank A 9999', 'Fixture Bank B 8888'), false);
+  assert.equal(sameBankAccount('Bank 99-99', 'Other 9999'), true, 'the last four digits, wherever the separators are');
+  assert.equal(sameBankAccount('Fixture 999', 'Other 999'), false, 'fewer than four digits never match by digits');
+  assert.equal(sameBankAccount('Fixture Wallet', 'Fixture Bank A 9999'), false);
 });
