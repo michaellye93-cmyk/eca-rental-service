@@ -126,3 +126,10 @@ test('only this browser\'s work that never reached the server is sent again on o
   markReconcileDraftSynced(store, '2026-08', '2026-10-12T03:00:00.000Z');
   assert.equal(draftToResend(store, '2026-08', new Set(), { available: true, draft: server }), null, 'already on the server: a restored draft is not sent again');
 });
+
+test('a draft keeps the statement month-end balances, so a statement restored from it still fills Cash when posted', () => {
+  const [kept] = draftStatements([{ rows: [], issues: [], total_debits: 0, total_credits: 0, filename: 'f.xlsx', account_label: 'RHB …9999',
+    finance_month: '2026-09', source_hash: 'h', opening_balance: 1000, closing_balance: 900 } as DraftStatement]);
+  assert.equal(kept.opening_balance, 1000);
+  assert.equal(kept.closing_balance, 900);
+});

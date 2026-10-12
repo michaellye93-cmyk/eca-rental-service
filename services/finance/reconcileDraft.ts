@@ -27,7 +27,9 @@ export const SERVER_DRAFT_LIMIT = Math.floor(1.8 * 1024 * 1024);
 
 /** What a draft keeps of each loaded statement: the lines read and the decisions, never the file or its mapping. */
 export const draftStatements = (statements: DraftStatement[]): DraftStatement[] =>
-  statements.map(({ rows, issues, total_debits, total_credits, filename, account_label, finance_month, source_hash, skipped }) => ({ rows, issues, total_debits, total_credits, filename, account_label, finance_month, source_hash, skipped }));
+  statements.map(({ rows, issues, total_debits, total_credits, filename, account_label, finance_month, source_hash, skipped, opening_balance, closing_balance }) =>
+    ({ rows, issues, total_debits, total_credits, filename, account_label, finance_month, source_hash, skipped,
+      ...(opening_balance != null ? { opening_balance } : {}), ...(closing_balance != null ? { closing_balance } : {}) }));
 
 export const serverDraftTooLarge = (statements: DraftStatement[]) =>
   new TextEncoder().encode(JSON.stringify(draftStatements(statements))).length > SERVER_DRAFT_LIMIT;
