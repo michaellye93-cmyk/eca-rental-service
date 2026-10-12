@@ -82,7 +82,7 @@ const MAX_RENT_CYCLES = 5000;
  * obligation falling due up to that day (past the recorded length too, until an end date or delist); payments
  * still count only up to the reference day.
  */
-const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming: boolean, horizon?: Date): RentObligation[] => {
+const computeRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming: boolean, horizon?: Date): RentObligation[] => {
   const start = parseDate(driver.contractStartDate);
   if (isNaN(start.getTime())) return [];
   const referenceEnd = endOfDay(referenceDate);
@@ -117,6 +117,47 @@ const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming:
 
 const isoDay = (date: Date): string =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/**
+ * Each driver's rent schedules, worked out once per data load. Keyed by the driver object: every load replaces the
+ * drivers, so a reload starts afresh and old entries go with the old objects. So a driver object must not be changed in
+ * place once its figures are read (nothing in the app does; an edit makes a new object). Within a driver the key is the
+ * reference calendar day, includeUpcoming and the horizon day: the schedule only uses the end of those days, so two
+ * times on the same day give the same schedule.
+ */
+const rentScheduleCache = new WeakMap<Driver, Map<string, RentObligation[]>>();
+/** A driver object kept for days without a reload keeps at most this many schedules. */
+const MAX_SCHEDULES_PER_DRIVER = 256;
+let schedulesBuilt = 0;
+
+/** How many rent schedules have been worked out (not read from the cache) so far: for tests and timing. */
+export const rentScheduleBuilds = (): number => schedulesBuilt;
+
+/** A copy of a cached schedule, Dates included, so no caller can change what the cache holds. */
+const copySchedule = (schedule: RentObligation[]): RentObligation[] => schedule.map(obligation => ({
+  index: obligation.index,
+  dueDate: new Date(obligation.dueDate.getTime()),
+  allocations: obligation.allocations.map(allocation => ({ date: new Date(allocation.date.getTime()), amount: allocation.amount })),
+  remaining: obligation.remaining,
+}));
+
+/** The rent schedule (computeRentSchedule), read from the cache when this driver object was asked the same before. */
+const buildRentSchedule = (driver: Driver, referenceDate: Date, includeUpcoming: boolean, horizon?: Date): RentObligation[] => {
+  const key = `${isoDay(referenceDate)}|${includeUpcoming ? 1 : 0}|${horizon ? isoDay(horizon) : ''}`;
+  let schedules = rentScheduleCache.get(driver);
+  if (!schedules) {
+    schedules = new Map();
+    rentScheduleCache.set(driver, schedules);
+  }
+  let schedule = schedules.get(key);
+  if (!schedule) {
+    schedule = computeRentSchedule(driver, referenceDate, includeUpcoming, horizon);
+    schedulesBuilt += 1;
+    if (schedules.size >= MAX_SCHEDULES_PER_DRIVER) schedules.clear();
+    schedules.set(key, schedule);
+  }
+  return copySchedule(schedule);
+};
 
 export interface RentAllocation { paymentDate: string; dueDate: string | null; amount: number }
 

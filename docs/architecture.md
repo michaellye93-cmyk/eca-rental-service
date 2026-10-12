@@ -24,7 +24,9 @@ project (Postgres + Auth + Edge Functions). There is no other server. Two kinds 
 `buildRentSchedule` in `utils.ts` is the only place rent due dates and payment allocation are worked out. It is used by
 `calculateDriverMetrics`, `generateDriverInvoices`, `getNextDueDate` and `latestInvoices`, so the office screens, the
 driver's phone page, collections and Finance all agree. `terminationReport.ts` is a deliberate separate snapshot that
-follows the same rules. Do not add another schedule or allocation copy.
+follows the same rules. Do not add another schedule or allocation copy. Each schedule is worked out once per driver
+object, reference day and horizon (a cache inside `utils.ts`); every data load makes new driver objects, so a reload
+starts afresh. Never change a driver object in place: make a new one.
 
 ## Sections
 
