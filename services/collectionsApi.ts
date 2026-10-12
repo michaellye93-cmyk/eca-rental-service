@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
+import { readAllRows } from './pagedRead';
 import type { PaymentChange } from './paymentLog';
-import type { CatchUpPlan, PaymentPromise } from './collections';
+import type { CatchUpPlan, CollectionContact, ContactKind, PaymentPromise } from './collections';
 
 /**
  * Reads and writes for the collections tables added by supabase/migrations/20260929090000_collections_support.sql.
@@ -99,4 +100,30 @@ export async function loadDriverChanges(driverId: string): Promise<import('./dri
     .order('id');
   if (error) throw error;
   return (data ?? []) as import('./driverChanges').DriverChange[];
+}
+
+/**
+ * Every contact logged since `since` (an ISO time), newest first: one query for all drivers, read 1,000 rows a page (the
+ * most Supabase returns at once). Rejects when the table is not there yet.
+ */
+export async function loadRecentContacts(since: string): Promise<CollectionContact[]> {
+  return readAllRows<CollectionContact>(() => supabase
+    .from('collection_contacts')
+    .select('id,driver_id,contacted_at,run_slot,kind,message,logged_by_name,logged_by_role')
+    .gte('contacted_at', since), 'contacted_at', false);
+}
+
+/** Logs a contact under the signed-in account (the database stamps who and when). */
+export async function logContact(contact: { driverId: string; kind: ContactKind; runSlot: string | null; message: string }): Promise<void> {
+  const { error } = await supabase.from('collection_contacts').insert({
+    driver_id: contact.driverId, kind: contact.kind, run_slot: contact.runSlot || null, message: contact.message.trim(),
+  });
+  if (error) throw error;
+}
+
+/** Removes a contact logged by mistake (Admins only). */
+export async function removeContact(id: string): Promise<void> {
+  const { data, error } = await supabase.from('collection_contacts').delete().eq('id', id).select('id');
+  if (error) throw error;
+  if (!data?.length) throw new Error('only an admin can remove a contact');
 }

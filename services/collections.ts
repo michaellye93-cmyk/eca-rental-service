@@ -41,6 +41,47 @@ export interface CatchUpPlan {
   created_by_role: string | null;
 }
 
+export type ContactKind = 'STATEMENT' | 'ASK' | 'FOLLOW_UP' | 'THANKS' | 'REPLY' | 'DISPUTE' | 'ESCALATION' | 'NOTE';
+export const CONTACT_KINDS: { kind: ContactKind; label: string }[] = [
+  { kind: 'STATEMENT', label: 'Statement sent' }, { kind: 'ASK', label: 'Asked to pay' }, { kind: 'FOLLOW_UP', label: 'Follow-up' },
+  { kind: 'THANKS', label: 'Thanks' }, { kind: 'REPLY', label: 'Driver replied' }, { kind: 'DISPUTE', label: 'Dispute' },
+  { kind: 'ESCALATION', label: 'Escalated' }, { kind: 'NOTE', label: 'Note' },
+];
+
+/** A row of public.collection_contacts (supabase/migrations/20261012210000_collections_tools.sql). */
+export interface CollectionContact {
+  id: string;
+  driver_id: string;
+  contacted_at: string;
+  /** The daily run it belongs to, e.g. 1PM or 9PM; null outside a run. */
+  run_slot: string | null;
+  kind: ContactKind;
+  message: string;
+  logged_by_name: string;
+  logged_by_role: string | null;
+}
+
+const newestFirst = (a: CollectionContact, b: CollectionContact) => b.contacted_at.localeCompare(a.contacted_at);
+
+/** The driver's most recent `limit` contacts, newest first. */
+export const contactsForDriver = (contacts: CollectionContact[], driverId: string, limit = 10): CollectionContact[] =>
+  contacts.filter(contact => contact.driver_id === driverId).sort(newestFirst).slice(0, limit);
+
+/** The driver's latest contact of any kind, or null. */
+export const latestContact = (contacts: CollectionContact[], driverId: string): CollectionContact | null =>
+  contactsForDriver(contacts, driverId, 1)[0] ?? null;
+
+/** When the driver was last asked to pay: the latest ask, follow-up or statement; null when none is logged. */
+export const lastAskAt = (contacts: CollectionContact[], driverId: string): string | null =>
+  contacts.filter(contact => contact.driver_id === driverId && ['ASK', 'FOLLOW_UP', 'STATEMENT'].includes(contact.kind))
+    .sort(newestFirst)[0]?.contacted_at ?? null;
+
+/** The daily collection run a Kuala Lumpur time falls in: 1PM (12:00 to 16:59), 9PM (20:00 to 23:59), otherwise none. */
+export const runSlotAt = (now: Date): '1PM' | '9PM' | null => {
+  const hour = now.getHours();
+  return hour >= 12 && hour < 17 ? '1PM' : hour >= 20 ? '9PM' : null;
+};
+
 const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
@@ -244,6 +285,8 @@ export interface CollectionsInput {
   /** Null when the table is not available yet. */
   promises: PaymentPromise[] | null;
   plans: CatchUpPlan[] | null;
+  /** Recent contact log entries (the last 45 days is enough); null or left out when the table is not available yet. */
+  contacts?: CollectionContact[] | null;
 }
 
 /** One active driver in the data view. Built field by field: NRIC, phone, email and address are never included. */
@@ -268,6 +311,9 @@ export interface CollectionsDriver {
     behind_by: number; reaches_mid: string | null; reaches_good: string | null; ends_before_good: boolean; note: string | null;
   } | null;
   statement: string | null;
+  /** The latest contact log entry (null when none in the period loaded) and when the driver was last asked to pay. */
+  last_contact: { at: string; kind: ContactKind; run_slot: string | null; message: string } | null;
+  last_ask_at: string | null;
 }
 
 export interface CollectionsData {
@@ -295,6 +341,8 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
   if (!bankIn.SEWA_BIASA) warnings.push('Bank-in details for Sewa Biasa are not set, so Sewa Biasa drivers have no statement.');
   if (input.promises === null) warnings.push('Promises to pay are not available yet: the database update has not been run.');
   if (input.plans === null) warnings.push('Catch-up plans are not available yet: the database update has not been run.');
+  const contacts = input.contacts ?? null;
+  if (contacts === null) warnings.push('The contact log is not available yet: the database update has not been run.');
   const cutoff = iso(addDays(todayDate, -60));
 
   const rows = active
@@ -318,6 +366,7 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
     const planStatus = plan ? catchUpStatus(plan, driver, now) : null;
     const bank = isSewaBiasa(driver) ? bankIn.SEWA_BIASA : bankIn.SEWABELI;
     const promiseState = promise ? promiseStatus(promise, driver, today) : null;
+    const lastContact = contacts ? latestContact(contacts, driver.id) : null;
     return {
       id: driver.id,
       plate: normalizePlate(driver.carPlate),
@@ -366,6 +415,8 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
         ends_before_good: planStatus.endsBeforeGood, note: plan.note,
       } : null,
       statement: bank ? whatsappStatement(driver, now, bank) : null,
+      last_contact: lastContact ? { at: lastContact.contacted_at, kind: lastContact.kind, run_slot: lastContact.run_slot, message: lastContact.message } : null,
+      last_ask_at: contacts ? lastAskAt(contacts, driver.id) : null,
     };
   });
 
