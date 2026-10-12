@@ -69,10 +69,10 @@ test('F1: a driver carries an optional collection arrangement, tone, language, c
   const db = await setup();
   try {
     await asUser(db, STAFF_ID);
-    await db.query(`update public.drivers set collection_arrangement = 'Monthly RM1,400 by the 10th', collection_tone = 'FIRM',
-      collection_language = 'BM', contact_window = 'after 2pm', collection_note = 'Fixture note' where id = $1`, [DRIVER_B]);
+    await db.query(`update public.drivers set collection_arrangement = 'Monthly RM1,000 by the 5th', collection_tone = 'FIRM',
+      collection_language = 'BM', contact_window = 'weekday mornings', collection_note = 'Fixture note' where id = $1`, [DRIVER_B]);
     assert.deepEqual(await rows(db, `select collection_arrangement, collection_tone, collection_language, contact_window, collection_note from public.drivers where id = $1`, [DRIVER_B]),
-      [{ collection_arrangement: 'Monthly RM1,400 by the 10th', collection_tone: 'FIRM', collection_language: 'BM', contact_window: 'after 2pm', collection_note: 'Fixture note' }]);
+      [{ collection_arrangement: 'Monthly RM1,000 by the 5th', collection_tone: 'FIRM', collection_language: 'BM', contact_window: 'weekday mornings', collection_note: 'Fixture note' }]);
     await assert.rejects(db.query(`update public.drivers set collection_tone = 'ANGRY' where id = $1`, [DRIVER_B]), /drivers_collection_tone/);
     await assert.rejects(db.query(`update public.drivers set collection_arrangement = '' where id = $1`, [DRIVER_B]), /drivers_collection_arrangement_length/);
     await assert.rejects(db.query(`update public.drivers set collection_note = $2 where id = $1`, [DRIVER_B, 'N'.repeat(1001)]), /drivers_collection_note_length/);

@@ -32,7 +32,7 @@ export interface StepInput {
   owed: number;
   /** What is still unpaid of rent falling due today; 0 when none falls due today or it is paid. */
   dueTodayUnpaid: number;
-  /** The driver's standing collection arrangement (Edit Driver), e.g. "Monthly RM1,400 by the 10th". */
+  /** The driver's standing collection arrangement (Edit Driver), e.g. "Monthly RM1,000 by the 5th". */
   arrangement: string | null;
   /** The latest payment's date, YYYY-MM-DD. */
   lastPaymentDate: string | null;

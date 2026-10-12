@@ -1,8 +1,8 @@
 -- Collections tools (owner's review of 12 Oct 2026): what the daily collection run needs to keep in the system instead of
 -- in notes.
 --
--- F1  Each driver's collection arrangement (e.g. "Monthly RM1,400 by the 10th"), tone (Soft, Polite or Firm), language,
---     contact window (e.g. "after 2pm") and a collection note. Typed only in Add / Edit Driver. The 12 Oct driver change
+-- F1  Each driver's collection arrangement (e.g. "Monthly RM1,000 by the 5th"), tone (Soft, Polite or Firm), language,
+--     contact window (e.g. "weekday mornings") and a collection note. Typed only in Add / Edit Driver. The 12 Oct driver change
 --     log records edits to them by itself. The driver's own sign-in page never shows them.
 -- F2  A contact log: every statement, ask, follow-up, thank-you, reply, dispute, escalation or note sent to or about a
 --     driver, with when, which daily run (1PM or 9PM) and who logged it. Staff and Admins read and add; only Admins
