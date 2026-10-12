@@ -24,14 +24,22 @@ test('nothing owed: nothing due, or a thank-you for a payment today or yesterday
   assert.equal(step({ arrangement: 'Monthly RM1,400 by the 10th' }), 'Nothing due', 'an arrangement with nothing owed needs no step');
 });
 
-test('a standing arrangement always shows its text and never produces a plain due-day message', () => {
+test('a standing arrangement replaces the ask, follow-up and due-day message (never a plain due-day message)', () => {
   const arrangement = 'Monthly RM1,400 by the 10th';
   const expected = 'Arrangement: Monthly RM1,400 by the 10th — check before asking';
   assert.equal(step({ arrangement, owed: 1400, dueTodayUnpaid: 1400 }), expected);
   assert.equal(step({ arrangement, owed: 1400, lastAskAt: kl('2026-10-08T13:00:00') }), expected);
-  assert.equal(step({ arrangement, owed: 1400, promise: { state: 'MISSED', date: '2026-10-10' } }), expected);
-  assert.equal(step({ arrangement, owed: 1400, lastPaymentDate: TODAY }), expected, 'even a part payment today shows the arrangement');
+  assert.equal(step({ arrangement, owed: 1400 }), expected, 'instead of a first ask');
   assert.equal(step({ arrangement: '   ', owed: 1400, dueTodayUnpaid: 1400 }), 'Due-day message', 'a blank arrangement is no arrangement');
+});
+
+test('a standing arrangement does not hold back a thank-you, a missed-promise follow-up or a wait', () => {
+  const arrangement = 'Monthly RM1,400 by the 10th';
+  assert.equal(step({ arrangement, owed: 1400, lastPaymentDate: TODAY }), 'Thank for payment', 'a part payment today is thanked first');
+  assert.equal(step({ arrangement, owed: 1400, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
+  assert.equal(step({ arrangement, owed: 1400, dueTodayUnpaid: 1400, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
+  assert.equal(step({ arrangement, owed: 1400, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 24 hours');
+  assert.equal(step({ arrangement, owed: 1400, promise: { state: 'OPEN', date: '2026-10-14', loggedOn: '2026-10-08' }, lastAskAt: kl('2026-10-08T13:00:00') }), 'Wait: promised 14/10');
 });
 
 test('the due day: a due-day message even within 24 hours of an ask, once', () => {
@@ -49,17 +57,26 @@ test('the 24-hour rule, then a follow-up two days after an ask that is still unp
 });
 
 test('a missed promise is followed up even within 24 hours of an ask, until a follow-up after the promised date', () => {
-  const missed = { state: 'MISSED' as const, date: '2026-10-11' };
+  const missed = { state: 'MISSED' as const, date: '2026-10-11', loggedOn: '2026-10-08' };
   assert.equal(step({ owed: 900, promise: missed, lastAskAt: kl('2026-10-11T20:00:00') }), 'Promise missed: follow up');
   assert.equal(step({ owed: 900, promise: missed }), 'Promise missed: follow up');
   assert.equal(step({ owed: 900, promise: missed, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 24 hours', 'followed up this morning');
-  assert.equal(step({ owed: 900, promise: { state: 'KEPT', date: '2026-10-11' }, lastAskAt: kl('2026-10-09T13:00:00') }), 'Follow up (asked 3 days ago, still unpaid)');
+  assert.equal(step({ owed: 900, promise: { state: 'KEPT', date: '2026-10-11', loggedOn: '2026-10-08' }, lastAskAt: kl('2026-10-09T13:00:00') }), 'Follow up (asked 3 days ago, still unpaid)');
 });
 
 test('an open promise date is waited for (no follow-up), except on the due day', () => {
-  const open = { state: 'OPEN' as const, date: '2026-10-14' };
+  const open = { state: 'OPEN' as const, date: '2026-10-14', loggedOn: '2026-10-08' };
   assert.equal(step({ owed: 900, promise: open, lastAskAt: kl('2026-10-09T13:00:00') }), 'Wait: promised 14/10');
   assert.equal(step({ owed: 900, dueTodayUnpaid: 450, promise: open }), 'Due-day message');
+});
+
+test('a promise logged today or yesterday is waited for even on the due day (no due-day message over a fresh promise)', () => {
+  const promise = (loggedOn: string) => ({ state: 'OPEN' as const, date: '2026-10-14', loggedOn });
+  assert.equal(step({ owed: 900, dueTodayUnpaid: 450, promise: promise(TODAY) }), 'Wait: promised 14/10');
+  assert.equal(step({ owed: 900, dueTodayUnpaid: 450, promise: promise('2026-10-11') }), 'Wait: promised 14/10');
+  assert.equal(step({ owed: 900, dueTodayUnpaid: 450, promise: promise('2026-10-10') }), 'Due-day message', 'logged two days ago');
+  assert.equal(step({ owed: 900, dueTodayUnpaid: 450, arrangement: 'Weekly', promise: promise(TODAY) }), 'Wait: promised 14/10');
+  assert.equal(step({ owed: 900, dueTodayUnpaid: 450, promise: { state: 'MISSED', date: '2026-10-11', loggedOn: '2026-10-11' } }), 'Promise missed: follow up');
 });
 
 test('a payment today or yesterday is thanked before anything else is asked (the conversation continues)', () => {
