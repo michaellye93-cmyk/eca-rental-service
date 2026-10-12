@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import type { FinanceInput } from '../types/finance.ts';
 import { calculateFinance } from '../services/finance/calculations.ts';
-import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedTotals, trendMonths, trendRow } from '../services/finance/dashboard.ts';
+import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedRevisionMap, storedTotals, TREND_RULES_VERSION, trendMonths, trendRow } from '../services/finance/dashboard.ts';
 import { arrearsAgeing, driverMonthlyLedger, monthCollection } from '../services/driverLedger.ts';
 
 const month = { finance_month: '2026-08', status: 'DRAFT' as const, revision: 1, refreshed_at: '2026-09-01', frozen_at: null,
@@ -122,8 +122,8 @@ test('a trend row carries revenue, contribution, operating profit and margin for
 
 test('the trend uses the stored figures of closed months and reads only the other months live', () => {
   const stored = [
-    { month: '2026-08-01', revision: 3, totals: { revenue: 1000, contribution: 400, profit: 250, margin: 0.25 } },
-    { month: '2026-09-01', revision: 5, totals: { revenue: 0, contribution: -50, profit: -80, margin: null } },
+    { month: '2026-08-01', revision: 3, totals: { revenue: 1000, contribution: 400, profit: 250, margin: 0.25, rules_version: TREND_RULES_VERSION } },
+    { month: '2026-09-01', revision: 5, totals: { revenue: 0, contribution: -50, profit: -80, margin: null, rules_version: TREND_RULES_VERSION } },
   ];
   const plan = planTrend(['2026-08', '2026-09', '2026-10'], stored);
   assert.deepEqual(plan.live, ['2026-10']);
@@ -136,7 +136,7 @@ test('the trend uses the stored figures of closed months and reads only the othe
 test('a closed month read without its stored figures (or with figures from before a reopen) is stored', () => {
   const report = calculateFinance(input);
   const row = trendRow('2026-08', 'CLOSED', report);
-  assert.deepEqual(storedTotals(row), { revenue: row.revenue, contribution: row.contribution, profit: row.profit, margin: row.margin });
+  assert.deepEqual(storedTotals(row), { revenue: row.revenue, contribution: row.contribution, profit: row.profit, margin: row.margin, rules_version: TREND_RULES_VERSION });
   const stored = new Map([['2026-08', 3]]);
   assert.equal(needsStoredTotals({ ...month, status: 'CLOSED', revision: 3 }, stored), false, 'already stored at this revision');
   assert.equal(needsStoredTotals({ ...month, status: 'CLOSED', revision: 4 }, stored), true, 'closed again after a reopen');
@@ -155,4 +155,18 @@ test('arrears by age: unpaid rent grouped by days past its due date', () => {
     { label: '61–90 days', amount: 0, drivers: 0 },
     { label: 'Over 90 days', amount: 0, drivers: 0 },
   ]);
+});
+
+test('stored trend figures worked out by other P&L or trend rules (another rules_version) count as not stored', () => {
+  assert.equal(TREND_RULES_VERSION, 1);
+  const current = { month: '2026-08-01', revision: 3, totals: { revenue: 1000, contribution: 400, profit: 250, margin: 0.25, rules_version: TREND_RULES_VERSION } };
+  const older = { month: '2026-09-01', revision: 5, totals: { revenue: 900, contribution: 300, profit: 200, margin: 0.2, rules_version: TREND_RULES_VERSION - 1 } };
+  const unversioned = { month: '2026-07-01', revision: 2, totals: { revenue: 800, contribution: 300, profit: 100, margin: 0.125 } };
+  const plan = planTrend(['2026-07', '2026-08', '2026-09'], [unversioned, current, older]);
+  assert.deepEqual(plan.live, ['2026-07', '2026-09'], 'read live, then stored again by the current rules');
+  assert.deepEqual([...plan.rows.keys()], ['2026-08']);
+  assert.deepEqual(plan.rows.get('2026-08'), { month: '2026-08', status: 'CLOSED', revenue: 1000, contribution: 400, profit: 250, margin: 0.25 }, 'the version is not part of the trend row');
+  const revisions = storedRevisionMap([unversioned, current, older]);
+  assert.deepEqual([...revisions], [['2026-08', 3]]);
+  assert.equal(needsStoredTotals({ ...month, finance_month: '2026-09-01', status: 'CLOSED', revision: 5 }, revisions), true, 'same revision, older rules: stored again');
 });

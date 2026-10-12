@@ -99,6 +99,13 @@ export function trendMonths(month: string, start = FINANCE_START): string[] {
   return months;
 }
 
+/**
+ * The version of the P&L and trend rules that trendRow's figures come from. Stored figures of closed months carry it,
+ * and figures stored under another version are read live again (and stored anew). Raise it whenever the P&L rules
+ * (calculations, revenue, costs, contribution, management profit) or the trend rules below change.
+ */
+export const TREND_RULES_VERSION = 1;
+
 export interface TrendRow { month: string; status: string; revenue: number; contribution: number; profit: number; margin: number | null }
 export const trendRow = (month: string, status: string, report: FinanceReport): TrendRow => ({
   month,
@@ -110,23 +117,35 @@ export const trendRow = (month: string, status: string, report: FinanceReport): 
 });
 
 /** A closed month's trend figures as stored by finance_save_month_totals (supabase/migrations/20261012200000_money_review.sql). */
-export interface StoredMonthTotals { month: string; revision: number; totals: { revenue: number; contribution: number; profit: number; margin: number | null } }
+export interface StoredMonthTotals {
+  month: string; revision: number;
+  /** rules_version: the TREND_RULES_VERSION the figures were worked out by; a row without it counts as not stored. */
+  totals: { revenue: number; contribution: number; profit: number; margin: number | null; rules_version?: number };
+}
 
-/** What is stored for a month: the trend row's figures, worked out by the P&L rules above. */
+/** What is stored for a month: the trend row's figures, worked out by the P&L rules above, and their rules version. */
 export const storedTotals = (row: TrendRow): StoredMonthTotals['totals'] =>
-  ({ revenue: row.revenue, contribution: row.contribution, profit: row.profit, margin: row.margin });
+  ({ revenue: row.revenue, contribution: row.contribution, profit: row.profit, margin: row.margin, rules_version: TREND_RULES_VERSION });
+
+/** Stored figures worked out by the current rules; any others count as not stored. */
+const currentRules = (stored: StoredMonthTotals[] | null) => (stored ?? []).filter((row) => row.totals?.rules_version === TREND_RULES_VERSION);
+
+/** Month (YYYY-MM) to the revision whose figures are stored by the current rules (see needsStoredTotals). */
+export const storedRevisionMap = (stored: StoredMonthTotals[]): Map<string, number> =>
+  new Map(currentRules(stored).map((row) => [row.month.slice(0, 7), row.revision] as [string, number]));
 
 /**
- * Trend rows for `months` (YYYY-MM): closed months with stored figures are taken from them; the others (Draft and
- * Ready months, or every month while nothing is stored, `stored` null) are listed in `live` to be read in full.
+ * Trend rows for `months` (YYYY-MM): closed months with figures stored by the current rules are taken from them; the
+ * others (Draft and Ready months, figures from other rules, or every month while nothing is stored, `stored` null) are
+ * listed in `live` to be read in full.
  */
 export function planTrend(months: string[], stored: StoredMonthTotals[] | null): { rows: Map<string, TrendRow>; live: string[] } {
-  const byMonth = new Map((stored ?? []).map((row) => [row.month.slice(0, 7), row] as const));
+  const byMonth = new Map(currentRules(stored).map((row) => [row.month.slice(0, 7), row] as const));
   const rows = new Map<string, TrendRow>();
   const live: string[] = [];
   for (const month of months) {
     const row = byMonth.get(month);
-    if (row) rows.set(month, { month, status: 'CLOSED', ...row.totals, margin: row.totals.margin ?? null });
+    if (row) rows.set(month, { month, status: 'CLOSED', revenue: row.totals.revenue, contribution: row.totals.contribution, profit: row.totals.profit, margin: row.totals.margin ?? null });
     else live.push(month);
   }
   return { rows, live };
