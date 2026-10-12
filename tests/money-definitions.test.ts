@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cashOf, collectedOf, isCashMethod, notCashOf } from '../services/moneyDefinitions.ts';
+import { cashOf, COLLECTED_INCLUDES, collectedOf, isCashMethod, notCashOf } from '../services/moneyDefinitions.ts';
 import type { PaymentTransaction } from '../types.ts';
 
 const payment = (amount: number, serviceClaim: number, paymentMethod?: PaymentTransaction['paymentMethod']): PaymentTransaction =>
@@ -22,4 +22,8 @@ test('collected is everything that settled rent: cash, service claims (the drive
   assert.equal(collectedOf(payment(0, 263, 'CLAIM')), 263);
   assert.equal(notCashOf(payment(150, 250, 'BANK TRANSFER')), 250);
   assert.equal(notCashOf(payment(300, 0, 'DEPOSIT CONTRA')), 300);
+});
+
+test('a screen showing collected money names all three parts', () => {
+  assert.equal(COLLECTED_INCLUDES, 'cash, service claims and deposit forfeits');
 });

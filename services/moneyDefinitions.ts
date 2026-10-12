@@ -25,5 +25,8 @@ export const cashOf = (payment: Money): number => (isCashMethod(payment.paymentM
 /** Everything the payment settled: amount plus service claim, whatever the method. */
 export const collectedOf = (payment: Money): number => payment.amount + (payment.serviceClaim || 0);
 
+/** How a screen showing collected money names what it includes. */
+export const COLLECTED_INCLUDES = 'cash, service claims and deposit forfeits';
+
 /** What settled rent without bringing in cash: service claims and deposit forfeits. */
 export const notCashOf = (payment: Money): number => collectedOf(payment) - cashOf(payment);

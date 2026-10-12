@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import type { DriverWithMetrics } from '../../types';
 import { formatCurrency, kualaLumpurNow, kualaLumpurToday, overdueRent } from '../../utils';
 import { balanceTrend } from '../../services/collections';
+import { COLLECTED_INCLUDES } from '../../services/moneyDefinitions';
 import { arrearsAgeing, collectionSplit, driverMonthlyLedger, monthCollection, monthPeriod, weekPeriods, type DriverMonth } from '../../services/driverLedger';
 import SegmentTrend from './SegmentTrend';
 import CollectionTrend from './CollectionTrend';
@@ -100,7 +101,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
           <div className="finance-total is-emphasis">
             <span>Collected this month</span>
             <strong>{percent(strip.rate)}</strong>
-            <small>{money(strip.collected)} of {money(strip.billed)} billed so far (cash and service claims)</small>
+            <small>{money(strip.collected)} of {money(strip.billed)} billed so far ({COLLECTED_INCLUDES})</small>
             {thisMonthSplit && <small>{money(thisMonthSplit.current)} for this month's rent · {money(thisMonthSplit.arrears)} for old arrears</small>}
           </div>
           <div className="finance-total">
