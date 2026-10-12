@@ -87,6 +87,20 @@ test('empty boxes print as lines to write on, and a long owner name shrinks to s
   assert.ok(long.getTextWidth(name) <= 292.37 - 2, 'fits on the owner name line');
 });
 
+test('a name too long for one line even when smaller goes onto two lines inside its box, never past it', () => {
+  const name = 'FIXTURE DRIVER WITH A VERY LONG NAME BIN FIXTURE FATHER NAME EXAMPLE';
+  const doc = letter(grabLetterValues({ driver: { name, nric: '000000000001' }, car, details, signatoryName: '', letterDate: '' }));
+  const text = doc.output();
+  const lines = [...text.matchAll(/\/F1 ([\d.]+) Tf\n(?:[^\n]*\n){2,3}([\d.]+) ([\d.]+) Td\s*\((FIXTURE DRIVER[^)]*|[^)]*EXAMPLE)\) Tj/g)];
+  assert.equal(lines.length, 2, 'two lines');
+  assert.equal(lines.map(m => m[4]).join(' '), name, 'nothing lost');
+  for (const [, size, x, , words] of lines) {
+    assert.ok(Number(size) >= 7);
+    doc.setFontSize(Number(size));
+    assert.ok(Number(x) + doc.getTextWidth(words) <= 248.8, `"${words}" stays inside the box`);
+  }
+});
+
 test('the file name names the letter, plate and driver, without characters Windows refuses', () => {
   assert.equal(grabLetterFileName('XAA1001', 'Fixture/Driver: One'), 'Grab Authorization Letter XAA1001 Fixture Driver  One.pdf');
 });

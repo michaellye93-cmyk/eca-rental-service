@@ -88,10 +88,25 @@ export function drawGrabLetter(doc: jsPDF, values: GrabLetterValues | Record<str
     const value = ((values as Record<string, string>)[box.key] ?? '').trim();
     if (!value) continue;
     const room = box.to - box.from - 2;
+    const fits = (lines: string[], size: number) => {
+      doc.setFontSize(size);
+      return lines.every(line => doc.getTextWidth(line) * k <= room);
+    };
+    // One line, down to 9 pt; past that, two lines (split at the most even word break) above the rule, down to 7 pt
+    let lines = [value];
     let size = 12;
+    while (size > 9 && !fits(lines, size)) size -= 0.5;
+    if (!fits(lines, size)) {
+      const words = value.split(/\s+/);
+      const splits = words.slice(1).map((_, i) => [words.slice(0, i + 1).join(' '), words.slice(i + 1).join(' ')]);
+      doc.setFontSize(10);
+      lines = splits.length ? splits.reduce((best, pair) =>
+        Math.max(...pair.map(line => doc.getTextWidth(line))) < Math.max(...best.map(line => doc.getTextWidth(line))) ? pair : best) : lines;
+      size = 10;
+      while (size > 7 && !fits(lines, size)) size -= 0.5;
+    }
     doc.setFontSize(size);
-    while (size > 7 && doc.getTextWidth(value) * k > room) doc.setFontSize((size -= 0.5));
-    doc.text(value, at(box.from + 2), at(box.baseline));
+    lines.forEach((line, i) => doc.text(line, at(box.from + 2), at(box.baseline - (lines.length - 1 - i) * size * 1.1)));
   }
   doc.setFontSize(12);
   doc.setLineWidth(at(SIGNATURE.width));
