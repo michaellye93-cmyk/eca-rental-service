@@ -297,8 +297,12 @@ export default function FinanceView(props: MoneyProps = {}) {
         ]);
         // A Draft month opened for the first time gets its Operation Fix Cost lines from Records.
         if (fixedCostsMissing(loaded)) {
-          loaded = await generateFixedCosts(selectedMonth, loaded.month.revision);
-          meta = await loadWorkspaceMeta(selectedMonth);
+          try {
+            loaded = await generateFixedCosts(selectedMonth, loaded.month.revision);
+            meta = await loadWorkspaceMeta(selectedMonth);
+          } catch {
+            // Another tab changed the month first: show what was read; the next reload creates the lines.
+          }
         }
         if (current === generation.current && selectedMonth === month) {
           setInput(loaded);
