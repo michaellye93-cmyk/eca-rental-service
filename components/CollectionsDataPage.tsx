@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Driver } from '../types';
 import { kualaLumpurNow, kualaLumpurToday } from '../utils';
-import { buildCollectionsData, collectionsJson } from '../services/collections';
+import { buildCollectionsData, collectionsHygiene, collectionsJson, type HygieneDriver } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
 
 /**
@@ -14,6 +14,8 @@ export default function CollectionsDataPage({ drivers, userRole }: { drivers: Dr
   const json = useMemo(() => (extras.loaded
     ? collectionsJson(buildCollectionsData({ drivers, now: kualaLumpurNow(), today: kualaLumpurToday(), bankIn: extras.bankIn, promises: extras.promises, plans: extras.plans, contacts: extras.contacts }))
     : ''), [drivers, extras.loaded, extras.bankIn, extras.promises, extras.plans, extras.contacts]);
+
+  const hygiene = useMemo(() => (extras.loaded ? collectionsHygiene(drivers, extras.bankIn) : null), [drivers, extras.loaded, extras.bankIn]);
 
   if (userRole !== 'admin') {
     return (
@@ -41,9 +43,42 @@ export default function CollectionsDataPage({ drivers, userRole }: { drivers: Dr
         <button type="button" onClick={() => window.location.reload()} className="text-sm font-semibold text-blue-700 underline">Reload</button>
         <a href="/" className="text-sm font-semibold text-blue-700 underline">Back to the admin site</a>
       </header>
+      {hygiene && <HygienePanel hygiene={hygiene} />}
       {json
         ? <pre id="collections-data" aria-label="Collections data as JSON" className="text-xs leading-relaxed whitespace-pre-wrap break-words font-mono">{json}</pre>
         : <p role="status">Loading promises, plans and bank-in details…</p>}
     </main>
+  );
+}
+
+const CATEGORY_NAME = { SEWABELI: 'Sewa Beli', SEWA_BIASA: 'Sewa Biasa' } as const;
+
+/** What is missing for the daily run, fixed in Edit Driver (or, for bank-in lines, in a driver's WhatsApp statement window). */
+function HygienePanel({ hygiene }: { hygiene: ReturnType<typeof collectionsHygiene> }) {
+  const groups: { title: string; list: HygieneDriver[] }[] = [
+    { title: 'No WhatsApp group name', list: hygiene.noGroup },
+    { title: 'No phone number', list: hygiene.noPhone },
+    { title: 'Monthly rent, no collection arrangement', list: hygiene.noArrangement },
+  ];
+  const clean = groups.every(group => group.list.length === 0) && hygiene.bankInMissing.length === 0 && !hygiene.bankInUnknown;
+  return (
+    <section aria-label="Collections checks" className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm space-y-2">
+      <h2 className="font-bold">Before the run</h2>
+      {clean ? <p className="text-emerald-800">Every active driver has a WhatsApp group, a phone and (monthly rent) an arrangement; both bank-in lines are set.</p> : (
+        <ul className="space-y-1.5">
+          {hygiene.bankInUnknown && <li className="text-amber-900">Bank-in lines could not be read (the database update has not been run): no statement can be copied.</li>}
+          {hygiene.bankInMissing.map(category => (
+            <li key={category} className="text-amber-900">The {CATEGORY_NAME[category]} bank-in line is not set, so "Copy statement" stays off for {CATEGORY_NAME[category]} drivers. An admin adds it in any of their WhatsApp statement windows.</li>
+          ))}
+          {groups.filter(group => group.list.length > 0).map(group => (
+            <li key={group.title}>
+              <span className="font-semibold">{group.title} ({group.list.length}):</span>{' '}
+              <span className="font-mono">{group.list.map(driver => `${driver.plate} ${driver.name}`).join(', ')}</span>
+              <span className="text-gray-600"> · fix with Edit Driver</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

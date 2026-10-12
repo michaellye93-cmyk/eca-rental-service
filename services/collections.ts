@@ -274,6 +274,48 @@ const ordinal = (day: number) => {
   return `${day}${suffix}`;
 };
 
+/** A driver named in the collections hygiene list. */
+export interface HygieneDriver { id: string; plate: string; name: string }
+
+export interface CollectionsHygiene {
+  /** Active drivers without a WhatsApp group name (statements cannot be pasted in the right group). */
+  noGroup: HygieneDriver[];
+  noPhone: HygieneDriver[];
+  /** Active drivers on monthly rent (or tagged MONTHLY) with no collection arrangement set. */
+  noArrangement: HygieneDriver[];
+  /** Categories whose bank-in line is not set: "Copy statement" stays off for their drivers. */
+  bankInMissing: ('SEWABELI' | 'SEWA_BIASA')[];
+  /** True when the bank-in lines could not be read at all (the database update has not been run). */
+  bankInUnknown: boolean;
+}
+
+const isMonthly = (driver: Driver) => driver.rentalCycle === 'MONTHLY' || (driver.tags || []).some(tag => tag.trim().toUpperCase() === 'MONTHLY');
+
+/** What is missing for the daily collection run, from the driver records (Add / Edit Driver) and the bank-in settings. */
+export function collectionsHygiene(drivers: Driver[], bankIn: { SEWABELI: string | null; SEWA_BIASA: string | null } | null): CollectionsHygiene {
+  const active = drivers.filter(driver => !driver.isDelisted)
+    .sort((a, b) => normalizePlate(a.carPlate).localeCompare(normalizePlate(b.carPlate)));
+  const named = (list: Driver[]) => list.map(driver => ({ id: driver.id, plate: normalizePlate(driver.carPlate), name: shortName(driver.name) }));
+  return {
+    noGroup: named(active.filter(driver => !driver.whatsappGroup?.trim())),
+    noPhone: named(active.filter(driver => !driver.phone?.trim())),
+    noArrangement: named(active.filter(driver => isMonthly(driver) && !driver.collectionArrangement?.trim())),
+    bankInMissing: bankIn ? (['SEWABELI', 'SEWA_BIASA'] as const).filter(category => !bankIn[category]) : [],
+    bankInUnknown: bankIn === null,
+  };
+}
+
+/** The hygiene findings about drivers as data-view warnings (the bank-in lines already have their own warnings). */
+const hygieneWarnings = (hygiene: CollectionsHygiene): string[] => {
+  const line = (list: HygieneDriver[], what: string) =>
+    list.length ? [`${list.length} active driver${list.length === 1 ? ' has' : 's have'} ${what}: ${list.map(d => d.plate).join(', ')}.`] : [];
+  return [
+    ...line(hygiene.noGroup, 'no WhatsApp group name (add it with Edit Driver)'),
+    ...line(hygiene.noPhone, 'no phone number (add it with Edit Driver)'),
+    ...line(hygiene.noArrangement, 'monthly rent but no collection arrangement (add it with Edit Driver)'),
+  ];
+};
+
 export interface CollectionsInput {
   drivers: Driver[];
   /** Kuala Lumpur wall-clock time (kualaLumpurNow). */
@@ -343,6 +385,7 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
   if (input.plans === null) warnings.push('Catch-up plans are not available yet: the database update has not been run.');
   const contacts = input.contacts ?? null;
   if (contacts === null) warnings.push('The contact log is not available yet: the database update has not been run.');
+  warnings.push(...hygieneWarnings(collectionsHygiene(input.drivers, input.bankIn)));
   const cutoff = iso(addDays(todayDate, -60));
 
   const rows = active
