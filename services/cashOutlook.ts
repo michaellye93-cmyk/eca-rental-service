@@ -372,10 +372,32 @@ export interface BankCheck {
   missing: { account: string; when: 'start' | 'end' }[];
 }
 
+/** An account counts as in use for a month when it has a balance dated within 45 days of the month (a closed or old one does not). */
+export const IN_USE_DAYS = 45;
+function accountsInUse(balances: CashBalanceEntry[], month: string): string[] {
+  const first = `${month}-01`;
+  const [year, number] = month.split('-').map(Number);
+  const nextFirst = `${number === 12 ? year + 1 : year}-${String(number === 12 ? 1 : number + 1).padStart(2, '0')}-01`;
+  const from = dayNumber(first) - IN_USE_DAYS;
+  const to = dayNumber(nextFirst) + IN_USE_DAYS;
+  return [...new Set(balances.filter(entry => isIsoDate(entry.as_of) && dayNumber(entry.as_of) >= from && dayNumber(entry.as_of) <= to).map(entry => entry.account_label))].sort();
+}
+
+/**
+ * The bank accounts in use for the month (as above) with no posted bank statement for it. A statement belongs to an
+ * account with the same name or the same last four digits.
+ */
+export function accountsWithoutStatement(balances: CashBalanceEntry[], imports: { account_label: string }[], month: string): string[] {
+  const lastFour = (label: string) => label.replace(/\D/g, '').slice(-4);
+  return accountsInUse(balances, month).filter(account => !imports.some(item =>
+    item.account_label.trim() === account || (lastFour(account).length === 4 && lastFour(item.account_label) === lastFour(account))));
+}
+
 /**
  * The bank check for month YYYY-MM: the balances at the start of the month plus the month's net cash flow should equal
  * the balances at month end. A balance counts for a month boundary when it is dated the last day of the month or the
- * 1st of the next; the later date wins, then the later entry. Every account ever entered needs both boundaries.
+ * 1st of the next; the later date wins, then the later entry. Every account in use that month (see accountsInUse) needs
+ * both boundaries.
  */
 export function bankCheck(balances: CashBalanceEntry[], month: string, netCashFlow: number): BankCheck {
   const first = `${month}-01`;
@@ -383,7 +405,7 @@ export function bankCheck(balances: CashBalanceEntry[], month: string, netCashFl
   const [year, number] = month.split('-').map(Number);
   const nextFirst = `${number === 12 ? year + 1 : year}-${String(number === 12 ? 1 : number + 1).padStart(2, '0')}-01`;
   const last = addDays(nextFirst, -1);
-  const accounts = [...new Set(balances.map(entry => entry.account_label))].sort();
+  const accounts = accountsInUse(balances, month);
   const missing: BankCheck['missing'] = [];
   const at = (account: string, dates: string[], when: 'start' | 'end') => {
     const found = balances.filter(entry => entry.account_label === account && dates.includes(entry.as_of.slice(0, 10)))
