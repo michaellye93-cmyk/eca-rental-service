@@ -1,5 +1,5 @@
 import { DriverStatus } from './types.ts';
-import type { Driver, DriverMetrics, Invoice, PaymentTransaction } from './types.ts';
+import type { CollectionTone, Driver, DriverMetrics, Invoice, PaymentTransaction } from './types.ts';
 
 export const parseDate = (dateVal: string | Date | number | null | undefined): Date => {
   if (!dateVal) return new Date(NaN);
@@ -526,6 +526,11 @@ export interface DriverRow {
   whatsapp_group?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  collection_arrangement?: string | null;
+  collection_tone?: string | null;
+  collection_language?: string | null;
+  contact_window?: string | null;
+  collection_note?: string | null;
 }
 
 /** The profile and contract columns written when a driver is created or edited. */
@@ -547,6 +552,11 @@ export const toDriverRow = (driver: Driver) => ({
   ...(driver.whatsappGroup !== undefined ? { whatsapp_group: driver.whatsappGroup.trim() || null } : {}),
   ...(driver.emergencyContactName !== undefined ? { emergency_contact_name: driver.emergencyContactName.trim() || null } : {}),
   ...(driver.emergencyContactPhone !== undefined ? { emergency_contact_phone: driver.emergencyContactPhone.trim() || null } : {}),
+  ...(driver.collectionArrangement !== undefined ? { collection_arrangement: driver.collectionArrangement.trim() || null } : {}),
+  ...(driver.collectionTone !== undefined ? { collection_tone: driver.collectionTone || null } : {}),
+  ...(driver.collectionLanguage !== undefined ? { collection_language: driver.collectionLanguage.trim() || null } : {}),
+  ...(driver.contactWindow !== undefined ? { contact_window: driver.contactWindow.trim() || null } : {}),
+  ...(driver.collectionNote !== undefined ? { collection_note: driver.collectionNote.trim() || null } : {}),
 });
 
 /** A drivers row as the app's driver profile; payments and totals are attached by the caller. */
@@ -570,6 +580,11 @@ export const fromDriverRow = (row: DriverRow): Omit<Driver, 'totalAmountPaid' | 
   ...(row.whatsapp_group ? { whatsappGroup: row.whatsapp_group } : {}),
   ...(row.emergency_contact_name ? { emergencyContactName: row.emergency_contact_name } : {}),
   ...(row.emergency_contact_phone ? { emergencyContactPhone: row.emergency_contact_phone } : {}),
+  ...(row.collection_arrangement ? { collectionArrangement: row.collection_arrangement } : {}),
+  ...(row.collection_tone ? { collectionTone: row.collection_tone as CollectionTone } : {}),
+  ...(row.collection_language ? { collectionLanguage: row.collection_language } : {}),
+  ...(row.contact_window ? { contactWindow: row.contact_window } : {}),
+  ...(row.collection_note ? { collectionNote: row.collection_note } : {}),
 });
 
 /**

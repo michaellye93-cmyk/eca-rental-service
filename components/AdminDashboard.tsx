@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Driver, DriverMetrics, DriverStatus } from '../types';
+import { Driver, DriverMetrics, DriverStatus, type CollectionTone } from '../types';
 import { driverWithNric, buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, getNextDueDate, kualaLumpurNow, kualaLumpurToday, lastPayment, lastPayWarning, lateAlertDays, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const FleetView = React.lazy(() => import('./fleet/FleetView'));
@@ -48,7 +48,7 @@ import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { BankBadge, PaymentNoteLines, useBankStatus, usePaymentLog } from './PaymentNotes';
 import { findPossibleDuplicates, isBankReceipt, type PossibleDuplicate } from '../services/paymentLog';
-import { catchUpStatus, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
+import { catchUpStatus, collectionSummary, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
@@ -360,6 +360,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     address: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
+    // How collections are made with this driver (this form is the only place they are typed)
+    collectionArrangement: '',
+    collectionTone: '' as CollectionTone | '',
+    collectionLanguage: '',
+    contactWindow: '',
+    collectionNote: '',
     // Money received at sign-up (new drivers only; later changes go in the driver's Deposits panel)
     upfrontDeposit: '',
     upfrontDownpayment: '',
@@ -813,6 +819,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       address: driver.address || '',
       emergencyContactName: driver.emergencyContactName || '',
       emergencyContactPhone: driver.emergencyContactPhone || '',
+      collectionArrangement: driver.collectionArrangement || '',
+      collectionTone: driver.collectionTone || '',
+      collectionLanguage: driver.collectionLanguage || '',
+      contactWindow: driver.contactWindow || '',
+      collectionNote: driver.collectionNote || '',
       upfrontDeposit: '',
       upfrontDownpayment: '',
       nric: driver.nric,
@@ -875,6 +886,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...formData, contractDuration: finalDuration, phone: phone ?? (originalPhone ? '' : undefined), whatsappGroup: whatsappGroup || (originalGroup ? '' : undefined),
       emergencyContactName: keepOrClear(formData.emergencyContactName, original?.emergencyContactName),
       emergencyContactPhone: keepOrClear(formData.emergencyContactPhone, original?.emergencyContactPhone),
+      collectionArrangement: keepOrClear(formData.collectionArrangement, original?.collectionArrangement),
+      collectionTone: (keepOrClear(formData.collectionTone, original?.collectionTone) as CollectionTone | '' | undefined),
+      collectionLanguage: keepOrClear(formData.collectionLanguage, original?.collectionLanguage),
+      contactWindow: keepOrClear(formData.contactWindow, original?.contactWindow),
+      collectionNote: keepOrClear(formData.collectionNote, original?.collectionNote),
     };
 
     try {
@@ -1379,6 +1395,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="flex items-center gap-1 font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"><Calendar className="w-3 h-3" aria-hidden="true" /> Due {nextDueStr}</span>
                                     {driver.category && <span className={`font-bold px-1.5 py-0.5 uppercase tracking-wider rounded border ${driver.category === 'SEWABELI' ? 'bg-purple-50 text-purple-800 border-purple-200' : 'bg-orange-50 text-orange-800 border-orange-200'}`}>{driver.category === 'SEWABELI' ? 'Sewabeli' : 'Sewa Biasa'}</span>}
                                     {driver.tags?.map((tag, i) => <span key={i} className="bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-medium">{tag}</span>)}
+                                    {driver.collectionArrangement && (
+                                      <span title={collectionSummary(driver) ?? undefined} className="max-w-[16rem] truncate font-semibold px-1.5 py-0.5 rounded border bg-teal-50 text-teal-900 border-teal-200">{driver.collectionArrangement}</span>
+                                    )}
                                     {collectionChips.get(driver.id)?.promise && (
                                       <span className={`font-bold px-1.5 py-0.5 rounded border ${collectionChips.get(driver.id)!.promise!.missed ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{collectionChips.get(driver.id)!.promise!.text}</span>
                                     )}
@@ -1600,6 +1619,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <input id="driver-end" type="date" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contractEndDate} onChange={e => setFormData({...formData, contractEndDate: e.target.value})} />
               </div>
             </div>
+            <fieldset className="rounded-lg border border-gray-200 p-3 space-y-3" aria-describedby="driver-collections-note">
+              <legend className="px-1 text-sm font-bold text-gray-700">Collections</legend>
+              <p id="driver-collections-note" className="text-xs text-gray-500 -mt-1">How rent is collected from this driver. Shown on the driver row, the WhatsApp statement window and the collections data; never to the driver.</p>
+              <div>
+                <label htmlFor="driver-arrangement" className="block text-xs font-bold text-gray-600 uppercase mb-1">Arrangement</label>
+                <input id="driver-arrangement" type="text" maxLength={300} autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.collectionArrangement} onChange={e => setFormData({...formData, collectionArrangement: e.target.value})} placeholder="e.g. Monthly RM1,400 by the 10th (optional)" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label htmlFor="driver-tone" className="block text-xs font-bold text-gray-600 uppercase mb-1">Tone</label>
+                  <select id="driver-tone" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.collectionTone} onChange={e => setFormData({...formData, collectionTone: e.target.value as CollectionTone | ''})}>
+                    <option value="">Not set</option>
+                    <option value="SOFT">Soft</option>
+                    <option value="POLITE">Polite</option>
+                    <option value="FIRM">Firm</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="driver-language" className="block text-xs font-bold text-gray-600 uppercase mb-1">Language</label>
+                  <select id="driver-language" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.collectionLanguage} onChange={e => setFormData({...formData, collectionLanguage: e.target.value})}>
+                    <option value="">Not set</option>
+                    <option value="BM">BM</option>
+                    <option value="EN">EN</option>
+                    <option value="ZH">ZH</option>
+                    <option value="MIXED">Mixed</option>
+                    {formData.collectionLanguage && !['BM', 'EN', 'ZH', 'MIXED'].includes(formData.collectionLanguage) && <option value={formData.collectionLanguage}>{formData.collectionLanguage}</option>}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="driver-window" className="block text-xs font-bold text-gray-600 uppercase mb-1">Contact window</label>
+                  <input id="driver-window" type="text" maxLength={100} autoComplete="off" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.contactWindow} onChange={e => setFormData({...formData, contactWindow: e.target.value})} placeholder="e.g. after 2pm" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="driver-collection-note" className="block text-xs font-bold text-gray-600 uppercase mb-1">Collection note</label>
+                <textarea id="driver-collection-note" rows={2} maxLength={1000} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.collectionNote} onChange={e => setFormData({...formData, collectionNote: e.target.value})} placeholder="Optional" />
+              </div>
+            </fieldset>
             {depositBaseline === null && editingId && <p role="status" className="text-xs text-gray-500">Reading the deposit and downpayment…</p>}
             {depositBaseline && depositBaseline !== 'unavailable' && (
               <div className={`grid grid-cols-1 ${formData.category === 'SEWABELI' ? 'sm:grid-cols-2' : ''} gap-4`}>

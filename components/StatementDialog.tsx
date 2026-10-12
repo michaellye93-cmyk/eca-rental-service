@@ -3,7 +3,7 @@ import { Check, ClipboardCopy } from 'lucide-react';
 import Dialog from './Dialog';
 import type { Driver } from '../types';
 import { categoryLabel, isSewaBiasa, kualaLumpurNow } from '../utils';
-import { whatsappStatement } from '../services/collections';
+import { collectionSummary, whatsappStatement } from '../services/collections';
 import { saveBankIn, type BankIn } from '../services/collectionsApi';
 
 interface StatementDialogProps {
@@ -60,6 +60,14 @@ export default function StatementDialog({ driver, bankIn, isAdmin, onClose, onBa
   return (
     <Dialog title="WhatsApp statement" description={`${driver.name} · ${driver.carPlate}`} onClose={onClose}>
       <div className="p-5 space-y-4 text-sm">
+        {/* A reminder for whoever sends it; never part of the statement text */}
+        {(collectionSummary(driver) || driver.collectionNote) && (
+          <div role="note" aria-label="Collection arrangement" className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-950">
+            <p className="text-xs font-bold uppercase text-teal-800">Arrangement (not sent)</p>
+            {collectionSummary(driver) && <p className="font-semibold">{collectionSummary(driver)}</p>}
+            {driver.collectionNote && <p className="text-xs mt-0.5">{driver.collectionNote}</p>}
+          </div>
+        )}
         <p className="text-gray-700">
           {driver.whatsappGroup
             ? <>Paste into the group <strong className="font-bold text-gray-900">{driver.whatsappGroup}</strong>.</>

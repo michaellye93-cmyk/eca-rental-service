@@ -35,3 +35,14 @@ test('delist, plate and unknown fields read plainly; bookkeeping columns are lef
 test('an edit that only touched bookkeeping columns is not listed', () => {
   assert.deepEqual(driverChangeLines([change({ fields: ['updated_at'], before: { updated_at: 'x' }, after: { updated_at: 'y' } })]), []);
 });
+
+test('collection arrangement edits read with plain labels', () => {
+  const [line] = driverChangeLines([change({
+    fields: ['collection_arrangement', 'collection_tone', 'contact_window'],
+    before: { collection_arrangement: null, collection_tone: 'SOFT', contact_window: null },
+    after: { collection_arrangement: 'Monthly by the 10th', collection_tone: 'FIRM', contact_window: 'after 2pm' },
+  })]);
+  assert.match(line, /collection arrangement — → Monthly by the 10th/);
+  assert.match(line, /collection tone SOFT → FIRM/);
+  assert.match(line, /contact window — → after 2pm/);
+});

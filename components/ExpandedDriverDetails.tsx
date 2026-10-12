@@ -6,6 +6,7 @@ import { BankBadge, DeletedPayments, PaymentNoteLines, useBankStatus, usePayment
 import DriverDeposits from './DriverDeposits';
 import { loadDriverChanges } from '../services/collectionsApi';
 import { driverChangeLines, type DriverChange } from '../services/driverChanges';
+import { collectionSummary } from '../services/collections';
 import { Phone, User, FileText, Clock, DollarSign, History } from 'lucide-react';
 
 interface ExpandedDriverDetailsProps {
@@ -22,7 +23,7 @@ function ProfileHistory({ driver }: { driver: Driver }) {
   const [changes, setChanges] = useState<DriverChange[] | null>(null);
   const [failed, setFailed] = useState(false);
   // Reloaded when the profile itself changes (an edit here), not on every payment
-  const profileKey = `${driver.id}|${driver.name}|${driver.carPlate}|${driver.rentalRate}|${driver.contractStartDate}|${driver.contractEndDate}|${driver.isDelisted}|${(driver.tags || []).join(',')}|${driver.phone}|${driver.whatsappGroup}`;
+  const profileKey = `${driver.id}|${driver.name}|${driver.carPlate}|${driver.rentalRate}|${driver.contractStartDate}|${driver.contractEndDate}|${driver.isDelisted}|${(driver.tags || []).join(',')}|${driver.phone}|${driver.whatsappGroup}|${driver.collectionArrangement}|${driver.collectionTone}|${driver.collectionLanguage}|${driver.contactWindow}|${driver.collectionNote}`;
   useEffect(() => {
     let live = true;
     setFailed(false);
@@ -98,6 +99,15 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
             <div className="flex items-center justify-between gap-3">
               <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">WhatsApp group</dt>
               <dd className="text-right break-words">{driver.whatsappGroup ? <span className="font-bold text-gray-800">{driver.whatsappGroup}</span> : <span className="text-gray-600 italic">Not set: add it with Edit</span>}</dd>
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Collection</dt>
+              <dd className="text-right break-words">
+                {collectionSummary(driver)
+                  ? <span className="font-bold text-gray-800">{collectionSummary(driver)}</span>
+                  : <span className="text-gray-600 italic">No arrangement: add it with Edit</span>}
+                {driver.collectionNote && <span className="block text-gray-600 font-medium mt-0.5">{driver.collectionNote}</span>}
+              </dd>
             </div>
             <div className="flex items-center justify-between gap-3">
               <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">NRIC No</dt>
