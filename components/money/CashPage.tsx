@@ -331,7 +331,7 @@ function OutlookTable({ today, outlook, drivers, rate }: { today: string; outloo
             {row('Workshop (3-month average)', buckets.map(b => out(b.bills.workshop)))}
             {row('Other vehicle costs (3-month average)', buckets.map(b => out(b.bills.vehicleCosts)))}
             {row('One-off company costs (3-month average)', buckets.map(b => out(b.bills.oneOffOpex)))}
-            {buckets.some(b => b.bills.depositRefunds > 0) && row('Deposit refunds expected (contracts ending)', buckets.map(b => out(b.bills.depositRefunds)))}
+            {buckets.some(b => b.bills.depositRefunds > 0) && row('Deposit refunds expected (contracts ending, or ended and overdue)', buckets.map(b => out(b.bills.depositRefunds)))}
             <tr className="cash-total-row">
               <th scope="row">Cash at end</th>
               {buckets.map(b => <td key={b.from} className={`${b.closing < 0 ? 'finance-negative' : ''} ${b.closing === lowest ? 'cash-lowest' : ''}`}>{money(b.closing)}</td>)}
@@ -346,13 +346,14 @@ function OutlookTable({ today, outlook, drivers, rate }: { today: string; outloo
 function BillsComing({ today, outlook, drivers }: { today: string; outlook: CashOutlookData; drivers: Driver[] }) {
   const until = addDays(today, 59);
   const insurance = outlook.insurance.filter(item => item.due_date.slice(0, 10) >= today && item.due_date.slice(0, 10) <= until);
-  const refunds = depositRefundsDue(drivers, outlook.deposits_held, today, until);
+  const refunds = depositRefundsDue(drivers, outlook.deposits_held, today, until, today);
   // Insurance and expected deposit refunds, by due date.
   const lines = [
     ...insurance.map(item => ({ key: `${item.plate_key}-${item.due_date}-${item.kind}`, due: item.due_date.slice(0, 10), who: item.display_plate,
       what: item.kind === 'RENEWAL' ? 'Insurance renewal (last premium)' : 'Insurance policy starting', amount: Number(item.amount) })),
     ...refunds.map(item => ({ key: `deposit-${item.driver_id}`, due: item.due_date, who: `${item.name}${item.plate ? ` · ${item.plate}` : ''}`,
-      what: 'Expected deposit refund, contract ends (it may be forfeited instead)', amount: item.amount })),
+      what: item.overdue ? `Overdue refund: contract ended ${formatDate(item.ended!)}, deposit still held (it may be forfeited instead)` : 'Expected deposit refund, contract ends (it may be forfeited instead)',
+      amount: item.amount })),
   ].sort((a, b) => a.due.localeCompare(b.due));
   const thisMonth = outlook.months[0];
   return (

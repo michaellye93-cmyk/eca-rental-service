@@ -232,3 +232,23 @@ test('an active driver whose contract ends in the window with a deposit held bri
   // Without the deposit ledger nothing changes and no figure is shown.
   assert.equal(cashLine({ today: TODAY, outlook: outlook(), drivers: [weekly], overdue: 0, overdueChange: 0 }).depositsHeld, null);
 });
+
+test('a deposit still held after the contract end date is an overdue refund, counted once on the first day of the window holding today', () => {
+  const held = depositsHeldByDriver(ledger);
+  const drivers = [
+    ending('d3', 'Fixture Driver B', '2026-10-20'),  // ended before today, deposit still held
+    ending('d1', 'Fixture Driver A', '2026-11-20'),  // ends in the first window
+  ];
+  assert.deepEqual(depositRefundsDue(drivers, held, TODAY, '2026-11-30', TODAY), [
+    { driver_id: 'd3', name: 'Fixture Driver B', plate: 'XAC3001', due_date: TODAY, amount: 800, overdue: true, ended: '2026-10-20' },
+    { driver_id: 'd1', name: 'Fixture Driver A', plate: 'XAC3001', due_date: '2026-11-20', amount: 700 },
+  ]);
+  const data = outlook({ deposits_held: held });
+  assert.equal(windowBills(data, TODAY, '2026-11-30', drivers, TODAY).depositRefunds, 1500);
+  assert.equal(windowBills(data, '2026-12-01', '2026-12-31', drivers, TODAY).depositRefunds, 0);
+  assert.equal(cashLine({ today: TODAY, outlook: data, drivers: [weekly, ...drivers], overdue: 0, overdueChange: 0 }).bills.depositRefunds, 1500);
+  // The month-by-month outlook counts each refund once: in the window it falls in, an overdue one in the first.
+  const months = monthlyOutlook({ today: TODAY, outlook: data, drivers });
+  assert.deepEqual(months.map(m => m.bills.depositRefunds), [1500, 0, 0, 0]);
+  assert.deepEqual(depositRefundsDue(drivers, held, '2026-12-01', '2026-12-31', TODAY), [], 'not again in a later window');
+});
