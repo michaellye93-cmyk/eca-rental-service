@@ -59,6 +59,7 @@ import BankStatementPanel from "./BankStatementPanel";
 import FinanceImportPreview from "./FinanceImportPreview";
 import Dialog from "./FinanceDialog";
 import FinanceAudit from "./FinanceAudit";
+import PlatesToCheck from "./PlatesToCheck";
 import MonthClose, { groupedIssues, readableIssue } from "./FinanceMonthClose";
 import {
   ExpenseForm,
@@ -1240,6 +1241,7 @@ function Expenses({
         key={tab}
         tab={tab}
         input={input}
+        drivers={drivers}
         month={month}
         disabled={disabled}
         onSave={onSaveSetting}
@@ -1326,7 +1328,7 @@ function Expenses({
   );
 }
 
-function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCancel, onFile, onExport }: any) {
+function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCancel, onFile, onExport, drivers }: any) {
   const [editor, setEditor] = useState<string | null | undefined>(undefined);
   const [costSort, setCostSort] = useState<{
     key: "type" | "amount";
@@ -1403,6 +1405,7 @@ function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCanc
   return (
     <>
       {tab === "vehicle_master" ? (
+        <>
         <section className="finance-panel">
           <SectionHeading
             title="Vehicle Master"
@@ -1428,6 +1431,8 @@ function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCanc
             ))}
           </DataTable>
         </section>
+        <PlatesToCheck vehicles={input.vehicles} drivers={drivers ?? []} />
+        </>
       ) : tab === "monthly_vehicle_costs" ? (
         <section className="finance-panel">
           <SectionHeading
