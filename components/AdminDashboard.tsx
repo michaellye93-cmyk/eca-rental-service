@@ -55,7 +55,7 @@ import StatementDialog from './StatementDialog';
 import { buildAdminPath, storedFinancePage, type AdminRoute } from '../services/routes';
 import { logContact } from '../services/collectionsApi';
 import { loadDeposits, loadDepositsHeld } from '../services/depositsApi';
-import { receivedByKind, upfrontToRecord } from '../services/depositTotals';
+import { receivedByKind, upfrontToRecord, type UpfrontReceived } from '../services/depositTotals';
 
 interface AdminDashboardProps {
   drivers: Driver[];
@@ -63,9 +63,9 @@ interface AdminDashboardProps {
   onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void;
   onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void | Promise<void>;
   /** Creates the driver; with `upfront`, also records the money received at signing once the driver exists. */
-  onCreateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
+  onCreateDriver: (driver: Driver, upfront?: UpfrontReceived) => Promise<void>;
   /** Saves the driver; with `upfront`, also records extra deposit/downpayment received (Deposits panel). */
-  onUpdateDriver: (driver: Driver, upfront?: { deposit: number; downpayment: number }) => Promise<void>;
+  onUpdateDriver: (driver: Driver, upfront?: UpfrontReceived) => Promise<void>;
   onDelistDriver: (driverId: string) => void;
   onDeleteDriver: (driverId: string) => void;
   onLogout: () => void;
@@ -373,6 +373,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // Money received at signing: entered only in this form (the Deposits panel records refunds and forfeits later)
     upfrontDeposit: '',
     upfrontDownpayment: '',
+    /** The day the deposit/downpayment was received; empty means today (Kuala Lumpur). */
+    upfrontDate: '',
     nric: '',
     // contactNumber removed
     carPlate: '',
@@ -866,6 +868,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       collectionNote: driver.collectionNote || '',
       upfrontDeposit: '',
       upfrontDownpayment: '',
+      upfrontDate: '',
       nric: driver.nric,
       // contactNumber removed
       carPlate: driver.carPlate,
@@ -939,7 +942,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (!originalDriver) return;
         const upfront = depositChanges();
         if (typeof upfront === 'string') { setDriverFormError(upfront); return; }
-        const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, ...profile } = submissionData;
+        const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, upfrontDate: _date, ...profile } = submissionData;
         await onUpdateDriver({ ...originalDriver, ...profile }, upfront);
       } else {
         // One active driver per NRIC; a returning driver (old record delisted) gets a new record for the new car
@@ -950,7 +953,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
         const upfront = depositChanges();
         if (typeof upfront === 'string') { setDriverFormError(upfront); return; }
-        const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, ...profile } = submissionData;
+        const { upfrontDeposit: _deposit, upfrontDownpayment: _downpayment, upfrontDate: _date, ...profile } = submissionData;
         await onCreateDriver({ id: Date.now().toString(), ...profile, totalAmountPaid: 0, paymentHistory: [] }, upfront);
       }
       // The save handlers reload the list themselves
@@ -962,10 +965,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   /** The deposit/downpayment to record from the form (only the rise over what is recorded), or why it can't be saved. */
-  function depositChanges(): { deposit: number; downpayment: number } | undefined | string {
+  function depositChanges(): UpfrontReceived | undefined | string {
     if (!depositBaseline || depositBaseline === 'unavailable') return undefined;
     // Sewa Biasa has no downpayment box: leave the downpayment as it is
-    return upfrontToRecord({ deposit: formData.upfrontDeposit, downpayment: formData.category === 'SEWABELI' ? formData.upfrontDownpayment : '' }, depositBaseline);
+    const today = kualaLumpurToday();
+    return upfrontToRecord({
+      deposit: formData.upfrontDeposit, downpayment: formData.category === 'SEWABELI' ? formData.upfrontDownpayment : '', date: formData.upfrontDate || today,
+    }, depositBaseline, today);
   }
 
   const renderPaymentSchedule = (driver: Driver) => {
@@ -1715,10 +1721,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label htmlFor="driver-deposit" className="block text-sm font-bold text-gray-700 mb-1">{formData.category === 'SEWABELI' ? 'Security deposit received (RM)' : 'Deposit received (RM)'}</label>
                   <input id="driver-deposit" type="number" min="0" step="0.01" className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.upfrontDeposit} onChange={e => setFormData({...formData, upfrontDeposit: e.target.value})} placeholder="0 if none" />
                 </div>
-                <p className="text-xs text-gray-500 sm:col-span-2 -mt-2">
+                <div>
+                  <label htmlFor="driver-upfront-date" className="block text-sm font-bold text-gray-700 mb-1">Date received</label>
+                  <input id="driver-upfront-date" type="date" max={kualaLumpurToday()} className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value={formData.upfrontDate || kualaLumpurToday()} onChange={e => setFormData({...formData, upfrontDate: e.target.value})} aria-describedby="driver-upfront-help" />
+                </div>
+                <p id="driver-upfront-help" className="text-xs text-gray-500 sm:col-span-2 -mt-2">
                   {editingId
-                    ? 'Money received at signing is entered only here. This shows what is already recorded; raise it to add money not yet entered (with today\'s date). Refunds and forfeits go in the driver\'s Deposits panel, where an admin can also delete a wrong entry.'
-                    : 'Money received at signing is entered only here, with today\'s date. Refunds and forfeits later go in the driver\'s Deposits panel.'}
+                    ? 'Money received at signing is entered only here. This shows what is already recorded; raise it to add money not yet entered, on the day it was received (Finance and Reconcile use that date). Refunds and forfeits go in the driver\'s Deposits panel, where an admin can also delete a wrong entry.'
+                    : 'Money received at signing is entered only here, on the day it was received (Finance and Reconcile use that date). Refunds and forfeits later go in the driver\'s Deposits panel.'}
                 </p>
               </div>
             )}
