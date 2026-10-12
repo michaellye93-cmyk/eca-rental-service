@@ -1,5 +1,9 @@
 import { formatCurrency } from "../../utils";
 import BackupButton from "../money/BackupButton";
+import { accountsWithoutStatement, bankCheck, BANK_CHECK_TOLERANCE, type CashBalanceEntry } from "../../services/cashOutlook";
+import { loadCashOutlook } from "../../services/finance/api";
+import { monthCashFlow } from "../../services/finance/dashboard";
+import { kualaLumpurToday } from "../../utils";
 import React from "react";
 import { CheckIcon, CircleIcon, ReloadIcon } from "@radix-ui/react-icons";
 import type {
@@ -102,6 +106,13 @@ type Props = {
 };
 export default function FinanceMonthClose(p: Props) {
   const [workshopAcknowledged, setWorkshopAcknowledged] = React.useState(false);
+  // Cash's bank balances: which accounts are in use, for the per-account reconcile check and the bank check.
+  const [balances, setBalances] = React.useState<CashBalanceEntry[] | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    loadCashOutlook(kualaLumpurToday()).then((outlook) => { if (live) setBalances(outlook.balances); }).catch(() => { if (live) setBalances(null); });
+    return () => { live = false; };
+  }, [p.input.month.revision]);
   const { input, month, busy, workspaceMeta } = p;
   const draft = input.month.status === "DRAFT",
     closed = input.month.status === "CLOSED";
@@ -142,15 +153,11 @@ export default function FinanceMonthClose(p: Props) {
   const noBlockingIssues = !p.report?.issues.some(
     (issue) => issue.severity === "error",
   );
-  // Reconcile is a required step: every line of a posted bank statement is already matched, posted or excluded.
-  const bankReconciled = (input.bank_imports ?? []).length > 0;
-  const prepared = Boolean(
-    input.month.refreshed_at &&
-    input.smart_import &&
-    allReviewed &&
-    bankReconciled &&
-    noBlockingIssues,
-  );
+  // Reconcile is a required step for every bank account in use (one with a balance on Cash near this month): every
+  // line of a posted statement is already matched, posted or excluded. Without balances on Cash, one statement will do.
+  const unreconciled = balances ? accountsWithoutStatement(balances, input.bank_imports ?? [], month) : [];
+  const bankReconciled = (input.bank_imports ?? []).length > 0 && unreconciled.length === 0;
+  const check = balances && p.report ? bankCheck(balances, month, monthCashFlow(input, p.report).net) : null;
   const activeCosts = input.recurring_costs.some(
     (cost) =>
       cost.start_month.slice(0, 7) <= month &&
@@ -162,6 +169,15 @@ export default function FinanceMonthClose(p: Props) {
       policy.coverage_start!.slice(0, 7) <= month &&
       policy.coverage_end!.slice(0, 7) >= month,
   );
+  const prepared = Boolean(
+    input.month.refreshed_at &&
+    input.smart_import &&
+    activeCosts &&
+    activeInsurance &&
+    allReviewed &&
+    bankReconciled &&
+    noBlockingIssues,
+  );
   const unallocatedWorkshop = p.report?.totals.workshop_unallocated ?? 0;
   const hasUnallocatedWorkshop = unallocatedWorkshop > 0;
   const checks: [boolean, string][] = [
@@ -172,9 +188,14 @@ export default function FinanceMonthClose(p: Props) {
     ...optional.map(
       (s) => [isReviewed(s.key), `${s.title} reviewed`] as [boolean, string],
     ),
-    [bankReconciled, "Bank statement reconciled (Reconcile tab)"],
+    [bankReconciled, unreconciled.length ? `Bank statement reconciled for every account (Reconcile tab): still ${unreconciled.join(", ")}` : "Bank statement reconciled for every account (Reconcile tab)"],
     [noBlockingIssues, "Blocking data exceptions cleared"],
   ];
+  // The bank check is shown, not required: the cash flow is built from the month's records, so timing can differ.
+  const bankCheckLine = !check ? null
+    : check.unexplained === null ? `Bank check: waiting for month-end balances (${check.missing.map((m) => `${m.account} at the ${m.when === "start" ? "start" : "end"}`).join(", ")}). Posting a bank statement adds them.`
+    : check.flagged ? `Bank check: the bank moved ${formatCurrency(check.unexplained)} more than the month's cash flow explains (over ${formatCurrency(BANK_CHECK_TOLERANCE)}). See Cash.`
+    : `Bank check: the bank moved as the month's cash flow says (within ${formatCurrency(BANK_CHECK_TOLERANCE)}).`;
   return (
     <div className="finance-content">
       <section className="finance-close-header">
@@ -437,10 +458,10 @@ export default function FinanceMonthClose(p: Props) {
             </li>
           ))}
         </ul>
+        {bankCheckLine && <p className="finance-strip-note">{bankCheckLine}</p>}
         {(!activeCosts || !activeInsurance) && (
           <p>
-            Check Settings for any missing monthly costs or insurance before
-            acknowledging the month.
+            The month cannot close without its monthly vehicle costs and insurance: add them in Records.
           </p>
         )}
         <div className="finance-dialog-actions">

@@ -37,3 +37,18 @@ test('when two balances share a boundary, the later date wins, then the later en
   assert.equal(check.opening, 2);
   assert.equal(check.closing, 60);
 });
+
+test('an account with no balance within 45 days of the month is not in use then, so it is never "missing"', () => {
+  const balances = [entry('Bank A', 10000, '2026-07-31'), entry('Bank A', 11000, '2026-08-31'), entry('Old bank', 50, '2026-03-31')];
+  const check = bankCheck(balances, '2026-08', 1000);
+  assert.deepEqual(check.missing, []);
+  assert.equal(check.unexplained, 0);
+});
+
+test('Month close names each bank account in use that has no posted statement for the month', async () => {
+  const { accountsWithoutStatement } = await import('../services/cashOutlook.ts');
+  const balances = [entry('RHB Sewa Beli 4281', 1, '2026-08-31'), entry('RHB Biasa 1109', 1, '2026-08-31'), entry('Old bank', 1, '2026-01-31')];
+  assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …4281' }], '2026-08'), ['RHB Biasa 1109']);
+  assert.deepEqual(accountsWithoutStatement(balances, [{ account_label: 'RHB …4281' }, { account_label: 'RHB Biasa 1109' }], '2026-08'), []);
+  assert.deepEqual(accountsWithoutStatement([], [], '2026-08'), []);
+});
