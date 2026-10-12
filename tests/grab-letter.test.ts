@@ -104,3 +104,24 @@ test('a name too long for one line even when smaller goes onto two lines inside 
 test('the file name names the letter, plate and driver, without characters Windows refuses', () => {
   assert.equal(grabLetterFileName('XAA1001', 'Fixture/Driver: One'), 'Grab Authorization Letter XAA1001 Fixture Driver  One.pdf');
 });
+
+test('the Other EHO letter keeps the same layout with its own wording: no Grab, "as Driver", "E-hailing-related services"', async () => {
+  const { otherLetterFileName } = await import('../services/agreements/grabLetter.ts');
+  const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: false });
+  drawGrabLetter(doc, grabLetterValues({ driver, car, details, letterDate: '2026-10-12' }), 'other');
+  const text = doc.output();
+  assert.equal(doc.getNumberOfPages(), 1);
+  assert.ok(!text.includes('(Grab)') && !text.includes('Driver-Partner'), 'no Grab wording');
+  const at = (word: string, x: number, baseline: number) => {
+    const placed = [...text.matchAll(new RegExp(`([\\d.]+) ([\\d.]+) Td\\s*\\(${inPdf(word).replace(/[\\()]/g, c => `\\${c}`)}\\) Tj`, 'g'))];
+    assert.ok(placed.some(m => Math.abs(Number(m[1]) - x) < 0.5 && Math.abs(842.04 - Number(m[2]) - baseline) < 0.5), `${word} at ${x}`);
+  };
+  at('(E-hailing', 350.23, 343.13);
+  at('name)', 437.74, 343.13);
+  at('as', 212.93, 401.57);
+  at('E-hailing-', 469.78, 401.57);
+  at('related', 72.02, 430.73);
+  at('services.', 112.22, 430.73);
+  for (const value of ['Fixture Owner Sdn Bhd', 'XAA1001', 'Fixture Driver One', '12 October 2026']) assert.ok(text.includes(`(${inPdf(value)})`), value);
+  assert.equal(otherLetterFileName('XAA1001', 'Fixture Driver One'), 'Other EHO Authorization Letter XAA1001 Fixture Driver One.pdf');
+});

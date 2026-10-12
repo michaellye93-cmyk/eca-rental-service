@@ -9,7 +9,7 @@ import { receivedByKind } from '../../services/depositTotals';
 import { agreementApi, type AgreementSettings } from '../../services/agreements/api';
 import { blankInput, carForPlate, fromDriver, withDeposits } from '../../services/agreements/prefill';
 import { agreementFileName, downloadAgreementPdf } from '../../services/agreements/pdf';
-import { downloadGrabLetterPdf, grabLetterFileName, grabLetterValues } from '../../services/agreements/grabLetter';
+import { downloadGrabLetterPdf, grabLetterFileName, grabLetterValues, otherLetterFileName } from '../../services/agreements/grabLetter';
 import {
   KIND_LABELS, agreementValues, extraPlaceholders, fieldLabel, longDate, missingFields, type AgreementInput,
 } from '../../services/agreements/template';
@@ -86,8 +86,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const [downloading, setDownloading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const busy = useRef(false);
-  // Which paper this page makes: the rental agreement, or the Grab authorization letter
-  const [paper, setPaper] = useState<'agreement' | 'grab'>('agreement');
+  // Which paper this page makes: the rental agreement, the Grab authorization letter, or the one for other e-hailing operators
+  const [paper, setPaper] = useState<'agreement' | 'grab' | 'other'>('agreement');
   const [letterDate, setLetterDate] = useState(today);
 
   const load = useCallback(async () => {
@@ -206,7 +206,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     if (!driver) return;
     setResult(null);
     try {
-      await downloadGrabLetterPdf(letter, grabLetterFileName(letter.vehicle_plate, letter.driver_name));
+      await downloadGrabLetterPdf(letter, (paper === 'other' ? otherLetterFileName : grabLetterFileName)(letter.vehicle_plate, letter.driver_name), paper === 'other' ? 'other' : 'grab');
       setResult({ ok: true, text: 'Downloaded. Print it for the owner to sign; nothing was saved.' });
     } catch (err) {
       setResult({ ok: false, text: `The PDF couldn't be made: ${reason(err)}.` });
@@ -245,7 +245,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
           <h2 className="text-lg font-bold text-gray-900">Agreements</h2>
           <p className="text-sm text-gray-500">Choose the driver, check and download. Details come from the driver's profile, Deposits and Fleet.</p>
           <div role="group" aria-label="Paper to make" className="mt-2 inline-flex flex-wrap rounded-lg border border-gray-300 bg-white p-0.5 text-sm font-semibold">
-            {([['agreement', 'Rental agreement'], ['grab', 'Grab authorization letter']] as const).map(([key, label]) => (
+            {([['agreement', 'Rental agreement'], ['grab', 'Grab authorization letter'], ['other', 'Other EHO authorize letter']] as const).map(([key, label]) => (
               <button key={key} type="button" aria-pressed={paper === key} onClick={() => { setPaper(key); setResult(null); }}
                 className={`px-3 py-1.5 rounded-md ${paper === key ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{label}</button>
             ))}
@@ -273,7 +273,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
               placeholder="Search a driver's name or plate" options={activeDrivers.map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}` }))} />
             {!driver ? (
               <p className="text-sm text-gray-500">New customer? Add them first with <b>Add Driver</b> and record their deposit or downpayment, then choose them here.</p>
-            ) : paper === 'grab' ? (
+            ) : paper !== 'agreement' ? (
               <>
                 <Facts rows={[['Name', letter.driver_name], ['NRIC', letter.driver_ic_no]]} />
                 <p className="text-xs text-gray-500">To change these, use <b>Edit driver</b>.</p>
@@ -321,7 +321,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             </Step>
           )}
 
-          {driver && paper === 'grab' && (
+          {driver && paper !== 'agreement' && (
             <Step number={3} title="Letter details">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -357,7 +357,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
           )}
         </div>
 
-        {paper === 'grab' ? (
+        {paper !== 'agreement' ? (
         <div className="space-y-3 xl:sticky xl:top-4">
           <div className={card}>
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4" aria-hidden="true" /> Check and download</h3>
@@ -378,7 +378,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             </button>
             <p className="text-xs text-gray-500">The PDF is made on this computer and is not saved anywhere.</p>
           </div>
-          {driver && <GrabLetterPreview values={letter} />}
+          {driver && <GrabLetterPreview values={letter} kind={paper === 'other' ? 'other' : 'grab'} />}
         </div>
         ) : (
         <div className="space-y-3 xl:sticky xl:top-4">
