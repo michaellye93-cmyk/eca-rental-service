@@ -39,8 +39,8 @@ export interface StepInput {
   /** When the driver was last asked (ask, follow-up or statement) and last thanked: ISO times from the contact log. */
   lastAskAt: string | null;
   lastThanksAt: string | null;
-  /** The latest promise to pay and its state. */
-  promise: { state: PromiseState; date: string } | null;
+  /** The latest promise to pay: its state, promised date and the Kuala Lumpur day it was logged (YYYY-MM-DD). */
+  promise: { state: PromiseState; date: string; loggedOn: string } | null;
 }
 
 const HOUR_MS = 3_600_000;
@@ -55,13 +55,15 @@ const dayMonth = (isoDay: string) => `${Number(isoDay.slice(8, 10))}/${Number(is
 /**
  * The next step with a driver, by the collection rules:
  * - Nothing owed: thank a payment dated today or yesterday that has not been thanked since; otherwise nothing is due.
- * - A standing arrangement (when something is owed) always shows its text instead of any ask.
  * - A payment today or yesterday not yet thanked: thank first (the conversation continues from there).
  * - A missed promise: follow up, even within 24 hours of an ask, until a follow-up is logged after the promised date.
+ * - An open promise logged today or yesterday: wait for it, even on the due day (no due-day message over a fresh promise).
  * - Rent due today and unpaid: the due-day message, even within 24 hours of an ask, unless already asked today.
  * - An open promise date: wait for it.
  * - Asked within 24 hours: wait. Never asked: ask. Asked two or more days ago and still unpaid: follow up; asked
  *   yesterday but more than 24 hours ago: wait.
+ * A standing arrangement overrides the weekly ask rhythm, not thanks or missed promises: its text replaces only the
+ * ask, the follow-up and the due-day message (the waits still show).
  */
 export function nextCollectionStep(input: StepInput): NextStep {
   const { today } = input;
@@ -71,18 +73,20 @@ export function nextCollectionStep(input: StepInput): NextStep {
     && !(input.lastThanksAt && dayOf(input.lastThanksAt) >= input.lastPaymentDate);
   if (input.owed <= 0.005) return thanksDue ? 'Thank for payment' : 'Nothing due';
 
-  const arrangement = input.arrangement?.trim();
-  if (arrangement) return `Arrangement: ${arrangement} — check before asking`;
   if (thanksDue) return 'Thank for payment';
 
   const askDay = input.lastAskAt ? dayOf(input.lastAskAt) : null;
   if (input.promise?.state === 'MISSED' && !(askDay && askDay > input.promise.date)) return 'Promise missed: follow up';
-  if (input.dueTodayUnpaid > 0.005 && askDay !== today) return 'Due-day message';
-  if (input.promise?.state === 'OPEN') return `Wait: promised ${dayMonth(input.promise.date)}`;
-  if (!input.lastAskAt || !askDay) return 'Ask: owing, no ask logged';
+  const arrangement = input.arrangement?.trim();
+  const ask = (step: NextStep): NextStep => (arrangement ? `Arrangement: ${arrangement} — check before asking` : step);
+  const promised = input.promise?.state === 'OPEN' ? `Wait: promised ${dayMonth(input.promise.date)}` as const : null;
+  if (promised && input.promise!.loggedOn >= yesterday) return promised;
+  if (input.dueTodayUnpaid > 0.005 && askDay !== today) return ask('Due-day message');
+  if (promised) return promised;
+  if (!input.lastAskAt || !askDay) return ask('Ask: owing, no ask logged');
   if (input.now.getTime() - Date.parse(input.lastAskAt) < 24 * HOUR_MS) return 'Wait: asked within 24 hours';
   const days = daysBetween(askDay, today);
-  return days >= 2 ? `Follow up (asked ${days} days ago, still unpaid)` : 'Wait: asked yesterday';
+  return days >= 2 ? ask(`Follow up (asked ${days} days ago, still unpaid)`) : 'Wait: asked yesterday';
 }
 
 /** One active driver on the worklist. Built field by field: NRIC, phone, email and address are never included. */
@@ -131,7 +135,7 @@ export function buildWorklist(input: CollectionsInput & { instant: Date }): Work
     const next_step = nextCollectionStep({
       now: input.instant, today: input.today, owed: row.status.outstanding, dueTodayUnpaid: dueToday ? dueToday.remainingBalance : 0,
       arrangement: row.collection.arrangement, lastPaymentDate: row.status.last_payment_date, lastAskAt: row.last_ask_at, lastThanksAt: thanks,
-      promise: row.promise ? { state: row.promise.status, date: row.promise.date } : null,
+      promise: row.promise ? { state: row.promise.status, date: row.promise.date, loggedOn: row.promise.logged_on } : null,
     });
     return {
       id: row.id,
