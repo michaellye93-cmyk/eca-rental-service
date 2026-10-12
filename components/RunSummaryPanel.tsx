@@ -3,6 +3,7 @@ import type { Driver } from '../types';
 import { formatCurrency, kualaLumpurNow, kualaLumpurToday } from '../utils';
 import { defaultRunSlot, RUN_SLOTS, runStartAt, runSummaryPrefill, type CategoryCounts, type RunSlot } from '../services/collectionRuns';
 import { loadDailyStatus, loadPaymentChangesSince, loadPromises, loadRecentContacts, saveRun } from '../services/collectionsApi';
+import { isMissingTable } from '../services/liveChanges';
 
 const SLOT_TIME: Record<RunSlot, string> = { '1PM': '13:00', '9PM': '21:00' };
 const CATEGORIES: (keyof CategoryCounts)[] = ['good', 'mid', 'bad'];
@@ -18,10 +19,6 @@ const countsOf = (counts: Counts): CategoryCounts | null | undefined => {
   if (values.every(value => value === '')) return null;
   const numbers = values.map(wholeNumber);
   return numbers.every(value => value !== null) ? { good: numbers[0]!, mid: numbers[1]!, bad: numbers[2]! } : undefined;
-};
-const isMissingTable = (error: unknown) => {
-  const { code, message } = (error ?? {}) as { code?: string; message?: string };
-  return code === '42P01' || code === 'PGRST205' || /could not find the table|does not exist/i.test(message ?? '');
 };
 
 /**

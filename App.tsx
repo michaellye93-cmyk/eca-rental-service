@@ -19,6 +19,8 @@ import { writeTodaysSnapshotOnce } from './services/dailyStatus';
 import { saveDailyStatus } from './services/collectionsApi';
 import Notice, { type NoticeMessage } from './components/Notice';
 import { buildAdminPath, parseAdminPath, resolveAdminRoute, type StoredViews } from './services/routes';
+import { applyLiveChanges, latestChangedAt, refreshKind, unseenChanges, type LiveMode } from './services/liveChanges';
+import { readChangeCursors, readDriverRows, readLiveChanges } from './services/liveChangesApi';
 
 /** This browser's storage, or null when the browser blocks it. */
 const browserStorage = (): Storage | null => {
@@ -83,6 +85,15 @@ const App: React.FC = () => {
   // payment was last changed here (a background reload that started earlier must not overwrite it)
   const lastFullLoad = useRef(0);
   const lastLocalChange = useRef(0);
+  // Live updates (services/liveChanges.ts): the Kuala Lumpur day of the last full load, where the next read of each change
+  // log starts, the change rows already applied, and the list as last rendered
+  const fullLoadDay = useRef('');
+  const live = useRef<{ mode: LiveMode; payments: string | null; drivers: string | null; seenPayments: Set<number>; seenDrivers: Set<number> }>(
+    { mode: 'off', payments: null, drivers: null, seenPayments: new Set(), seenDrivers: new Set() });
+  const lightReadBusy = useRef(false);
+  const hiddenAt = useRef<number | null>(null);
+  const driversRef = useRef(drivers);
+  driversRef.current = drivers;
 
   useEffect(() => {
     currentViewRef.current = currentView;
@@ -104,6 +115,8 @@ const App: React.FC = () => {
 
       // Actual Data Fetch
       const fetchData = async () => {
+        // Where live updates start from: the latest change logged before this snapshot is read
+        const cursors = await readChangeCursors();
         const driversData = await readAllRows<any>(() => supabase.from('drivers').select('*'), 'created_at', false);
         const paymentsData = await readAllRows<any>(() => supabase.from('payments').select('*'), 'date', false);
         
@@ -115,17 +128,19 @@ const App: React.FC = () => {
         }
         const formattedDrivers: Driver[] = (driversData || []).map((d: any) => withPayments(fromDriverRow(d), paymentsByDriver.get(d.id) ?? []));
 
-        return { formattedDrivers };
+        return { formattedDrivers, cursors };
 
       };
 
       // Race the fetch against the timeout
-      const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[] };
+      const result = (await Promise.race([fetchData(), timeoutPromise])) as { formattedDrivers: Driver[]; cursors: Awaited<ReturnType<typeof readChangeCursors>> };
       if (currentViewRef.current !== 'ADMIN') return; // signed out while loading: keep nothing
       if (background && lastLocalChange.current >= startedAt) return; // a payment saved meanwhile would be lost; the next reload catches up
       setDrivers(result.formattedDrivers);
       setDataLoaded(true);
       lastFullLoad.current = Date.now();
+      fullLoadDay.current = kualaLumpurToday();
+      live.current = { ...result.cursors, seenPayments: new Set(), seenDrivers: new Set() };
       // The first full load of the Kuala Lumpur day records each active driver's status; silent if it cannot
       void writeTodaysSnapshotOnce({
         drivers: result.formattedDrivers, now: kualaLumpurNow(), today: kualaLumpurToday(), storage: browserStorage(),
@@ -252,19 +267,75 @@ const App: React.FC = () => {
     if (currentView === 'ADMIN') void fetchDriversAndPayments();
   }, [currentView]);
 
-  // Payments saved here update one driver only, so entries other staff made arrive with a quiet reload: every 3 minutes
-  // while this tab is in view, and when it comes back into view (at most once a minute).
-  useEffect(() => {
-    const quietReload = () => {
-      if (document.visibilityState === 'visible' && currentViewRef.current === 'ADMIN' && Date.now() - lastFullLoad.current > 60_000) {
+  /**
+   * Live update: reads only the payment and driver changes logged since the last look and applies them to the list
+   * (changed drivers are read again, one row each). Reloads in full instead when the read fails, a log had too many rows
+   * or a payment belongs to a driver not in the list. Nothing is applied when a payment was saved in this tab meanwhile:
+   * the next read catches up (the change logs keep everything).
+   */
+  const lightRead = async () => {
+    const state = live.current;
+    if (lightReadBusy.current || state.mode === 'off' || currentViewRef.current !== 'ADMIN') return;
+    lightReadBusy.current = true;
+    const startedAt = Date.now();
+    try {
+      const read = await readLiveChanges({ payments: state.payments, drivers: state.drivers }, state.mode === 'all');
+      if (read.tooMany) {
         void fetchDriversAndPayments(true, true);
+        return;
       }
+      const paymentRows = unseenChanges(read.payments, state.seenPayments);
+      const driverChanges = unseenChanges(read.drivers, state.seenDrivers);
+      const driverRows = await readDriverRows([...new Set(driverChanges.map(change => change.driver_id))]);
+      // Signed out, or a full load replaced the list meanwhile (it starts its own cursors)
+      if (currentViewRef.current !== 'ADMIN' || live.current !== state) return;
+      if (lastLocalChange.current >= startedAt) return; // a payment saved here meanwhile; the next read catches up
+      const changes = { payments: paymentRows, driverRows };
+      if (applyLiveChanges(driversRef.current, changes).unknownDrivers.length) {
+        void fetchDriversAndPayments(true, true);
+        return;
+      }
+      if (paymentRows.length || driverRows.size) setDrivers(prev => applyLiveChanges(prev, changes).drivers);
+      for (const row of paymentRows) state.seenPayments.add(row.id);
+      for (const row of driverChanges) state.seenDrivers.add(row.id);
+      state.payments = latestChangedAt(read.payments, state.payments);
+      state.drivers = latestChangedAt(read.drivers, state.drivers);
+    } catch (err) {
+      console.warn('Live update failed; reloading the list in full', err);
+      void fetchDriversAndPayments(true, true);
+    } finally {
+      lightReadBusy.current = false;
+    }
+  };
+
+  // Payments saved here update one driver only; what other staff save arrives with a light read of the changes every
+  // minute while this tab is in view, and when it comes back into view. A full reload on a new day, on return after more
+  // than 10 minutes away, and on the old 3-minute schedule where a change log is not available (see refreshKind).
+  useEffect(() => {
+    const refresh = (trigger: 'timer' | 'return') => {
+      if (document.visibilityState !== 'visible' || currentViewRef.current !== 'ADMIN') return;
+      const now = Date.now();
+      const kind = refreshKind(trigger, {
+        now, lastFullLoad: lastFullLoad.current, fullLoadDay: fullLoadDay.current, today: kualaLumpurToday(), live: live.current.mode,
+        awayMs: hiddenAt.current === null ? 0 : now - hiddenAt.current,
+      });
+      if (kind === 'full') void fetchDriversAndPayments(true, true);
+      else if (kind === 'light') void lightRead();
     };
-    const timer = window.setInterval(quietReload, 180_000);
-    document.addEventListener('visibilitychange', quietReload);
+    const onTimer = () => refresh('timer');
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt.current = Date.now();
+        return;
+      }
+      refresh('return');
+      hiddenAt.current = null;
+    };
+    const timer = window.setInterval(onTimer, 60_000);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', quietReload);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -343,10 +414,11 @@ const App: React.FC = () => {
         .single();
       if (error) throw error;
       const saved = paymentFromRow(data);
-      // Swap the placeholder for the saved row; if a reload already replaced the list, add the row unless it arrived with it
-      updateDriverPayments(driverId, payments => payments.some(p => p.id === tempId)
-        ? payments.map(p => (p.id === tempId ? saved : p))
-        : payments.some(p => p.id === saved.id) ? payments : [saved, ...payments]);
+      // Swap the placeholder for the saved row. If the row already arrived (a reload or a live update), only drop the
+      // placeholder; if a reload replaced the list without it, add the row.
+      updateDriverPayments(driverId, payments => payments.some(p => p.id === saved.id)
+        ? payments.filter(p => p.id !== tempId)
+        : payments.some(p => p.id === tempId) ? payments.map(p => (p.id === tempId ? saved : p)) : [saved, ...payments]);
     } catch (err: any) {
       updateDriverPayments(driverId, payments => payments.filter(p => p.id !== tempId));
       const sameReference = err?.code === '23505' && /payments_reference_once/.test(err?.message ?? '');

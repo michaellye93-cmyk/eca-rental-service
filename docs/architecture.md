@@ -15,6 +15,11 @@ project (Postgres + Auth + Edge Functions). There is no other server. Two kinds 
 
 - `App.tsx` owns sign-in and the main data load: every `drivers` and `payments` row (paged by `services/pagedRead.ts`),
   joined into `Driver` objects with their payment history. Saving a driver or payment goes back through `App.tsx`.
+- Live updates: while the office tab is in view, every minute `App.tsx` reads only the rows logged since its last look in
+  `payment_changes` and `driver_changes` (`services/liveChangesApi.ts`) and applies them to the list in memory
+  (`applyLiveChanges` in `services/liveChanges.ts`; a changed driver's row is read again). A full reload happens on the
+  first load, on a new Kuala Lumpur day, on return after more than 10 minutes away, after a failed light read, and
+  every 3 minutes for drivers while `driver_changes` does not exist yet. No Supabase Realtime.
 - Each section loads its own extra data when it opens (lazy-loaded screens, see `React.lazy` in `AdminDashboard.tsx`).
 - Every money figure on screen (balance, overdue, next due date, invoices, collections) is calculated in the browser
   from drivers + payments. Nothing pre-computed is stored for drivers.
