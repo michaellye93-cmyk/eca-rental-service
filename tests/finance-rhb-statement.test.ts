@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
 import { previewBankStatement } from '../services/finance/bankStatements.ts';
+import { parseRhbStatement } from '../services/finance/rhbStatement.ts';
 import { suggestPaymentMatches } from '../services/finance/bankMatchSuggestions.ts';
 import type { FinanceInput } from '../types/finance.ts';
 
@@ -14,11 +15,11 @@ const d = (day: number) => new Date(Date.UTC(2026, 7, day));
  * repeated column headings, long cells wrapped onto the next row, "-" for an empty amount and a signed running balance.
  * Columns shift between pages.
  */
-async function rhbWorkbook(options: { deposits?: string } = {}) {
+async function rhbWorkbook(options: { deposits?: string; period?: string | null } = {}) {
   const workbook = new ExcelJS.Workbook();
   const page1 = workbook.addWorksheet('Table 1');
   page1.addRow(['FIXTURE COMPANY SDN BHD\nNO 1 FIXTURE ROAD', '', '', '', '', '', 'Statement Period', '', '', '', '', 'TRANSACTION STATEMENT']);
-  page1.addRow(['01 August 2026      To      31 August 2026']);
+  if (options.period !== null) page1.addRow([options.period ?? '01 August 2026      To      31 August 2026']);
   page1.addRow(['11112222339999']);
   page1.addRow(['Deposit Account Summary\nBeginning Balance as of 01 August 2026', '', '', '', '', '', '', '1,000.00+']);
   page1.addRow(['3\n2', '', '', 'Deposits (Plus) Withdraws (Minus)', '', '', options.deposits ?? '950.00\n120.50']);
@@ -80,4 +81,23 @@ test('an RHB statement gives the bank balance at the end of the month before and
   const preview = await previewBankStatement(arrayBuffer(await rhbWorkbook()), 'AUG.xlsx', '2026-08', input);
   assert.equal(preview.opening_balance, 1000);
   assert.equal(preview.closing_balance, 1829.5);
+});
+
+test('the RHB statement period is read, and only a statement covering the whole month gives month-end balances', async () => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer(await rhbWorkbook()));
+  assert.deepEqual(parseRhbStatement(workbook).period, { from: '2026-08-01', to: '2026-08-31' });
+  const shortNames = new ExcelJS.Workbook();
+  await shortNames.xlsx.load(arrayBuffer(await rhbWorkbook({ period: '16 Aug 2026 To 15 Sep 2026' })));
+  assert.deepEqual(parseRhbStatement(shortNames).period, { from: '2026-08-16', to: '2026-09-15' });
+
+  // Starting on the 16th: no opening from the Beginning Balance; ending 15 September: the 31 August closing stands.
+  const mid = await previewBankStatement(arrayBuffer(await rhbWorkbook({ period: '16 August 2026      To      15 September 2026' })), 'AUG.xlsx', '2026-08', input);
+  assert.equal(mid.opening_balance, null);
+  assert.equal(mid.closing_balance, 1829.5);
+  const partial = await previewBankStatement(arrayBuffer(await rhbWorkbook({ period: '01 August 2026      To      15 August 2026' })), 'AUG.xlsx', '2026-08', input);
+  assert.equal(partial.opening_balance, 1000);
+  assert.equal(partial.closing_balance, null, 'a statement ending on the 15th says nothing about the month end');
+  const none = await previewBankStatement(arrayBuffer(await rhbWorkbook({ period: null })), 'AUG.xlsx', '2026-08', input);
+  assert.deepEqual([none.opening_balance, none.closing_balance], [null, null], 'no statement period found: no balances');
 });

@@ -16,6 +16,8 @@ export interface RhbStatement {
   opening: number | null;
   /** Each transaction's date and the balance after it (printed, or carried on from the last printed balance), oldest first. */
   balances: { date: string; balance: number | null }[];
+  /** The printed "Statement Period" (first and last day, YYYY-MM-DD), when found. */
+  period: { from: string; to: string } | null;
 }
 
 export const RHB_HEADERS = ['Date', 'Description', 'Reference', 'Debit', 'Credit'];
@@ -56,6 +58,24 @@ const signedBalance = (value: unknown): number | null => {
   const amount = Number(text.replace(/[,+-]/g, ''));
   return text.endsWith('-') ? -amount : amount;
 };
+const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** "01 August 2026" or "1 Aug 2026" as YYYY-MM-DD; null when it is not a real date. */
+const printedDate = (day: string, monthName: string, year: string): string | null => {
+  const month = MONTH_NAMES.indexOf(monthName.slice(0, 3).toLowerCase()) + 1;
+  if (!month) return null;
+  const iso = `${year}-${String(month).padStart(2, '0')}-${day.padStart(2, '0')}`;
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : null;
+};
+/** The statement period line, e.g. "01 August 2026      To      31 August 2026". */
+const PERIOD = /(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\s+To\s+(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/i;
+const statementPeriod = (text: string): RhbStatement['period'] => {
+  const found = text.match(PERIOD);
+  if (!found) return null;
+  const from = printedDate(found[1], found[2], found[3]);
+  const to = printedDate(found[4], found[5], found[6]);
+  return from && to && from <= to ? { from, to } : null;
+};
 const nonBlank = (value: unknown) => cellText(value).trim() !== '';
 const isHeading = (texts: string[]) => {
   const joined = texts.join(' ').toUpperCase();
@@ -80,6 +100,7 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
   // Text is kept per column so a name or reference wrapped onto the next row is joined back in the right place.
   let lastBalance: number | null = null;
   let opening: number | null = null;
+  let period: RhbStatement['period'] = null;
   const balances: RhbStatement['balances'] = [];
   let current: { date: string; columns: Map<number, string[]>; reference: string; debit: number; credit: number } | null = null;
   const finish = () => {
@@ -100,6 +121,7 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
           for (const text of texts) {
             const account = text.match(/^\d{12,16}$/);
             if (account && !accountLabel) accountLabel = `RHB …${account[0].slice(-4)}`;
+            if (!period) period = statementPeriod(text);
           }
           if (texts.some((text) => /Beginning Balance/i.test(text))) {
             const printed = cells.map(signedBalance).find((value) => value !== null);
@@ -159,5 +181,5 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
     }
   }
   finish();
-  return { rows, accountLabel, control, opening, balances };
+  return { rows, accountLabel, control, opening, balances, period };
 }

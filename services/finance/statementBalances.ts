@@ -14,15 +14,24 @@ const previousMonth = (month: string) => {
 
 /**
  * Balance at the end of the month before `month` (opening) and at the end of `month` (closing), from each line's balance
- * after it (lines oldest first) and the statement's printed opening balance. A month with no line says nothing.
+ * after it (lines oldest first), the statement's printed opening balance and its period. Only a statement covering the
+ * month end says what the balance was then: the opening needs the period to start on or before the 1st (the printed
+ * opening counts only when it starts exactly on the 1st; otherwise the balance after the last line before the month),
+ * and the closing needs it to end on or after the month's last day. No period, or no line in the month: nothing.
  */
-export function monthEndBalances(lines: { date: string; balance: number | null }[], printedOpening: number | null, month: string): { opening: number | null; closing: number | null } {
+export function monthEndBalances(lines: { date: string; balance: number | null }[], printedOpening: number | null, month: string,
+  period: { from: string; to: string } | null): { opening: number | null; closing: number | null } {
   const inMonth = lines.filter(l => l.date.slice(0, 7) === month);
-  if (!inMonth.length) return { opening: null, closing: null };
-  const before = lines.filter(l => l.date.slice(0, 7) < month && l.balance !== null);
-  const opening = before.length ? before[before.length - 1].balance : lines[0].date.slice(0, 7) === month ? printedOpening : null;
+  if (!period || !inMonth.length) return { opening: null, closing: null };
+  const first = `${month}-01`;
+  let opening: number | null = null;
+  if (period.from <= first) {
+    const before = lines.filter(l => l.date.slice(0, 7) < month && l.balance !== null);
+    opening = before.length ? before[before.length - 1].balance : period.from === first ? printedOpening : null;
+  }
   const lastInMonth = [...inMonth].reverse().find(l => l.balance !== null);
-  return { opening, closing: lastInMonth?.balance ?? null };
+  const closing = period.to >= lastDay(month) ? lastInMonth?.balance ?? null : null;
+  return { opening, closing };
 }
 
 const lastFourDigits = (label: string) => {
