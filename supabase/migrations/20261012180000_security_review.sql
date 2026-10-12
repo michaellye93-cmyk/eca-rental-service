@@ -11,9 +11,33 @@
 --     driver out. Each phone keeps its own limit of 10 a minute.
 -- E4  The driver's sign-in no longer returns the old "How to pay" text (nothing has shown it since 28 Sep); the unused
 --     text, its table and its two functions are removed.
+-- A2  Eca Guardian is switched off (owner, 12 Oct 2026), so the car list closes to signed-out visitors: only signed-in
+--     staff and admins read and change it, as Fleet does. This repeats 20260929180000_fleet_close_cars.sql, which may
+--     or may not have been run; running it again changes nothing. Every policy it removes is printed first.
 --
 -- Run in the Supabase SQL Editor for RentalDatabase. Changes no rent, payment or driver figures. Safe to run again.
 begin;
+
+-- A2 ---------------------------------------------------------------------------------------------------------------
+do $$
+declare pol record;
+begin
+  if to_regclass('public.cars') is null then return; end if;
+  for pol in select policyname, cmd, roles, qual from pg_policies
+    where schemaname = 'public' and tablename = 'cars' and policyname <> 'Staff and admins manage cars'
+  loop
+    raise notice 'Dropping policy "%" on public.cars (command %, roles %, using %)', pol.policyname, pol.cmd, pol.roles, pol.qual;
+    execute format('drop policy %I on public.cars', pol.policyname);
+  end loop;
+  execute 'alter table public.cars enable row level security';
+  execute 'revoke all on public.cars from public, anon';
+  execute 'grant select, insert, update, delete on public.cars to authenticated';
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'cars' and policyname = 'Staff and admins manage cars') then
+    execute $policy$create policy "Staff and admins manage cars" on public.cars for all to authenticated
+      using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')))
+      with check (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')))$policy$;
+  end if;
+end $$;
 
 -- A3 ---------------------------------------------------------------------------------------------------------------
 do $$

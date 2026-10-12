@@ -184,6 +184,26 @@ test('busy minutes from many phones no longer lock every driver out at 120 tries
   } finally { await db.close(); }
 });
 
+test('the car list closes to signed-out visitors even if the 29 Sep close file was never run', async () => {
+  const db = await setup(async db => {
+    // As live after the 29 Sep reopen for Eca Guardian, without the later close
+    await db.exec(`drop policy if exists "Staff and admins manage cars" on public.cars;
+      grant select, insert, update, delete on public.cars to anon;
+      create policy "Enable all access for cars" on public.cars for all using (true) with check (true);
+      insert into public.cars(id, "plateNumber") values ('c1', 'XAA1001');`);
+  });
+  try {
+    await asAnon(db);
+    await assert.rejects(db.query(`select * from public.cars`), /permission denied/);
+    await assert.rejects(db.query(`delete from public.cars`), /permission denied/);
+    await asUser(db, STAFF_ID);
+    assert.equal(await count(db, `select count(*)::int n from public.cars`), 1, 'staff still see the cars on Fleet');
+    await db.exec('reset role');
+    assert.deepEqual((await rows<{ policyname: string }>(db, `select policyname from pg_policies where tablename = 'cars'`)).map(r => r.policyname),
+      ['Staff and admins manage cars']);
+  } finally { await db.close(); }
+});
+
 test('the file can safely run twice', async () => {
   const db = await setup();
   try {
