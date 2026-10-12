@@ -9,12 +9,14 @@ import { receivedByKind } from '../../services/depositTotals';
 import { agreementApi, type AgreementSettings } from '../../services/agreements/api';
 import { blankInput, carForPlate, fromDriver, withDeposits } from '../../services/agreements/prefill';
 import { agreementFileName, downloadAgreementPdf } from '../../services/agreements/pdf';
+import { downloadGrabLetterPdf, grabLetterFileName, grabLetterValues } from '../../services/agreements/grabLetter';
 import {
   KIND_LABELS, agreementValues, extraPlaceholders, fieldLabel, longDate, missingFields, type AgreementInput,
 } from '../../services/agreements/template';
 import { formatCurrency } from '../../utils';
 import AgreementPreview from './AgreementPreview';
 import TemplateEditor from './TemplateEditor';
+import GrabLetterPreview from './GrabLetterPreview';
 import SearchPick from './SearchPick';
 
 interface AgreementsViewProps {
@@ -66,6 +68,12 @@ function Facts({ rows }: { rows: [string, string][] }) {
 /** The signing-day details typed here: they belong to this agreement only and are kept only in its saved copy. */
 const SIGNING_FIELDS = ['agreement_ref', 'witness_name', 'witness_id', 'odometer_km', 'fuel_level'];
 
+/** Who signs the Grab letter for the owner: typed once and remembered in this browser only. */
+const SIGNATORY_KEY = 'eca.grabLetter.signatory';
+const rememberedSignatory = () => {
+  try { return localStorage.getItem(SIGNATORY_KEY) ?? ''; } catch { return ''; }
+};
+
 /**
  * The agreement generator. Every detail comes from where it is kept: the driver's profile (Add / Edit Driver), their
  * Deposits panel, Fleet and the company details; only the signing-day details are typed here. Download makes the PDF
@@ -84,6 +92,10 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const [downloading, setDownloading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const busy = useRef(false);
+  // Which paper this page makes: the rental agreement, or the Grab authorization letter
+  const [paper, setPaper] = useState<'agreement' | 'grab'>('agreement');
+  const [letterDate, setLetterDate] = useState(today);
+  const [signatory, setSignatory] = useState(rememberedSignatory);
 
   const load = useCallback(async () => {
     try {
@@ -191,6 +203,23 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const signingFields = extraPlaceholders(template);
   const typeLabel = KIND_LABELS[input.kind];
 
+  const letter = grabLetterValues({ driver: driver ?? {}, car: car ?? null, details: carDetails, signatoryName: signatory, letterDate });
+  const letterMissing = ([
+    ["the driver's name", letter.driver_name], ["the driver's NRIC", letter.driver_ic_no], ['the vehicle model', letter.vehicle_model],
+    ['the plate', letter.vehicle_plate], ['the registered owner (Fleet)', letter.owner_name], ["the owner's ID (Fleet)", letter.owner_ic_no],
+    ["the signer's name", letter.owner_signatory_name], ['the date', letter.letter_date],
+  ] as const).filter(([, value]) => !value).map(([label]) => label);
+  const downloadLetter = async () => {
+    if (!driver) return;
+    setResult(null);
+    try {
+      await downloadGrabLetterPdf(letter, grabLetterFileName(letter.vehicle_plate, letter.driver_name));
+      setResult({ ok: true, text: 'Downloaded. Print it for the owner to sign; nothing was saved.' });
+    } catch (err) {
+      setResult({ ok: false, text: `The PDF couldn't be made: ${reason(err)}.` });
+    }
+  };
+
   const download = async () => {
     if (!driver || !depositsReady || busy.current) return;
     busy.current = true;
@@ -222,6 +251,12 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
         <div>
           <h2 className="text-lg font-bold text-gray-900">Agreements</h2>
           <p className="text-sm text-gray-500">Choose the driver, check and download. Details come from the driver's profile, Deposits and Fleet.</p>
+          <div role="group" aria-label="Paper to make" className="mt-2 inline-flex flex-wrap rounded-lg border border-gray-300 bg-white p-0.5 text-sm font-semibold">
+            {([['agreement', 'Rental agreement'], ['grab', 'Grab authorization letter']] as const).map(([key, label]) => (
+              <button key={key} type="button" aria-pressed={paper === key} onClick={() => { setPaper(key); setResult(null); }}
+                className={`px-3 py-1.5 rounded-md ${paper === key ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{label}</button>
+            ))}
+          </div>
         </div>
         {isAdmin && (
           <button type="button" onClick={() => setEditing(true)} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg flex items-center gap-2">
@@ -245,6 +280,11 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
               placeholder="Search a driver's name or plate" options={activeDrivers.map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}` }))} />
             {!driver ? (
               <p className="text-sm text-gray-500">New customer? Add them first with <b>Add Driver</b> and record their deposit or downpayment, then choose them here.</p>
+            ) : paper === 'grab' ? (
+              <>
+                <Facts rows={[['Name', letter.driver_name], ['NRIC', letter.driver_ic_no]]} />
+                <p className="text-xs text-gray-500">To change these, use <b>Edit driver</b>.</p>
+              </>
             ) : (
               <>
                 <Facts rows={[
@@ -288,7 +328,26 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             </Step>
           )}
 
-          {driver && (
+          {driver && paper === 'grab' && (
+            <Step number={3} title="Letter details">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="grab-letter-date" className={labelLook}>Date</label>
+                  <input id="grab-letter-date" type="date" className={inputLook} value={letterDate} onChange={event => setLetterDate(event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="grab-letter-signatory" className={labelLook}>Vehicle owner's name (who signs)</label>
+                  <input id="grab-letter-signatory" className={inputLook} value={signatory} placeholder="Leave empty to write by hand"
+                    onChange={event => {
+                      setSignatory(event.target.value);
+                      try { localStorage.setItem(SIGNATORY_KEY, event.target.value); } catch { /* not remembered */ }
+                    }} />
+                </div>
+              </div>
+            </Step>
+          )}
+
+          {driver && paper === 'agreement' && (
             <Step number={3} title="Signing-day details">
               <p className="text-xs text-gray-500 -mt-2">
                 {lastSaved
@@ -312,6 +371,30 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
           )}
         </div>
 
+        {paper === 'grab' ? (
+        <div className="space-y-3 xl:sticky xl:top-4">
+          <div className={card}>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4" aria-hidden="true" /> Check and download</h3>
+            {!driver ? (
+              <p className="text-sm text-gray-500">Choose a driver to see their letter.</p>
+            ) : letterMissing.length > 0 ? (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 flex gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>Still empty (they print as a blank line to write in): {letterMissing.join(', ')}.</span>
+              </p>
+            ) : (
+              <p className="text-sm text-emerald-700">Every box is filled in.</p>
+            )}
+            {result && <p role={result.ok ? 'status' : 'alert'} className={`text-sm ${result.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{result.text}</p>}
+            <button type="button" onClick={() => void downloadLetter()} disabled={!driver}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold py-2.5 rounded-lg shadow-sm flex items-center justify-center gap-2">
+              <Download className="w-4 h-4" aria-hidden="true" /> Download PDF
+            </button>
+            <p className="text-xs text-gray-500">The PDF is made on this computer and is not saved anywhere.</p>
+          </div>
+          {driver && <GrabLetterPreview values={letter} />}
+        </div>
+        ) : (
         <div className="space-y-3 xl:sticky xl:top-4">
           <div className={card}>
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4" aria-hidden="true" /> Check and download</h3>
@@ -343,6 +426,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
