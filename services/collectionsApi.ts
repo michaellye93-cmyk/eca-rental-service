@@ -89,3 +89,14 @@ export async function stopPlan(id: string, day: string): Promise<void> {
   const { error } = await supabase.from('catch_up_plans').update({ stopped_on: day }).eq('id', id);
   if (error) throw error;
 }
+
+/** Every logged change to this driver's profile (newest last). Rejects when the change log is not available yet. */
+export async function loadDriverChanges(driverId: string): Promise<import('./driverChanges').DriverChange[]> {
+  const { data, error } = await supabase
+    .from('driver_changes')
+    .select('id,driver_id,action,changed_at,changed_by_name,changed_by_role,fields,before,after')
+    .eq('driver_id', driverId)
+    .order('id');
+  if (error) throw error;
+  return (data ?? []) as import('./driverChanges').DriverChange[];
+}

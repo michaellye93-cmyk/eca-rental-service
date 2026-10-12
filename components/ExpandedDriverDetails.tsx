@@ -1,47 +1,52 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Driver } from '../types';
-import { formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
+import { categoryLabel, formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { BankBadge, DeletedPayments, PaymentNoteLines, useBankStatus, usePaymentNotes } from './PaymentNotes';
 import DriverDeposits from './DriverDeposits';
-import { 
-  Phone, 
-  User, 
-  FileText, 
-  Clock, 
-  DollarSign, 
-  Upload, 
-  File, 
-  X
-} from 'lucide-react';
+import { loadDriverChanges } from '../services/collectionsApi';
+import { driverChangeLines, type DriverChange } from '../services/driverChanges';
+import { Phone, User, FileText, Clock, DollarSign, History } from 'lucide-react';
 
 interface ExpandedDriverDetailsProps {
   driver: Driver;
+  /** Admins may delete deposit lines; staff only add them. */
+  isAdmin: boolean;
   onLogPaymentClick: () => void;
   /** Records a rent payment settled from the driver's deposit (contra) on delisting. */
   onContraPayment?: (amount: number, date: string) => unknown;
 }
 
-export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ 
-  driver,
-  onLogPaymentClick,
-  onContraPayment,
-}) => {
-  const [receipts, setReceipts] = useState<Record<string, { name: string; size: string; previewUrl: string }>>(() => {
-    // Try to load any previously saved file previews from localStorage (simulated string data)
-    try {
-      const saved = localStorage.getItem(`driver_receipts_${driver.id}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+/** Who changed the driver's profile and what, newest first; nothing before the change log existed. */
+function ProfileHistory({ driver }: { driver: Driver }) {
+  const [changes, setChanges] = useState<DriverChange[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadDriverChanges(driver.id).then(rows => { if (live) setChanges(rows); }).catch(() => { if (live) setChanges([]); });
+    return () => { live = false; };
+  }, [driver]);
+  const lines = useMemo(() => driverChangeLines(changes ?? []), [changes]);
+  return (
+    <div className="space-y-3">
+      <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+        <History className="w-4 h-4 text-gray-500" aria-hidden="true" /> Profile changes
+      </h5>
+      {changes === null ? (
+        <p className="text-xs text-gray-500">Loading…</p>
+      ) : lines.length === 0 ? (
+        <p className="text-xs text-gray-600">No changes recorded since the change log started (12 Oct 2026).</p>
+      ) : (
+        <ul className="space-y-1.5 max-h-64 overflow-y-auto pr-1 text-xs text-gray-700">
+          {lines.map((line, index) => <li key={index} className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">{line}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ driver, isAdmin, onLogPaymentClick, onContraPayment }) => {
   // The latest six obligations from the shared rent schedule, newest first
-  const billingSchedule = React.useMemo(() => latestInvoices(driver), [driver]);
+  const billingSchedule = useMemo(() => latestInvoices(driver), [driver]);
   // Who recorded and changed each payment (payments from before the change log carry nothing)
   const notes = usePaymentNotes(driver);
   const bankStatus = useBankStatus(driver);
@@ -52,79 +57,17 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
     : velocity < -2
       ? { text: 'Paying earlier than usual', look: 'font-semibold text-green-700' }
       : { text: 'Usual timing', look: 'font-semibold text-gray-600' };
-
-  const saveReceipts = (newReceipts: Record<string, { name: string; size: string; previewUrl: string }>) => {
-    setReceipts(newReceipts);
-    try {
-      localStorage.setItem(`driver_receipts_${driver.id}`, JSON.stringify(newReceipts));
-    } catch (e) {
-      console.error("Local storage quota exceeded or unavailable:", e);
-    }
-  };
-
-  const processFile = (file: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
-      const previewUrl = reader.result as string;
-      const txId = `tx-manual-${Date.now()}`;
-      
-      const updated = {
-        ...receipts,
-        [txId]: {
-          name: file.name,
-          size: sizeStr,
-          previewUrl
-        }
-      };
-      saveReceipts(updated);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      processFile(files[0]);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      processFile(files[0]);
-    }
-  };
-
-  const handleRemoveReceipt = (txId: string) => {
-    const updated = { ...receipts };
-    delete updated[txId];
-    saveReceipts(updated);
-  };
+  const sewaBeli = categoryLabel(driver) === 'Sewa Beli';
 
   return (
     <div className="bg-white/95 rounded-2xl border border-gray-200/80 shadow-inner p-6 space-y-8 font-sans text-gray-800">
-      {/* Drawer Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Column 1: Driver Directory Profile */}
+
+        {/* Driver profile */}
         <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-200/60 shadow-sm space-y-5">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-              <User className="w-5 h-5" />
+              <User className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
               <h4 className="text-base font-bold text-gray-900">{driver.name}</h4>
@@ -132,73 +75,55 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3.5 border-t border-gray-200/60 pt-4">
-            {/* Phone */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-                <Phone className="w-3.5 h-3.5" /> Contact
-              </span>
-              {driver.phone ? (
-                <span className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-gray-700">{formatPhone(driver.phone)}</span>
-                  <a href={whatsappLink(driver.phone)} target="_blank" rel="noopener noreferrer" className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800 hover:bg-emerald-100">WhatsApp</a>
-                </span>
-              ) : (
-                <span className="text-gray-600 italic">No phone yet: add it with Edit</span>
-              )}
+          <dl className="space-y-3.5 border-t border-gray-200/60 pt-4 text-xs">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                <Phone className="w-3.5 h-3.5" aria-hidden="true" /> Contact
+              </dt>
+              <dd>
+                {driver.phone ? (
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-gray-700">{formatPhone(driver.phone)}</span>
+                    <a href={whatsappLink(driver.phone)} target="_blank" rel="noopener noreferrer" className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800 hover:bg-emerald-100">WhatsApp</a>
+                  </span>
+                ) : <span className="text-gray-600 italic">No phone yet: add it with Edit</span>}
+              </dd>
             </div>
-
-            {/* WhatsApp group, so messages go to the right chat */}
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">WhatsApp group</span>
-              {driver.whatsappGroup
-                ? <span className="font-bold text-gray-800 text-right break-words">{driver.whatsappGroup}</span>
-                : <span className="text-gray-600 italic">Not set: add it with Edit</span>}
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">WhatsApp group</dt>
+              <dd className="text-right break-words">{driver.whatsappGroup ? <span className="font-bold text-gray-800">{driver.whatsappGroup}</span> : <span className="text-gray-600 italic">Not set: add it with Edit</span>}</dd>
             </div>
-
-            {/* NRIC */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">NRIC No</span>
-              <span className="font-mono font-bold text-gray-700">{driver.nric}</span>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">NRIC No</dt>
+              <dd className="font-mono font-bold text-gray-700">{driver.nric}</dd>
             </div>
-
-            {/* Group Label */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Roster Tag</span>
-              <span className="font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 uppercase tracking-wide">
-                {driver.tags?.[0] || 'Default'}
-              </span>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Tags</dt>
+              <dd className="flex flex-wrap justify-end gap-1">
+                {(driver.tags?.length ? driver.tags : ['None']).map(tag => (
+                  <span key={tag} className="font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 uppercase tracking-wide">{tag}</span>
+                ))}
+              </dd>
             </div>
-
-            {/* Category */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Category</span>
-              <span className={`font-black uppercase tracking-wider text-xs px-2 py-0.5 rounded border ${
-                driver.category === 'SEWABELI' 
-                  ? 'bg-indigo-50 text-indigo-700 border-indigo-100' 
-                  : 'bg-orange-50 text-orange-700 border-orange-100'
-              }`}>
-                {driver.category === 'SEWABELI' ? 'Rent-To-Own (Sewabeli)' : 'Basic Hire (Sewa)'}
-              </span>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Category</dt>
+              <dd className={`font-black uppercase tracking-wider px-2 py-0.5 rounded border ${sewaBeli ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
+                {categoryLabel(driver)}
+              </dd>
             </div>
-
-            {/* Payment timing against the driver's own usual timing (moved here from the list row) */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Payment timing</span>
-              <span className={paymentTiming.look}>{paymentTiming.text}</span>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Payment timing</dt>
+              <dd className={paymentTiming.look}>{paymentTiming.text}</dd>
             </div>
-
-            {/* Registered Car Plate */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Registered Car</span>
-              <span className="font-mono font-extrabold text-gray-950 bg-yellow-50 px-2 border border-yellow-200 rounded">
-                {driver.carPlate}
-              </span>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-gray-500 font-semibold uppercase tracking-wider shrink-0">Registered Car</dt>
+              <dd className="font-mono font-extrabold text-gray-950 bg-yellow-50 px-2 border border-yellow-200 rounded">{driver.carPlate}</dd>
             </div>
-          </div>
+          </dl>
 
           <div className="border-t border-gray-200/60 pt-4">
-            <button 
+            <button
+              type="button"
               onClick={onLogPaymentClick}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all focus:ring-2 focus:ring-blue-500/55"
             >
@@ -207,180 +132,57 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({
           </div>
         </div>
 
-        {/* Column 2: Invoices Schedule */}
+        {/* Rent schedule */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-gray-500" />
-              Dynamic Billing & Rental Schedule
+              <FileText className="w-4 h-4 text-gray-500" aria-hidden="true" />
+              Rent schedule
             </h5>
             <span className="text-xs text-gray-500 font-black uppercase tracking-wider">Last 6 Billing Periods</span>
           </div>
-
           <div className="space-y-1.5">
             {billingSchedule.map(inv => <InvoiceRow key={inv.id} invoice={inv} />)}
           </div>
         </div>
-
       </div>
 
-      {/* Transaction Feed & Drag-and-Drop Receipt Box */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 border-t border-gray-200/60 pt-6">
-        
-        {/* Live Payments Feed */}
+        {/* Deposits and payments */}
         <div className="lg:col-span-2 space-y-4">
-          <DriverDeposits driver={driver} onContraPayment={onContraPayment} />
+          <DriverDeposits driver={driver} isAdmin={isAdmin} onContraPayment={onContraPayment} />
           <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" />
-            Live Payment Transactions & Timelines
+            <Clock className="w-4 h-4 text-gray-500" aria-hidden="true" />
+            Payments
           </h5>
 
           <DeletedPayments notes={notes} payments={driver.paymentHistory} />
           {driver.paymentHistory.length === 0 ? (
-            <div className="p-12 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-gray-500 text-xs italic">
-              No historical payment logs located. Expand driver with new receipts.
+            <div className="p-12 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-gray-600 text-xs">
+              No payments recorded yet.
             </div>
           ) : (
-            <div className="relative border-l border-gray-200 pl-4 ml-3 space-y-6">
-              {driver.paymentHistory.map((pt, index) => {
-                const uploadedData = receipts[pt.id] || receipts[`tx-manual-${pt.id}`];
-                
-                return (
-                  <div key={pt.id || index} className="relative text-xs">
-                    {/* Tiny bullet */}
-                    <span className="absolute -left-7 top-1 w-3 h-3 rounded-full bg-blue-600 border-2 border-white ring-2 ring-blue-100" />
-                    
-                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200/60 hover:border-gray-300 hover:shadow-sm transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <PaymentAmount payment={pt} className="font-extrabold text-base text-gray-950" />
-                          <PaymentMethodBadge method={pt.paymentMethod} />
-                          {pt.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {pt.reference}</span>}
-                          <BankBadge payment={pt} status={bankStatus} />
-                        </div>
-                        <p className="text-gray-500 font-medium font-mono mt-1 text-xs">
-                          Paid on {formatDate(pt.date, 'N/A')}
-                        </p>
-                        <PaymentNoteLines lines={notes.get(pt.id)} />
-                      </div>
-
-                      {/* Display Receipt Attachments */}
-                      <div className="flex items-center gap-3 self-end sm:self-auto">
-                        {uploadedData ? (
-                          <div className="flex items-center gap-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 p-2 rounded-lg pr-3">
-                            {uploadedData.previewUrl.startsWith('data:image') ? (
-                              <img 
-                                src={uploadedData.previewUrl} 
-                                alt="receipt-preview" 
-                                className="w-8 h-8 rounded border border-emerald-300 object-cover shrink-0 cursor-pointer hover:scale-125 transition-transform" 
-                                referrerPolicy="no-referrer"
-                                onClick={() => {
-                                  // Opens receipt preview in basic simulated lightbox
-                                  const win = window.open();
-                                  if (win) {
-                                    win.document.write(`<img src="${uploadedData.previewUrl}" style="max-width:100%; max-height:100vh; margin:auto; display:block;" />`);
-                                  }
-                                }}
-                              />
-                            ) : (
-                              <File className="w-5 h-5 text-emerald-600 shrink-0" />
-                            )}
-                            <div className="truncate max-w-[120px]">
-                              <span className="font-bold underline text-xs block truncate" title={uploadedData.name}>{uploadedData.name}</span>
-                              <span className="text-xs text-gray-500 block font-mono font-semibold">{uploadedData.size}</span>
-                            </div>
-                            <button 
-                              type="button"
-                              onClick={() => handleRemoveReceipt(pt.id || `tx-manual-${pt.id}`)}
-                              aria-label="Remove receipt"
-                              className="text-red-500 hover:text-red-700 p-1 min-w-[30px] min-h-[30px]"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button 
-                            onClick={() => {
-                              fileInputRef.current?.click();
-                              // Bind TX to file input if needed
-                            }}
-                            className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 rounded-lg px-2.5 py-1.5 font-bold flex items-center gap-1 shrink-0 cursor-pointer outline-none min-h-[36px]"
-                          >
-                            <Upload className="w-3.5 h-3.5" /> Bind Receipt
-                          </button>
-                        )}
-                      </div>
+            <ul className="relative border-l border-gray-200 pl-4 ml-3 space-y-6">
+              {driver.paymentHistory.map((pt, index) => (
+                <li key={pt.id || index} className="relative text-xs">
+                  <span aria-hidden="true" className="absolute -left-7 top-1 w-3 h-3 rounded-full bg-blue-600 border-2 border-white ring-2 ring-blue-100" />
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200/60">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <PaymentAmount payment={pt} className="font-extrabold text-base text-gray-950" />
+                      <PaymentMethodBadge method={pt.paymentMethod} />
+                      {pt.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {pt.reference}</span>}
+                      <BankBadge payment={pt} status={bankStatus} />
                     </div>
+                    <p className="text-gray-500 font-medium font-mono mt-1 text-xs">Paid on {formatDate(pt.date, 'N/A')}</p>
+                    <PaymentNoteLines lines={notes.get(pt.id)} />
                   </div>
-                );
-              })}
-            </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
-        {/* receipt drop uploader */}
-        <div className="space-y-4">
-          <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <Upload className="w-4 h-4 text-gray-500" />
-            Receipt Dropbox
-          </h5>
-
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`cursor-pointer hover:border-blue-400 group relative border-2 border-dashed rounded-2xl p-6 text-center transition-all min-h-[160px] flex flex-col justify-center items-center shadow-inner
-              ${isDragging ? 'border-blue-500 bg-blue-50/50 scale-[1.01]' : 'border-gray-200 bg-gray-50/20'}`}
-          >
-            <input 
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,application/pdf"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            
-            <div className="p-3 bg-white shadow-md border border-gray-100 rounded-xl mb-3 text-gray-500 group-hover:text-blue-500 transform group-hover:scale-110 transition-transform">
-              <Upload className="w-5 h-5" />
-            </div>
-
-            <span className="text-xs text-gray-700 font-bold block mb-1">Drag receipts here or click</span>
-            <span className="text-xs text-gray-500 font-medium">JPEG, PNG, or PDF up to 5MB</span>
-            
-            {isDragging && (
-              <div className="absolute inset-0 bg-blue-50/90 backdrop-blur-sm rounded-2xl flex items-center justify-center font-bold text-blue-600 text-xs">
-                Release to Upload receipt proof!
-              </div>
-            )}
-          </div>
-
-          {Object.keys(receipts).length > 0 && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-              <span className="text-xs text-gray-500 font-extrabold uppercase tracking-wider block">Uploaded proofs ({Object.keys(receipts).length})</span>
-              <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                {Object.entries(receipts).map(([id, rawR]) => {
-                  const r = rawR as { name: string; size: string; previewUrl: string };
-                  return (
-                    <div key={id} className="flex items-center justify-between p-2 rounded bg-white border border-gray-200 text-xs">
-                      <div className="flex items-center gap-2 truncate max-w-[170px]">
-                        <File className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                        <span className="truncate font-semibold text-gray-700">{r.name}</span>
-                      </div>
-                    <button 
-                      type="button" 
-                      onClick={() => handleRemoveReceipt(id)} 
-                      className="text-red-500 hover:text-red-700 font-bold"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )})}
-              </div>
-            </div>
-          )}
-        </div>
-
+        <ProfileHistory driver={driver} />
       </div>
     </div>
   );

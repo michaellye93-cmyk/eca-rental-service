@@ -750,7 +750,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPaymentError(null);
     const reference = paymentReference.trim();
     const duplicates = findPossibleDuplicates(drivers, selectedDriverForPayment.id, { amount, serviceClaim, date: paymentDate, reference });
-    if (duplicates.length > 0 && !confirmDuplicates) { setDuplicateWarning(duplicates); return; }
+    // The same bank reference on a cash payment is never saved twice (the database refuses it too)
+    const referenceTaken = amount > 0 && duplicates.some(found => found.reason === 'SAME_REFERENCE' && found.payment.amount > 0);
+    if (duplicates.length > 0 && (!confirmDuplicates || referenceTaken)) { setDuplicateWarning(duplicates); return; }
     onUpdatePayment(selectedDriverForPayment.id, amount, paymentDate, serviceClaim, finalMethod, reference || undefined);
     setIsPaymentModalOpen(false); setSelectedDriverForPayment(null); setPaymentAmount(''); setServiceClaimAmount('0'); setPaymentDate(''); setPaymentMethod(null); setPaymentReference(''); setDuplicateWarning(null);
   };
@@ -1441,13 +1443,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button type="button" onClick={() => handleOpenEditModal(driver)} aria-label={`Edit ${driver.name}`} title="Edit driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Pencil className="w-5 h-5 shrink-0" aria-hidden="true" /></button>
                                 {driverScope === 'ACTIVE'
                                   ? <button type="button" onClick={() => handleDelistClick(driver)} aria-label={`Delist ${driver.name}`} title="Delist driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><UserMinus className="w-5 h-5 shrink-0" aria-hidden="true" /></button>
-                                  : <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Trash2 className="w-5 h-5 shrink-0" aria-hidden="true" /></button>}
+                                  : userRole === 'admin' && <button type="button" onClick={() => setDriverToDelete(driver)} aria-label={`Delete ${driver.name}`} title="Delete driver" className="shrink-0 w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"><Trash2 className="w-5 h-5 shrink-0" aria-hidden="true" /></button>}
                               </div>
                             </div>
                           </div>
                           {expanded && (
                             <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 sm:p-4">
-                              <ExpandedDriverDetails driver={driver} onLogPaymentClick={() => handleOpenPaymentModal(driver)} onContraPayment={(amount, date) => onUpdatePayment(driver.id, amount, date, 0, 'DEPOSIT CONTRA', 'Deposit contra')} />
+                              <ExpandedDriverDetails driver={driver} isAdmin={userRole === 'admin'} onLogPaymentClick={() => handleOpenPaymentModal(driver)} onContraPayment={(amount, date) => onUpdatePayment(driver.id, amount, date, 0, 'DEPOSIT CONTRA', 'Deposit contra')} />
                               {!driver.isDelisted && <CollectionsPanels driver={driver} extras={extras} isAdmin={userRole === 'admin'} today={todayStr} now={kualaLumpurNow()} />}
                             </div>
                           )}
@@ -1750,7 +1752,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </ul>
                       <div className="flex gap-2 pt-1">
                         <button type="button" onClick={() => setDuplicateWarning(null)} className="flex-1 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg">Go back</button>
-                        <button type="button" onClick={() => submitPayment(true)} className="flex-1 py-2 text-sm font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg">Save anyway</button>
+                        {duplicateWarning.some(found => found.reason === 'SAME_REFERENCE' && found.payment.amount > 0) && (parseFloat(paymentAmount) || 0) > 0
+                          ? <p className="flex-1 self-center text-xs font-semibold">A bank reference can be recorded once. Check the receipt, or fix the reference.</p>
+                          : <button type="button" onClick={() => submitPayment(true)} className="flex-1 py-2 text-sm font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg">Save anyway</button>}
                       </div>
                     </div>
                   ) : (

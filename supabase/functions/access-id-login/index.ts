@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.97.0';
-import { handleAccessIdLogin, parseAccounts, hashAccessId } from './handler.ts';
+import { clientAddressOf, handleAccessIdLogin, parseAccounts, hashAccessId } from './handler.ts';
 
 Deno.serve(async request => {
   try {
@@ -10,7 +10,7 @@ Deno.serve(async request => {
     const accounts=parseAccounts(Deno.env.get('ACCESS_ID_ACCOUNTS')??'');
     // Hosted Supabase supplies the client address. Never accept a caller ID from
     // the body. Missing gateway metadata shares a restrictive fallback budget.
-    const clientAddress=request.headers.get('x-forwarded-for')?.split(',')[0]?.trim().toLowerCase()||'unknown';
+    const clientAddress=clientAddressOf(request.headers);
     const callerBucket=`client:${await hashAccessId(clientAddress)}`;
     const admin=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}});
     return await handleAccessIdLogin(request,{

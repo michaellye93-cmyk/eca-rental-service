@@ -315,7 +315,8 @@ const App: React.FC = () => {
         : payments.some(p => p.id === saved.id) ? payments : [saved, ...payments]);
     } catch (err: any) {
       updateDriverPayments(driverId, payments => payments.filter(p => p.id !== tempId));
-      setNotice({ type: 'error', text: `Payment not saved: ${err.message}` });
+      const sameReference = err?.code === '23505' && /payments_reference_once/.test(err?.message ?? '');
+      setNotice({ type: 'error', text: sameReference ? `Payment not saved: reference ${reference} is already recorded. A bank reference can be recorded once.` : `Payment not saved: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
@@ -342,7 +343,8 @@ const App: React.FC = () => {
       if (error) throw error;
       updateDriverPayments(driverId, payments => payments.map(p => (p.id === paymentId ? paymentFromRow(data) : p)));
     } catch (err: any) {
-      setNotice({ type: 'error', text: `Payment not updated: ${err.message}` });
+      const sameReference = err?.code === '23505' && /payments_reference_once/.test(err?.message ?? '');
+      setNotice({ type: 'error', text: sameReference ? `Payment not updated: reference ${reference} is already recorded on another payment.` : `Payment not updated: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
@@ -406,8 +408,9 @@ const App: React.FC = () => {
     try {
       const { error: paymentError } = await supabase.from('payments').delete().eq('driver_id', driverId);
       if (paymentError) throw paymentError;
-      const { error: driverError } = await supabase.from('drivers').delete().eq('id', driverId);
+      const { data: deleted, error: driverError } = await supabase.from('drivers').delete().eq('id', driverId).select('id');
       if (driverError) throw driverError;
+      if (!deleted?.length) throw new Error('only an admin can delete a driver');
       await fetchDriversAndPayments(true);
       setNotice({ type: 'success', text: 'Driver and their payment records deleted.' });
     } catch (err: any) {

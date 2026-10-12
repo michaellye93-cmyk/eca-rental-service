@@ -72,3 +72,15 @@ export async function handleAccessIdLogin(request: Request, deps: LoginDependenc
     return respond({access_token:session.access_token,refresh_token:session.refresh_token});
   }catch{return respond({error:'Unable to sign in right now. Please try again.'},503);}
 }
+
+/**
+ * The caller's address for the rate limit, read the same way as the driver sign-in (driver_portal_login): the address
+ * the gateway saw (cf-connecting-ip), else the LAST X-Forwarded-For entry. The first entry is whatever the caller sent,
+ * so trusting it would let one caller look like many and dodge the per-caller limit.
+ */
+export function clientAddressOf(headers: Headers): string {
+  const gateway = headers.get('cf-connecting-ip')?.trim();
+  if (gateway) return gateway.toLowerCase();
+  const forwarded = (headers.get('x-forwarded-for') ?? '').split(',').map(part => part.trim()).filter(Boolean);
+  return forwarded.at(-1)?.toLowerCase() || 'unknown';
+}

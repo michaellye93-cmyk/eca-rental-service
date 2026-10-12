@@ -1,4 +1,5 @@
 import { formatCurrency } from "../../utils";
+import BackupButton from "../money/BackupButton";
 import React from "react";
 import { CheckIcon, CircleIcon, ReloadIcon } from "@radix-ui/react-icons";
 import type {
@@ -478,6 +479,7 @@ export default function FinanceMonthClose(p: Props) {
           )}
         </div>
       </section>
+      <BackupButton />
     </div>
   );
 }

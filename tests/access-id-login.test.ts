@@ -76,3 +76,13 @@ test('throttles all guesses from the same caller before lookup while preserving 
   assert.equal((await handleAccessIdLogin(request({access_id:'fixture-access'}),limited)).status,429);
   assert.equal((await handleAccessIdLogin(request({access_id:'fixture-access'}),{...limited,callerBucket:'client:'+'b'.repeat(64)})).status,200);
 });
+
+test('the caller address is read the way the driver sign-in reads it: the gateway address first, never a forwarded first entry', async () => {
+  const { clientAddressOf } = await import('../supabase/functions/access-id-login/handler.ts');
+  const headers = (entries: Record<string, string>) => new Headers(entries);
+  assert.equal(clientAddressOf(headers({ 'cf-connecting-ip': '203.0.113.7', 'x-forwarded-for': '198.51.100.1, 203.0.113.7' })), '203.0.113.7');
+  // A caller can put anything first in X-Forwarded-For; the last entry is the one the gateway added.
+  assert.equal(clientAddressOf(headers({ 'x-forwarded-for': 'spoofed-by-caller, 203.0.113.9' })), '203.0.113.9');
+  assert.equal(clientAddressOf(headers({ 'x-forwarded-for': ' 203.0.113.10 ' })), '203.0.113.10');
+  assert.equal(clientAddressOf(headers({})), 'unknown');
+});

@@ -11,7 +11,7 @@ const ENTRY_LABEL: Record<DepositEntry, string> = { RECEIVED: 'Received', REFUND
  * received, refunded or forfeited, and what is still held. Kept apart from rent; every change is logged with who made it. "Deposit forfeit" is for termination:
  * the deposit is set against rent owed, so a matching rent payment (method Deposit contra) is recorded with it.
  */
-export default function DriverDeposits({ driver, onContraPayment }: { driver: Pick<Driver, 'id' | 'category'>; onContraPayment?: (amount: number, date: string) => unknown }) {
+export default function DriverDeposits({ driver, isAdmin, onContraPayment }: { driver: Pick<Driver, 'id' | 'category'>; isAdmin: boolean; onContraPayment?: (amount: number, date: string) => unknown }) {
   // Sewa Beli may take a downpayment, a security deposit, or both; Sewa Biasa a deposit
   const isBeli = depositKindFor(driver.category) === 'DOWNPAYMENT';
   const label = isBeli ? 'Downpayment and security deposit' : 'Deposit';
@@ -91,7 +91,7 @@ export default function DriverDeposits({ driver, onContraPayment }: { driver: Pi
               <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${row.entry === 'RECEIVED' ? 'bg-emerald-50 text-emerald-800' : row.entry === 'REFUNDED' ? 'bg-blue-50 text-blue-800' : 'bg-amber-50 text-amber-800'}`}>{ENTRY_LABEL[row.entry]}</span>
               <b className="font-mono">{formatCurrency(row.amount)}</b>
               {row.note && <span className="text-gray-500">{row.note}</span>}
-              <button type="button" onClick={() => void remove(row)} disabled={busy} className="ml-auto text-red-600 hover:underline">Delete</button>
+              {isAdmin && <button type="button" onClick={() => void remove(row)} disabled={busy} className="ml-auto text-red-600 hover:underline">Delete</button>}
             </li>
           ))}
         </ul>

@@ -42,6 +42,7 @@ export async function addDeposit(row: { driver_id: string; kind: DepositKind; en
 }
 
 export async function deleteDeposit(id: string): Promise<void> {
-  const { error } = await supabase.from('driver_deposits').delete().eq('id', id);
+  const { data, error } = await supabase.from('driver_deposits').delete().eq('id', id).select('id');
+  if (!error && !data?.length) throw new Error('only an admin can delete a deposit line');
   if (error) throw error;
 }
