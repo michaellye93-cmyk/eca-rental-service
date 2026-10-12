@@ -2,6 +2,7 @@ import { supabase } from '../../supabaseClient';
 import type { FinanceInput, FixedCostTreatment, SmartDriveRow } from '../../types/finance';
 import type { CashBalanceEntry, CashOutlookData } from '../cashOutlook';
 import type { DraftStatement, ServerReconcileDraft } from './reconcileDraft';
+import type { StoredMonthTotals } from './dashboard';
 
 async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(name, args);
@@ -34,6 +35,10 @@ export const setFixedCostTreatment = (seriesId: string, treatment: FixedCostTrea
 export const loadServerReconcileDraft = (month: string) => rpc<ServerReconcileDraft | null>('finance_load_reconcile_draft', { p_month: financeMonth(month) });
 export const saveServerReconcileDraft = (month: string, statements: DraftStatement[]) => rpc<string>('finance_save_reconcile_draft', { p_month: financeMonth(month), p_statements: statements });
 export const clearServerReconcileDraft = (month: string) => rpc<null>('finance_clear_reconcile_draft', { p_month: financeMonth(month) });
+// Stored trend figures of closed months (same file); each call rejects until it is run, and the trend then reads every month.
+export const loadMonthTotals = () => rpc<StoredMonthTotals[]>('finance_month_totals');
+export const saveMonthTotals = (month: string, revision: number, totals: StoredMonthTotals['totals']) =>
+  rpc<null>('finance_save_month_totals', { p_month: financeMonth(month), p_revision: revision, p_totals: totals });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
 export const generateFixedCosts = (month: string, revision: number) => rpc<FinanceInput>('finance_generate_fixed_costs', { p_month: financeMonth(month), p_revision: revision });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });

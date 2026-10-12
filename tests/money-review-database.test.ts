@@ -63,6 +63,46 @@ test('unposted Reconcile work is kept on the server per month, for Admins only',
   } finally { await db.close(); }
 });
 
+const totals = { revenue: 10000, contribution: 4000, profit: 2500, margin: 0.25 };
+const stored = (db: any) => call<any[]>(db, `select public.finance_month_totals() value`);
+
+test('a closed month keeps its trend figures, which go stale when the month is reopened', async () => {
+  const db = await setup();
+  try {
+    await db.exec(`reset role;
+      insert into finance_private.months(finance_month,status,revision,frozen_input) values
+        ('2026-08-01','CLOSED',3,'{}'::jsonb),('2026-09-01','CLOSED',5,'{}'::jsonb),('2026-10-01','DRAFT',1,null);`);
+    await asUser(db);
+    assert.deepEqual(await stored(db), []);
+    await db.query(`select public.finance_save_month_totals('2026-08-01', 3, $1::jsonb)`, [JSON.stringify(totals)]);
+    await db.query(`select public.finance_save_month_totals('2026-09-01', 5, $1::jsonb)`, [JSON.stringify({ ...totals, margin: null })]);
+    const rows = await stored(db);
+    assert.deepEqual(rows.map((r: any) => [r.month, r.revision]), [['2026-08-01', 3], ['2026-09-01', 5]]);
+    assert.deepEqual(rows[0].totals, totals);
+    assert.equal(rows[1].totals.margin, null);
+
+    // Only a closed month at its current revision can be stored.
+    await assert.rejects(db.query(`select public.finance_save_month_totals('2026-10-01', 1, $1::jsonb)`, [JSON.stringify(totals)]), /closed/);
+    await assert.rejects(db.query(`select public.finance_save_month_totals('2026-08-01', 2, $1::jsonb)`, [JSON.stringify(totals)]), /changed/);
+    await assert.rejects(db.query(`select public.finance_save_month_totals('2026-08-01', 3, '{"revenue":"lots"}'::jsonb)`), /figures/);
+
+    // Reopening moves the month to a new revision: its stored row is no longer returned, so the trend reads it live.
+    await db.exec(`reset role; update finance_private.months set status='DRAFT', revision=4, frozen_input=null where finance_month='2026-08-01';`);
+    await asUser(db);
+    assert.deepEqual((await stored(db)).map((r: any) => r.month), ['2026-09-01']);
+    // Closed again: saved again at the new revision.
+    await db.exec(`reset role; update finance_private.months set status='CLOSED', revision=5, frozen_input='{}' where finance_month='2026-08-01';`);
+    await asUser(db);
+    await db.query(`select public.finance_save_month_totals('2026-08-01', 5, $1::jsonb)`, [JSON.stringify({ ...totals, profit: 2000 })]);
+    assert.deepEqual((await stored(db)).map((r: any) => [r.month, r.revision, r.totals.profit]), [['2026-08-01', 5, 2000], ['2026-09-01', 5, 2500]]);
+
+    await assert.rejects(db.query(`select * from finance_private.month_totals`), /permission denied/);
+    await asUser(db, STAFF_ID);
+    await assert.rejects(stored(db), /Admin/);
+    await assert.rejects(db.query(`select public.finance_save_month_totals('2026-09-01', 5, $1::jsonb)`, [JSON.stringify(totals)]), /Admin/);
+  } finally { await db.close(); }
+});
+
 test('the file can safely run twice', async () => {
   const db = await setup();
   try {

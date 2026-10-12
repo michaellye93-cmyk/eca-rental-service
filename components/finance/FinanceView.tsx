@@ -21,6 +21,8 @@ import type {
 import {
   getFinanceAccess,
   loadMonth,
+  loadMonthTotals,
+  saveMonthTotals,
   generateFixedCosts,
   postSmartDrive,
   refreshPayments,
@@ -68,7 +70,7 @@ import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
 import { nextVehicleSort, sortVehicles, type VehicleSort, type VehicleSortKey } from "../../services/finance/vehicleSort";
 import { directCostBreakdown } from "../../services/finance/directCost";
-import { marginTarget, monthCashFlow, trendMonths, trendRow, type TrendRow } from "../../services/finance/dashboard";
+import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedTotals, trendMonths, trendRow, type StoredMonthTotals, type TrendRow } from "../../services/finance/dashboard";
 import { monthCollection } from "../../services/driverLedger";
 import CashPage from "../money/CashPage";
 import type { CashBalanceEntry, CashLineSummary, CashOutlookData } from "../../services/cashOutlook";
@@ -175,9 +177,15 @@ export default function FinanceView(props: MoneyProps = {}) {
   const authenticatedUserId = useRef<string | null>(null);
   // The month already read (or being read) for the pages that use it; cleared with the private data.
   const requestedMonth = useRef<string | null>(null);
+  // Stored trend figures of closed months: undefined until read, null when unavailable (database update not run).
+  const [stored, setStored] = useState<StoredMonthTotals[] | null | undefined>(undefined);
+  // Month (YYYY-MM) to the revision stored for it, kept current as figures are saved; null while unavailable.
+  const storedRevisions = useRef<Map<string, number> | null>(null);
   const clearPrivate = useCallback(() => {
     previewGeneration.current++;
     requestedMonth.current = null;
+    storedRevisions.current = null;
+    setStored(undefined);
     setInput(null);
     setPreview(null);
     setSmartFile(null);
@@ -338,26 +346,56 @@ export default function FinanceView(props: MoneyProps = {}) {
     () => (input ? buildFinanceReport(input) : null),
     [input],
   );
-  // Month-by-month trend for the Overview: earlier months are read once per chosen month, the chosen one is live.
+  // Stored trend figures are read when the Overview opens or a closed month is shown (one light read, no Finance lock).
+  useEffect(() => {
+    if (sessionState !== "ready" || stored !== undefined) return;
+    if (page !== "overview" && input?.month.status !== "CLOSED") return;
+    const current = generation.current;
+    loadMonthTotals()
+      .then((rows) => {
+        if (current !== generation.current) return;
+        storedRevisions.current = new Map(rows.map((row) => [row.month.slice(0, 7), row.revision]));
+        setStored(rows);
+      })
+      .catch(() => { if (current === generation.current) setStored(null); });
+  }, [sessionState, stored, page, input?.month.status]);
+  // Saves a closed month's trend figures when nothing is stored for it at this revision (after closing, or on reading it).
+  const keepTotals = useCallback((monthKey: string, revision: number, row: TrendRow) => {
+    const revisions = storedRevisions.current;
+    if (!needsStoredTotals({ finance_month: monthKey, status: "CLOSED", revision }, revisions)) return;
+    revisions!.set(monthKey, revision);
+    saveMonthTotals(monthKey, revision, storedTotals(row)).catch(() => {
+      if (revisions!.get(monthKey) === revision) revisions!.delete(monthKey);
+    });
+  }, []);
+  useEffect(() => {
+    if (!input || !report || stored === undefined || input.month.status !== "CLOSED") return;
+    keepTotals(month, input.month.revision, trendRow(month, input.month.status, report));
+  }, [input, report, stored, month, keepTotals]);
+  // Month-by-month trend for the Overview: closed months come from their stored figures; the others are read once per
+  // chosen month (all of them before the database update is run); the chosen one is live.
   const [earlierTrend, setEarlierTrend] = useState<{ month: string; rows: TrendRow[] } | null>(null);
   useEffect(() => {
-    if (sessionState !== "ready" || page !== "overview") return;
+    if (sessionState !== "ready" || page !== "overview" || stored === undefined) return;
     if (earlierTrend?.month === month) return;
     let cancelled = false;
     (async () => {
-      const rows: TrendRow[] = [];
-      for (const earlier of trendMonths(month).slice(0, -1)) {
+      const earlierMonths = trendMonths(month).slice(0, -1);
+      const plan = planTrend(earlierMonths, stored);
+      for (const earlier of plan.live) {
         try {
           const data = await loadMonth(earlier);
-          rows.push(trendRow(earlier, data.month.status, buildFinanceReport(data)));
+          const row = trendRow(earlier, data.month.status, buildFinanceReport(data));
+          plan.rows.set(earlier, row);
+          if (data.month.status === "CLOSED") keepTotals(earlier, data.month.revision, row);
         } catch {
           // A month that cannot be read is left out of the trend.
         }
       }
-      if (!cancelled) setEarlierTrend({ month, rows });
+      if (!cancelled) setEarlierTrend({ month, rows: earlierMonths.flatMap((m) => plan.rows.get(m) ?? []) });
     })();
     return () => { cancelled = true; };
-  }, [sessionState, page, month, earlierTrend?.month]);
+  }, [sessionState, page, month, earlierTrend?.month, stored, keepTotals]);
   const trend = useMemo(
     () => (report && input && earlierTrend?.month === month ? [...earlierTrend.rows, trendRow(month, input.month.status, report)] : null),
     [report, input, earlierTrend, month],
