@@ -130,9 +130,12 @@ export async function removeContact(id: string): Promise<void> {
   if (!data?.length) throw new Error('only an admin can remove a contact');
 }
 
-/** Saves a day's status rows in one request; a repeat the same day replaces them. Rejects when the table is not there yet. */
+/**
+ * Saves today's status rows in one request. The first write of the Kuala Lumpur day wins: a repeat the same day is
+ * ignored (insert ... on conflict do nothing; nobody may rewrite a row). Rejects when the table is not there yet.
+ */
 export async function saveDailyStatus(rows: DailyStatusRow[]): Promise<void> {
-  const { error } = await supabase.from('driver_daily_status').upsert(rows, { onConflict: 'driver_id,day' });
+  const { error } = await supabase.from('driver_daily_status').upsert(rows, { onConflict: 'driver_id,day', ignoreDuplicates: true });
   if (error) throw error;
 }
 

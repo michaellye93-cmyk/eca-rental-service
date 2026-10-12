@@ -113,9 +113,13 @@ test('F2: staff and admins log contacts under their own name; only admins remove
     await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message) values($1, 'NOTE', '')`, [DRIVER_A]), /check/);
     await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'NOTE', 'x', now() + interval '1 day')`, [DRIVER_A]), /future/i);
     await db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'REPLY', 'Driver replied this morning', now() - interval '3 hours')`, [DRIVER_A]);
+    // Logged after the fact: up to 7 days back, no further
+    await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'NOTE', 'x', now() - interval '7 days 1 minute')`, [DRIVER_A]), /7 days/);
+    await assert.rejects(db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'NOTE', 'x', '2026-01-01T00:00:00Z')`, [DRIVER_A]), /7 days/);
+    await db.query(`insert into public.collection_contacts(driver_id, kind, message, contacted_at) values($1, 'NOTE', 'Logged late', now() - interval '6 days 23 hours')`, [DRIVER_B]);
     await assert.rejects(db.query(`update public.collection_contacts set message = 'changed'`), /permission denied/);
     await db.query(`delete from public.collection_contacts`);
-    assert.equal(await count(db, `select count(*)::int n from public.collection_contacts`), 3, 'staff cannot remove a contact');
+    assert.equal(await count(db, `select count(*)::int n from public.collection_contacts`), 4, 'staff cannot remove a contact');
     await asAnon(db);
     await assert.rejects(db.query(`select * from public.collection_contacts`), /permission denied/);
     await asUser(db, ADMIN_ID);
@@ -126,22 +130,36 @@ test('F2: staff and admins log contacts under their own name; only admins remove
   } finally { await db.close(); }
 });
 
-test('D1: staff and admins write one status row per driver per day (a repeat replaces it); only admins delete; the public sees nothing', async () => {
+test('D1: the first write of the Kuala Lumpur day wins (a repeat changes nothing); only today can be written; only admins delete; the public sees nothing', async () => {
   const db = await setup();
   try {
-    const upsert = (owed: number, status: string) => db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status, late_days, last_payment_date)
-      values ($1, '2026-10-12', $2, $2, 1.5, $3, 9, '2026-10-01'), ($4, '2026-10-12', 0, 0, 0, 'GOOD', null, null)
-      on conflict (driver_id, day) do update set owed = excluded.owed, overdue = excluded.overdue, cycles_owed = excluded.cycles_owed,
-        status = excluded.status, late_days = excluded.late_days, last_payment_date = excluded.last_payment_date`, [DRIVER_A, owed, status, DRIVER_B]);
+    const TODAY_KL = `(now() at time zone 'Asia/Kuala_Lumpur')::date`;
+    // As the admin site writes it: insert, and on a repeat the same day do nothing (first write wins)
+    const write = (owed: number, status: string) => db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status, late_days, last_payment_date)
+      values ($1, ${TODAY_KL}, $2, $2, 1.5, $3, 9, '2026-10-01'), ($4, ${TODAY_KL}, 0, 0, 0, 'GOOD', null, null)
+      on conflict (driver_id, day) do nothing`, [DRIVER_A, owed, status, DRIVER_B]);
     await asUser(db, STAFF_ID);
-    await upsert(600, 'MID');
-    await upsert(1300, 'BAD');
-    assert.deepEqual((await rows<{ driver_id: string; owed: string; status: string; late_days: number | null; paid: string | null; recent: boolean }>(db,
-      `select driver_id, owed, status, late_days, to_char(last_payment_date, 'YYYY-MM-DD') paid, written_at > now() - interval '1 minute' recent from public.driver_daily_status order by driver_id`))
-      .map(r => [r.driver_id, Number(r.owed), r.status, r.late_days, r.paid, r.recent]),
-      [[DRIVER_A, 1300, 'BAD', 9, '2026-10-01', true], [DRIVER_B, 0, 'GOOD', null, null, true]]);
-    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, '2026-10-13', 0, 0, 0, 'OK')`, [DRIVER_A]), /check/);
-    await db.query(`delete from public.driver_daily_status`);
+    await write(600, 'MID');
+    await write(1300, 'BAD');
+    const read = async () => (await rows<{ driver_id: string; owed: string; status: string; late_days: number | null; paid: string | null; today: boolean; recent: boolean }>(db,
+      `select driver_id, owed, status, late_days, to_char(last_payment_date, 'YYYY-MM-DD') paid, day = ${TODAY_KL} today, written_at > now() - interval '1 minute' recent
+       from public.driver_daily_status order by driver_id`))
+      .map(r => [r.driver_id, Number(r.owed), r.status, r.late_days, r.paid, r.today, r.recent]);
+    const first = [[DRIVER_A, 600, 'MID', 9, '2026-10-01', true, true], [DRIVER_B, 0, 'GOOD', null, null, true, true]];
+    assert.deepEqual(await read(), first, 'the second write the same day changed nothing');
+    // Nobody can rewrite a snapshot
+    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, ${TODAY_KL}, 5, 5, 0, 'MID')
+      on conflict (driver_id, day) do update set owed = excluded.owed`, [DRIVER_A]), /permission denied/);
+    await assert.rejects(db.query(`update public.driver_daily_status set owed = 1`), /permission denied/);
+    assert.deepEqual(await read(), first);
+    // Staff cannot write another day: not yesterday, not tomorrow
+    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, ${TODAY_KL} - 1, 0, 0, 0, 'GOOD')`, [DRIVER_A]), /row-level security/);
+    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, ${TODAY_KL} + 1, 0, 0, 0, 'GOOD')`, [DRIVER_A]), /row-level security/);
+    await asUser(db, ADMIN_ID);
+    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, ${TODAY_KL} - 1, 0, 0, 0, 'GOOD')`, [DRIVER_A]), /row-level security/, 'admins neither');
+    await asUser(db, STAFF_ID);
+    await db.query(`delete from public.driver_daily_status where driver_id = $1`, [DRIVER_A]);
+    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, ${TODAY_KL}, 0, 0, 0, 'OK') on conflict do nothing`, [DRIVER_A]), /check/);
     assert.equal(await count(db, `select count(*)::int n from public.driver_daily_status`), 2, 'staff cannot delete');
     await asAnon(db);
     await assert.rejects(db.query(`select * from public.driver_daily_status`), /permission denied/);

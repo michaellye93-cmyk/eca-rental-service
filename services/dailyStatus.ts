@@ -47,7 +47,7 @@ export const DAILY_STATUS_KEY = 'eca.dailyStatus.writtenDay';
 /**
  * Writes today's snapshot unless this browser already did today. Remembered only after the write succeeds; a failure
  * (for example the table is not there yet) is silent, and `attempted` (kept for the page's lifetime) stops it being
- * retried on every reload of the list that day. Safe to repeat: the database replaces the day's rows.
+ * retried on every reload of the list that day. Safe to repeat: the database keeps the day's first write and ignores repeats.
  */
 export async function writeTodaysSnapshotOnce(input: {
   drivers: Driver[];

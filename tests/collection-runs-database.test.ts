@@ -38,6 +38,9 @@ const CHAIN = [
   '20261012210000_collections_tools.sql',
 ];
 const RELEASE = '20261012230000_collection_runs.sql';
+const TODAY_KL = `(now() at time zone 'Asia/Kuala_Lumpur')::date`;
+/** The Kuala Lumpur day of a run that started an hour ago. */
+const RUN_DAY = `((now() - interval '1 hour') at time zone 'Asia/Kuala_Lumpur')::date`;
 
 async function setup() {
   const db = await database();
@@ -60,7 +63,7 @@ const count = async (db: PGlite, sql: string, params: unknown[] = []) => (await 
 const asAnon = (db: PGlite) => db.exec(`reset role; select set_config('request.jwt.claims','',false); set role anon`);
 const RUN = `insert into public.collection_runs(run_date, run_slot, started_at, finished_at, payments_recorded, asks_sent, promises_logged, collected,
   categories_before, categories_after, blocks, summary, logged_by, logged_by_name)
-  values ('2026-10-12', '1PM', now() - interval '1 hour', now(), 3, 12, 2, 1350.50, '{"good":10,"mid":5,"bad":3}', '{"good":11,"mid":4,"bad":3}',
+  values (((now() - interval '1 hour') at time zone 'Asia/Kuala_Lumpur')::date, '1PM', now() - interval '1 hour', now(), 3, 12, 2, 1350.50, '{"good":10,"mid":5,"bad":3}', '{"good":11,"mid":4,"bad":3}',
     'Fixture block', 'Fixture summary', $1, 'pretend')`;
 
 test('staff and admins record run summaries under their own name; nobody edits one; only admins delete; the public sees nothing', async () => {
@@ -91,7 +94,7 @@ test('a summary keeps sensible values: counts and cash not negative, categories 
   const db = await setup();
   try {
     await asUser(db, STAFF_ID);
-    const insert = (columns: string, values: string) => db.query(`insert into public.collection_runs(run_date, run_slot, started_at${columns}) values ('2026-10-12', '9PM', now() - interval '1 hour'${values})`);
+    const insert = (columns: string, values: string) => db.query(`insert into public.collection_runs(run_date, run_slot, started_at${columns}) values (${RUN_DAY}, '9PM', now() - interval '1 hour'${values})`);
     await insert('', '');
     const [run] = await rows<{ payments_recorded: number; asks_sent: number; promises_logged: number; collected: string; finished: boolean }>(db,
       `select payments_recorded, asks_sent, promises_logged, collected, finished_at > now() - interval '1 minute' finished from public.collection_runs`);
@@ -102,8 +105,25 @@ test('a summary keeps sensible values: counts and cash not negative, categories 
     await assert.rejects(insert(', categories_after', `, '[1,2,3]'`), /check/);
     await assert.rejects(insert(', finished_at', `, now() - interval '2 hours'`), /check/);
     await assert.rejects(insert(', summary', `, ''`), /check/);
-    await assert.rejects(db.query(`insert into public.collection_runs(run_date, run_slot, started_at) values ('2026-10-12', '', now())`), /check/);
-    await assert.rejects(db.query(`insert into public.collection_runs(run_date, run_slot, started_at) values ('2026-10-12', '1PM', now() + interval '1 day')`), /future/i);
+    await assert.rejects(db.query(`insert into public.collection_runs(run_date, run_slot, started_at) values (${TODAY_KL}, '', now())`), /check/);
+    await assert.rejects(db.query(`insert into public.collection_runs(run_date, run_slot, started_at) values (((now() + interval '1 day') at time zone 'Asia/Kuala_Lumpur')::date, '1PM', now() + interval '1 day')`), /future/i);
+  } finally { await db.close(); }
+});
+
+test('a run is dated by the Kuala Lumpur day it started: no other day', async () => {
+  const db = await setup();
+  try {
+    await asUser(db, STAFF_ID);
+    const insert = (day: string, started: string) => db.query(`insert into public.collection_runs(run_date, run_slot, started_at) values (${day}, '9PM', ${started})`);
+    await assert.rejects(insert(`${RUN_DAY} - 1`, `now() - interval '1 hour'`), /collection_runs_run_date/);
+    await assert.rejects(insert(`${RUN_DAY} + 1`, `now() - interval '1 hour'`), /collection_runs_run_date/);
+    await assert.rejects(insert(`'2026-01-01'`, `now() - interval '1 hour'`), /collection_runs_run_date/);
+    // 15:59 UTC is 23:59 in Kuala Lumpur, 16:00 UTC is the next Kuala Lumpur day
+    await insert(`'2026-10-10'`, `'2026-10-10T15:59:00Z'`);
+    await insert(`'2026-10-11'`, `'2026-10-10T16:00:00Z'`);
+    await assert.rejects(insert(`'2026-10-10'`, `'2026-10-10T16:00:00Z'`), /collection_runs_run_date/);
+    await insert(RUN_DAY, `now() - interval '1 hour'`);
+    assert.equal(await count(db, `select count(*)::int n from public.collection_runs`), 3);
   } finally { await db.close(); }
 });
 

@@ -9,8 +9,9 @@
 --     remove an entry logged by mistake. Entries cannot be edited.
 -- D1  A daily status snapshot: each active driver's balance, overdue rent, cycles owed, GOOD / MID / BAD, days late and
 --     last payment date, one row per Kuala Lumpur day. The admin site writes it on the first full load of the day,
---     worked out by the same rent rules as the driver list (nothing is calculated here). Staff and Admins read and write
---     it (a repeat on the same day replaces that day's row); only Admins delete.
+--     worked out by the same rent rules as the driver list (nothing is calculated here). Staff and Admins read it and
+--     add today's rows only (Kuala Lumpur day); the first write of the day wins and nobody rewrites a row; only Admins
+--     delete.
 --
 -- Safe for the current live site: it only adds columns and tables, which the current site ignores. Run it in the
 -- Supabase SQL Editor for RentalDatabase. It is all-or-nothing, and running it a second time changes nothing.
@@ -72,12 +73,14 @@ create policy "Staff and admins log contacts" on public.collection_contacts for 
 create policy "Admins remove contacts" on public.collection_contacts for delete to authenticated
   using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role = 'admin'));
 
--- Who logged it is always the signed-in account; a contact can be logged after the fact, but not in the future.
+-- Who logged it is always the signed-in account; a contact can be logged after the fact (up to 7 days back), but not in
+-- the future.
 create or replace function finance_private.stamp_collection_contact() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   new.contacted_at := coalesce(new.contacted_at, now());
   if new.contacted_at > now() + interval '5 minutes' then raise exception 'The contact time is in the future'; end if;
+  if new.contacted_at < now() - interval '7 days' then raise exception 'The contact time is more than 7 days ago'; end if;
   new.logged_by := auth.uid();
   new.logged_by_name := finance_private.actor_name();
   new.logged_by_role := finance_private.actor_role();
@@ -104,18 +107,17 @@ create table if not exists public.driver_daily_status (
 create index if not exists driver_daily_status_day on public.driver_daily_status (day);
 alter table public.driver_daily_status enable row level security;
 revoke all on public.driver_daily_status from public, anon, authenticated;
-grant select, insert, update, delete on public.driver_daily_status to authenticated;
+grant select, insert, delete on public.driver_daily_status to authenticated;
 drop policy if exists "Staff and admins read daily status" on public.driver_daily_status;
 drop policy if exists "Staff and admins write daily status" on public.driver_daily_status;
 drop policy if exists "Staff and admins rewrite daily status" on public.driver_daily_status;
 drop policy if exists "Admins delete daily status" on public.driver_daily_status;
 create policy "Staff and admins read daily status" on public.driver_daily_status for select to authenticated
   using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
+-- Only today's rows (Kuala Lumpur day); a repeat the same day is ignored by the app (insert ... on conflict do nothing).
 create policy "Staff and admins write daily status" on public.driver_daily_status for insert to authenticated
-  with check (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
-create policy "Staff and admins rewrite daily status" on public.driver_daily_status for update to authenticated
-  using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')))
-  with check (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
+  with check (day = (now() at time zone 'Asia/Kuala_Lumpur')::date
+    and exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
 create policy "Admins delete daily status" on public.driver_daily_status for delete to authenticated
   using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role = 'admin'));
 
@@ -127,7 +129,7 @@ begin
 end $$;
 revoke all on function finance_private.stamp_daily_status() from public, anon, authenticated;
 drop trigger if exists driver_daily_status_stamp on public.driver_daily_status;
-create trigger driver_daily_status_stamp before insert or update on public.driver_daily_status
+create trigger driver_daily_status_stamp before insert on public.driver_daily_status
   for each row execute function finance_private.stamp_daily_status();
 
 commit;
