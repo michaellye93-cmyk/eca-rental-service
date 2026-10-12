@@ -5,6 +5,7 @@ import {
   rentDayTag, rentDueAndPaid, shortName,
 } from '../utils.ts';
 import { whoLabel } from './paymentLog.ts';
+import { cashOf } from './moneyDefinitions.ts';
 
 /**
  * The collections tools behind the daily run: WhatsApp statements, promises to pay, catch-up plans, the improving flag,
@@ -357,7 +358,7 @@ export function buildCollectionsData(input: CollectionsInput): CollectionsData {
   const cashReceived = input.drivers
     .flatMap(driver => driver.paymentHistory || [])
     .filter(payment => payment.date.slice(0, 10) >= iso(start) && payment.date.slice(0, 10) <= iso(end))
-    .reduce((sum, payment) => sum + payment.amount, 0);
+    .reduce((sum, payment) => sum + cashOf(payment), 0);
   const count = (risk: string) => drivers.filter(driver => driver.status.risk === risk).length;
   const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
   return {

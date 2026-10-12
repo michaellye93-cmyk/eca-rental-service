@@ -917,7 +917,7 @@ function Overview({
         <div className="finance-summary-grid is-four">
           <Total label="Net margin (target 20%)" value={pct(target.margin)} emphasis />
           <Total label="Gap to 20%" value={formatMoney(target.gap)} negative={target.gap > 0} />
-          <Total label="Rent collected (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
+          <Total label="Rent collected, cash and claims (live)" value={collection.rate === null ? "—" : `${pct(collection.rate)} of ${formatMoney(collection.billed)}`} />
           <Total label={`Idle cars (${target.idle.count})`} value={formatMoney(-target.idle.cost)} negative={target.idle.cost > 0} />
         </div>
         <p className="finance-strip-note">

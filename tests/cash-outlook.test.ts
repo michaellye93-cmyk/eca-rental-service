@@ -65,6 +65,12 @@ test('the recent collection rate is cash received over rent due in the last 8 we
   assert.deepEqual(collectionRate([], TODAY), { rate: 1, cash: 0, due: 0 });
 });
 
+test('a deposit forfeited against rent is not cash, so it does not lift the cash collection rate', () => {
+  const forfeit: PaymentTransaction = { id: 'g', date: '2026-10-25', amount: 1000, serviceClaim: 0, paymentMethod: 'DEPOSIT CONTRA' };
+  const inHand: PaymentTransaction = { id: 'h', date: '2026-10-26', amount: 200, serviceClaim: 0, paymentMethod: 'CASH' };
+  assert.deepEqual(collectionRate([{ ...weekly, paymentHistory: [...weekly.paymentHistory, forfeit, inHand] }], TODAY), { rate: 0.825, cash: 6600, due: 8000 });
+});
+
 test('bills for a window weight each month by the days it covers and add insurance falling due', () => {
   const bills = windowBills(outlook(), '2026-11-01', '2026-11-30');
   // Averages use only months with data (September and October).
@@ -158,7 +164,7 @@ test('with no bills recorded in Finance the line says so instead of showing Cove
   const line = cashLine({ today: TODAY, outlook: noBills, drivers: [weekly], overdue: 0, overdueChange: 0 });
   assert.equal(line.bills.total, 0);
   assert.equal(line.status, 'WATCH');
-  assert.equal(plain(line.sentence), 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Money → Expenses.');
+  assert.equal(plain(line.sentence), 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Finance → Records.');
   assert.ok(!line.notes.some(note => note.startsWith('No bills are recorded')));
 });
 

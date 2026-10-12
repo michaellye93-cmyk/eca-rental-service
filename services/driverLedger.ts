@@ -1,5 +1,6 @@
 import type { Driver } from '../types.ts';
 import { generateDriverInvoices, rentAllocations } from '../utils.ts';
+import { collectedOf, notCashOf } from './moneyDefinitions.ts';
 
 const cents = (value: number) => Math.round(value * 100) / 100;
 const monthEnd = (month: string) => {
@@ -31,10 +32,10 @@ export function driverMonthlyLedger(driver: Driver, months: string[], today: Dat
     const inMonth = (date: string) => date.slice(0, 7) === month && date <= cutoff;
     const billed = cents(invoices.filter((invoice) => inMonth(invoice.dueDate)).reduce((sum, invoice) => sum + invoice.amount, 0));
     const collected = cents(driver.paymentHistory.filter((payment) => inMonth(payment.date))
-      .reduce((sum, payment) => sum + payment.amount + (payment.serviceClaim ?? 0), 0));
+      .reduce((sum, payment) => sum + collectedOf(payment), 0));
     const billedToDate = invoices.filter((invoice) => invoice.dueDate <= cutoff).reduce((sum, invoice) => sum + invoice.amount, 0);
     const collectedToDate = driver.paymentHistory.filter((payment) => payment.date <= cutoff)
-      .reduce((sum, payment) => sum + payment.amount + (payment.serviceClaim ?? 0), 0);
+      .reduce((sum, payment) => sum + collectedOf(payment), 0);
     return { month, billed, collected, balance: cents(billedToDate - collectedToDate), rate: billed ? collected / billed : null };
   });
 }
@@ -116,7 +117,7 @@ export function collectionSplit(drivers: Driver[], periods: Period[], today: Dat
     }
     for (const payment of driver.paymentHistory) {
       const row = payment.date <= todayKey ? rowFor(payment.date) : undefined;
-      if (row) row.notCash += (payment.serviceClaim ?? 0) + (['DEPOSIT CONTRA', 'CLAIM'].includes(payment.paymentMethod ?? '') ? payment.amount : 0);
+      if (row) row.notCash += notCashOf(payment);
     }
   }
   return rows.map((row) => ({ period: row.period.key, due: cents(row.due), collected: cents(row.collected), current: cents(row.current),
