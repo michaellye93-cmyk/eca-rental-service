@@ -20,11 +20,15 @@ interface ExpandedDriverDetailsProps {
 /** Who changed the driver's profile and what, newest first; nothing before the change log existed. */
 function ProfileHistory({ driver }: { driver: Driver }) {
   const [changes, setChanges] = useState<DriverChange[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  // Reloaded when the profile itself changes (an edit here), not on every payment
+  const profileKey = `${driver.id}|${driver.name}|${driver.carPlate}|${driver.rentalRate}|${driver.contractStartDate}|${driver.contractEndDate}|${driver.isDelisted}|${(driver.tags || []).join(',')}|${driver.phone}|${driver.whatsappGroup}`;
   useEffect(() => {
     let live = true;
-    loadDriverChanges(driver.id).then(rows => { if (live) setChanges(rows); }).catch(() => { if (live) setChanges([]); });
+    setFailed(false);
+    loadDriverChanges(driver.id).then(rows => { if (live) setChanges(rows); }).catch(() => { if (live) { setChanges([]); setFailed(true); } });
     return () => { live = false; };
-  }, [driver]);
+  }, [profileKey]);
   const lines = useMemo(() => driverChangeLines(changes ?? []), [changes]);
   return (
     <div className="space-y-3">
@@ -33,6 +37,8 @@ function ProfileHistory({ driver }: { driver: Driver }) {
       </h5>
       {changes === null ? (
         <p className="text-xs text-gray-500">Loading…</p>
+      ) : failed ? (
+        <p className="text-xs text-gray-600">The change log could not be read (it starts once the 12 Oct database update is run).</p>
       ) : lines.length === 0 ? (
         <p className="text-xs text-gray-600">No changes recorded since the change log started (12 Oct 2026).</p>
       ) : (

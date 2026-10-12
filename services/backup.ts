@@ -1,7 +1,8 @@
 /**
- * A download of every record the office keeps, for the owner to save somewhere private (the Supabase free plan keeps no
- * restore point). Read with the signed-in admin's own access, so it holds exactly what the admin can see. Restoring is
- * done by hand from the file; nothing here writes.
+ * A download of the office's records, for the owner to save somewhere private (the Supabase free plan keeps no restore
+ * point): every driver, payment, deposit, collections, agreement and car table, plus each Finance month as Finance shows
+ * it. Finance's own internal tables (bank statements, cost templates, audit) are not in it. Read with the signed-in
+ * admin's access. Reading a Finance month that does not exist yet opens it as a Draft, as Finance itself does.
  */
 
 /** The tables in the backup, the column each is read in order of, and whether it has an id column to page by. */

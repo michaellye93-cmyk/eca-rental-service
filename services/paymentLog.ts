@@ -96,10 +96,11 @@ export interface PossibleDuplicate {
 
 /**
  * A payment that came through the bank with a receipt (bank transfer or cash deposit, with an amount): the only kind
- * whose reference may be recorded once (as the database's payments_reference_once rule). No method reads as bank transfer.
+ * whose reference may be recorded once per driver (as the database's payments_reference_once rule). No method (or a blank
+ * one) reads as bank transfer.
  */
 export const isBankReceipt = (amount: number, method?: string | null): boolean =>
-  amount > 0 && ['BANK TRANSFER', 'CASH DEPOSIT'].includes((method || 'BANK TRANSFER').trim().toUpperCase());
+  amount > 0 && ['BANK TRANSFER', 'CASH DEPOSIT'].includes((method || '').trim().toUpperCase() || 'BANK TRANSFER');
 
 /** A reference as compared: capitals without spaces. */
 export const referenceKey = (reference?: string | null): string => (reference || '').toUpperCase().replace(/\s+/g, '');

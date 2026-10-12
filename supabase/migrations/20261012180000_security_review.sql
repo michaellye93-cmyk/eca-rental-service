@@ -2,8 +2,9 @@
 --
 -- A3  Only admins may permanently delete a driver, a payment or a deposit line. Staff keep reading, adding and editing.
 -- A4  Every change to a driver record is logged (who, when, which fields, before and after), like payments already are.
--- F5  A bank reference can be recorded once: a second bank transfer or cash deposit carrying the same reference (any
---     spacing or capitals) is refused. Claim-only lines, cash in hand and deposit forfeits are not checked: they are
+-- F5  A bank reference can be recorded once per driver: a second bank transfer or cash deposit for the same driver
+--     carrying the same reference (any spacing or capitals) is refused. The same reference on two drivers (one transfer
+--     paying for both) is still allowed; the payment form warns about it. Claim-only lines, cash in hand and deposit forfeits are not checked: they are
 --     not bank receipts, and forfeits all carry the label "Deposit contra". If two
 --     payments already share a reference the rule is NOT switched on; the SQL Editor output says how many, and the query
 --     at the end of this file lists them so they can be fixed and the file run again.
@@ -129,15 +130,15 @@ declare clashes integer;
 begin
   if to_regclass('public.payments_reference_once') is not null then return; end if;
   select count(*) into clashes from (
-    select public.payment_reference_key(reference) from public.payments
+    select driver_id, public.payment_reference_key(reference) from public.payments
     where public.payment_is_bank_receipt(amount, payment_method) and public.payment_reference_key(reference) is not null
-    group by 1 having count(*) > 1) dup;
+    group by 1, 2 having count(*) > 1) dup;
   if clashes > 0 then
     raise notice 'NOT switched on: % reference(s) are already used by more than one payment. List them with the query at the end of this file, fix them, and run the file again.', clashes;
   else
-    execute 'create unique index payments_reference_once on public.payments (public.payment_reference_key(reference))
+    execute 'create unique index payments_reference_once on public.payments (driver_id, public.payment_reference_key(reference))
       where public.payment_is_bank_receipt(amount, payment_method) and public.payment_reference_key(reference) is not null';
-    raise notice 'Switched on: each bank reference can now be recorded once.';
+    raise notice 'Switched on: each bank reference can now be recorded once per driver.';
   end if;
 end $$;
 
@@ -208,11 +209,15 @@ drop table if exists finance_private.portal_settings;
 
 commit;
 
+-- What the SQL Editor shows when the file has run: whether the reference rule is on, and whether the car list is closed.
+select exists (select 1 from pg_indexes where indexname = 'payments_reference_once') as reference_rule_on,
+       not has_table_privilege('anon', 'public.cars', 'SELECT') as car_list_closed;
+
 -- F5 clash list (run on its own if the notice said "NOT switched on"):
 --   select public.payment_reference_key(p.reference) as reference, p.id, p.driver_id, d.name, p.date, p.amount
 --   from public.payments p join public.drivers d on d.id = p.driver_id
---   where public.payment_is_bank_receipt(p.amount, p.payment_method) and public.payment_reference_key(p.reference) in (
---     select public.payment_reference_key(reference) from public.payments
+--   where public.payment_is_bank_receipt(p.amount, p.payment_method) and (p.driver_id, public.payment_reference_key(p.reference)) in (
+--     select driver_id, public.payment_reference_key(reference) from public.payments
 --     where public.payment_is_bank_receipt(amount, payment_method) and public.payment_reference_key(reference) is not null
---     group by 1 having count(*) > 1)
+--     group by 1, 2 having count(*) > 1)
 --   order by 1, p.date;

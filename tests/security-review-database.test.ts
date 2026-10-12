@@ -120,13 +120,13 @@ test('every change to a driver is logged with who, when, the fields changed and 
   } finally { await db.close(); }
 });
 
-test('a bank reference can be recorded once, whatever its spacing or capitals; claim-only lines and blanks are not checked', async () => {
+test('a bank reference can be recorded once per driver, whatever its spacing or capitals; claim-only lines and blanks are not checked', async () => {
   const db = await setup();
   try {
     await asUser(db, STAFF_ID);
     await pay(db, '20000000-0000-4000-8000-000000000001', DRIVER_A, 400, 'ab 123');
     await assert.rejects(pay(db, '20000000-0000-4000-8000-000000000002', DRIVER_A, 400, 'AB123'), /payments_reference_once/);
-    await assert.rejects(pay(db, '20000000-0000-4000-8000-000000000003', DRIVER_B, 200, ' Ab 12 3 '), /payments_reference_once/, 'another driver too');
+    await pay(db, '20000000-0000-4000-8000-000000000003', DRIVER_B, 200, ' Ab 12 3 '); // one transfer paying two drivers
     await pay(db, '20000000-0000-4000-8000-000000000004', DRIVER_A, 0, 'AB123', 150); // claim-only line on the same receipt
     await pay(db, '20000000-0000-4000-8000-000000000005', DRIVER_A, 400, null);
     await pay(db, '20000000-0000-4000-8000-000000000006', DRIVER_A, 400, '  ');
@@ -138,7 +138,7 @@ test('a bank reference can be recorded once, whatever its spacing or capitals; c
     // A cash deposit slip is a bank receipt too, and a missing method counts as bank transfer
     await assert.rejects(pay(db, '20000000-0000-4000-8000-000000000011', DRIVER_A, 400, 'AB123', 0, 'CASH DEPOSIT'), /payments_reference_once/);
     await assert.rejects(pay(db, '20000000-0000-4000-8000-000000000012', DRIVER_A, 400, 'AB123', 0, null), /payments_reference_once/);
-    assert.equal(await count(db, `select count(*)::int n from public.payments`), 8);
+    assert.equal(await count(db, `select count(*)::int n from public.payments`), 9);
   } finally { await db.close(); }
 });
 
@@ -164,6 +164,9 @@ test('the driver sign-in no longer sends the old payment instructions, and the o
     const record = (await rows<{ value: any }>(db, `select public.driver_portal_login($1) value`, [NRIC_A]))[0].value;
     assert.deepEqual(Object.keys(record).sort(), ['agreement', 'driver', 'payments']);
     assert.equal(record.driver.id, DRIVER_A);
+    const remembered = (await rows<{ value: any }>(db, `select public.driver_portal_login_remember($1) value`, [NRIC_A]))[0].value;
+    const resumed = (await rows<{ value: any }>(db, `select public.driver_portal_resume($1) value`, [remembered.session.token]))[0].value;
+    assert.deepEqual(Object.keys(resumed).sort(), ['agreement', 'driver', 'payments', 'session'], 'a remembered phone reopens the same record');
     await db.exec('reset role');
     assert.equal(await count(db, `select count(*)::int n from pg_proc where proname in ('finance_portal_instructions','finance_save_portal_instructions','portal_payment_instructions')`), 0);
     assert.equal(await count(db, `select count(*)::int n from pg_tables where schemaname = 'finance_private' and tablename = 'portal_settings'`), 0);

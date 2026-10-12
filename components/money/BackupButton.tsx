@@ -44,8 +44,9 @@ export default function BackupButton() {
     <section className="finance-panel" aria-labelledby="backup-title">
       <h3 id="backup-title">Backup</h3>
       <p className="finance-strip-note">
-        The database plan keeps no restore point. Download every record (drivers, payments, deposits, collections, agreements,
-        cars and every Finance month) as one file weekly and after each close, and keep it somewhere private.
+        The database plan keeps no restore point. Download the office's records (drivers, payments, deposits, collections,
+        agreements, cars, and each Finance month's figures as Finance shows them) as one file weekly and after each close,
+        and keep it somewhere private. Finance's own working tables, such as posted bank statements, are not included.
       </p>
       <button type="button" className="finance-secondary" disabled={state === 'busy'} onClick={() => void download()}>
         {state === 'busy' ? 'Preparing…' : 'Download backup'}

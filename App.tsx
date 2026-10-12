@@ -316,7 +316,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       updateDriverPayments(driverId, payments => payments.filter(p => p.id !== tempId));
       const sameReference = err?.code === '23505' && /payments_reference_once/.test(err?.message ?? '');
-      setNotice({ type: 'error', text: sameReference ? `Payment not saved: reference ${reference} is already recorded. A bank reference can be recorded once.` : `Payment not saved: ${err.message}` });
+      setNotice({ type: 'error', text: sameReference ? `Payment not saved: reference ${reference} is already recorded for this driver.` : `Payment not saved: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
@@ -344,7 +344,7 @@ const App: React.FC = () => {
       updateDriverPayments(driverId, payments => payments.map(p => (p.id === paymentId ? paymentFromRow(data) : p)));
     } catch (err: any) {
       const sameReference = err?.code === '23505' && /payments_reference_once/.test(err?.message ?? '');
-      setNotice({ type: 'error', text: sameReference ? `Payment not updated: reference ${reference} is already recorded on another payment.` : `Payment not updated: ${err.message}` });
+      setNotice({ type: 'error', text: sameReference ? `Payment not updated: reference ${reference} is already on another payment of this driver.` : `Payment not updated: ${err.message}` });
       await fetchDriversAndPayments(true);
     }
   };
