@@ -14,8 +14,8 @@ const letter = (values: Record<string, string>) => {
   return doc;
 };
 
-test('the letter is filled from the driver, the Fleet car and its registered owner, plus the two typed boxes', () => {
-  const values = grabLetterValues({ driver, car, details, signatoryName: ' Fixture Signatory ', letterDate: '2026-10-12' });
+test('the letter is filled from the driver, the Fleet car and its registered owner (also printed as the owner\'s name under the signature), plus the typed date', () => {
+  const values = grabLetterValues({ driver, car, details, letterDate: '2026-10-12' });
   assert.deepEqual(values, {
     owner_name: 'Fixture Owner Sdn Bhd',
     owner_ic_no: '111111-Y',
@@ -23,13 +23,13 @@ test('the letter is filled from the driver, the Fleet car and its registered own
     vehicle_plate: 'XAA1001',
     driver_name: 'Fixture Driver One',
     driver_ic_no: '000000000001',
-    owner_signatory_name: 'Fixture Signatory',
+    owner_signatory_name: 'Fixture Owner Sdn Bhd',
     letter_date: '12 October 2026',
   });
 });
 
 test('a car with no registered owner on Fleet leaves the owner blank rather than guessing', () => {
-  const values = grabLetterValues({ driver, car, details: null, signatoryName: '', letterDate: '' });
+  const values = grabLetterValues({ driver, car, details: null, letterDate: '' });
   assert.equal(values.owner_name, '');
   assert.equal(values.owner_ic_no, '');
   assert.equal(values.owner_signatory_name, '');
@@ -37,7 +37,7 @@ test('a car with no registered owner on Fleet leaves the owner blank rather than
 });
 
 test('the letter keeps every word of the form on one A4 page, with the values printed on their lines', () => {
-  const doc = letter(grabLetterValues({ driver, car, details, signatoryName: 'Fixture Signatory', letterDate: '2026-10-12' }));
+  const doc = letter(grabLetterValues({ driver, car, details, letterDate: '2026-10-12' }));
   const text = doc.output();
   assert.ok(text.startsWith('%PDF'));
   assert.equal(doc.getNumberOfPages(), 1);
@@ -46,7 +46,7 @@ test('the letter keeps every word of the form on one A4 page, with the values pr
     (I/C No.) , to use my vehicle to register with E-hailing Driver and to use my vehicle to carry out E-hailing services.
     Thank you. Yours truly, (Vehicle Owner’s Signature) Vehicle Owner’s Name: Date :`;
   for (const word of form.split(/\s+/)) assert.ok(text.includes(`(${inPdf(word)})`), word);
-  for (const value of ['Fixture Owner Sdn Bhd', '111111-Y', 'Perodua Bezza 1.3', 'XAA1001', 'Fixture Driver One', '000000000001', 'Fixture Signatory', '12 October 2026']) {
+  for (const value of ['Fixture Owner Sdn Bhd', '111111-Y', 'Perodua Bezza 1.3', 'XAA1001', 'Fixture Driver One', '000000000001', '12 October 2026']) {
     assert.ok(text.includes(`(${inPdf(value)})`), value);
   }
   // The original has no letterhead or logo
@@ -54,7 +54,7 @@ test('the letter keeps every word of the form on one A4 page, with the values pr
 });
 
 test('the layout matches the original: title placed where Word put it, 1-inch left margin, Arial-size text', () => {
-  const doc = letter(grabLetterValues({ driver, car, details, signatoryName: '', letterDate: '' }));
+  const doc = letter(grabLetterValues({ driver, car, details, letterDate: '' }));
   const text = doc.output();
   const at = (word: string) => {
     const match = new RegExp(`([\\d.]+) ([\\d.]+) Td\\s*\\(${inPdf(word).replace(/[\\()]/g, c => `\\${c}`)}\\) Tj`).exec(text);
@@ -72,12 +72,12 @@ test('the layout matches the original: title placed where Word put it, 1-inch le
 });
 
 test('empty boxes print as lines to write on, and a long owner name shrinks to stay on its line', () => {
-  const blank = letter(grabLetterValues({ driver: { name: '', nric: '' }, car: { plateNumber: '', make: '', model: '' }, details: null, signatoryName: '', letterDate: '' }));
+  const blank = letter(grabLetterValues({ driver: { name: '', nric: '' }, car: { plateNumber: '', make: '', model: '' }, details: null, letterDate: '' }));
   assert.equal(blank.getNumberOfPages(), 1);
   assert.ok(!blank.output().includes('____'), 'blank boxes are drawn rules, not underscores');
 
   const name = 'Fixture Very Long Registered Owner Name Holdings Sdn Bhd (Malaysia)';
-  const long = letter(grabLetterValues({ driver, car, details: { ownerName: name, ownerId: '111111-Y' }, signatoryName: '', letterDate: '2026-10-12' }));
+  const long = letter(grabLetterValues({ driver, car, details: { ownerName: name, ownerId: '111111-Y' }, letterDate: '2026-10-12' }));
   const text = long.output();
   assert.equal(long.getNumberOfPages(), 1);
   const before = text.slice(0, text.indexOf(`(${inPdf(name)}) Tj`));
@@ -89,7 +89,7 @@ test('empty boxes print as lines to write on, and a long owner name shrinks to s
 
 test('a name too long for one line even when smaller goes onto two lines inside its box, never past it', () => {
   const name = 'FIXTURE DRIVER WITH A VERY LONG NAME BIN FIXTURE FATHER NAME EXAMPLE';
-  const doc = letter(grabLetterValues({ driver: { name, nric: '000000000001' }, car, details, signatoryName: '', letterDate: '' }));
+  const doc = letter(grabLetterValues({ driver: { name, nric: '000000000001' }, car, details, letterDate: '' }));
   const text = doc.output();
   const lines = [...text.matchAll(/\/F1 ([\d.]+) Tf\n(?:[^\n]*\n){2,3}([\d.]+) ([\d.]+) Td\s*\((FIXTURE DRIVER[^)]*|[^)]*EXAMPLE)\) Tj/g)];
   assert.equal(lines.length, 2, 'two lines');

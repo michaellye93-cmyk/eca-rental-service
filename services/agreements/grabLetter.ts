@@ -14,14 +14,13 @@ export interface GrabLetterValues {
 }
 
 /**
- * The letter's boxes: the driver from their profile, the car and its registered owner from Fleet, and the two boxes
- * typed on the day (who signs, and the date as YYYY-MM-DD). Nothing missing is guessed; it prints as a line to write on.
+ * The letter's boxes: the driver from their profile, the car and its registered owner from Fleet (named again under the
+ * owner's signature), and the date typed on the day (YYYY-MM-DD). Nothing missing is guessed; it prints as a line to write on.
  */
-export const grabLetterValues = ({ driver, car, details, signatoryName, letterDate }: {
+export const grabLetterValues = ({ driver, car, details, letterDate }: {
   driver: { name?: string; nric?: string };
   car: { plateNumber: string; make: string; model: string } | null;
   details: { ownerName: string; ownerId: string } | null;
-  signatoryName: string;
   letterDate: string;
 }): GrabLetterValues => ({
   owner_name: (details?.ownerName ?? '').trim(),
@@ -30,7 +29,7 @@ export const grabLetterValues = ({ driver, car, details, signatoryName, letterDa
   vehicle_plate: (car?.plateNumber ?? '').trim(),
   driver_name: (driver.name ?? '').trim(),
   driver_ic_no: (driver.nric ?? '').trim(),
-  owner_signatory_name: signatoryName.trim(),
+  owner_signatory_name: (details?.ownerName ?? '').trim(),
   letter_date: longDate(letterDate),
 });
 

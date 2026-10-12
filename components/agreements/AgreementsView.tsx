@@ -68,12 +68,6 @@ function Facts({ rows }: { rows: [string, string][] }) {
 /** The signing-day details typed here: they belong to this agreement only and are kept only in its saved copy. */
 const SIGNING_FIELDS = ['agreement_ref', 'witness_name', 'witness_id', 'odometer_km', 'fuel_level'];
 
-/** Who signs the Grab letter for the owner: typed once and remembered in this browser only. */
-const SIGNATORY_KEY = 'eca.grabLetter.signatory';
-const rememberedSignatory = () => {
-  try { return localStorage.getItem(SIGNATORY_KEY) ?? ''; } catch { return ''; }
-};
-
 /**
  * The agreement generator. Every detail comes from where it is kept: the driver's profile (Add / Edit Driver), their
  * Deposits panel, Fleet and the company details; only the signing-day details are typed here. Download makes the PDF
@@ -95,7 +89,6 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   // Which paper this page makes: the rental agreement, or the Grab authorization letter
   const [paper, setPaper] = useState<'agreement' | 'grab'>('agreement');
   const [letterDate, setLetterDate] = useState(today);
-  const [signatory, setSignatory] = useState(rememberedSignatory);
 
   const load = useCallback(async () => {
     try {
@@ -203,11 +196,11 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const signingFields = extraPlaceholders(template);
   const typeLabel = KIND_LABELS[input.kind];
 
-  const letter = grabLetterValues({ driver: driver ?? {}, car: car ?? null, details: carDetails, signatoryName: signatory, letterDate });
+  const letter = grabLetterValues({ driver: driver ?? {}, car: car ?? null, details: carDetails, letterDate });
   const letterMissing = ([
     ["the driver's name", letter.driver_name], ["the driver's NRIC", letter.driver_ic_no], ['the vehicle model', letter.vehicle_model],
     ['the plate', letter.vehicle_plate], ['the registered owner (Fleet)', letter.owner_name], ["the owner's ID (Fleet)", letter.owner_ic_no],
-    ["the signer's name", letter.owner_signatory_name], ['the date', letter.letter_date],
+    ['the date', letter.letter_date],
   ] as const).filter(([, value]) => !value).map(([label]) => label);
   const downloadLetter = async () => {
     if (!driver) return;
@@ -335,15 +328,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
                   <label htmlFor="grab-letter-date" className={labelLook}>Date</label>
                   <input id="grab-letter-date" type="date" className={inputLook} value={letterDate} onChange={event => setLetterDate(event.target.value)} />
                 </div>
-                <div>
-                  <label htmlFor="grab-letter-signatory" className={labelLook}>Vehicle owner's name (who signs)</label>
-                  <input id="grab-letter-signatory" className={inputLook} value={signatory} placeholder="Leave empty to write by hand"
-                    onChange={event => {
-                      setSignatory(event.target.value);
-                      try { localStorage.setItem(SIGNATORY_KEY, event.target.value); } catch { /* not remembered */ }
-                    }} />
-                </div>
               </div>
+              <p className="text-xs text-gray-500">The vehicle owner's name under the signature is the registered owner from Fleet.</p>
             </Step>
           )}
 
