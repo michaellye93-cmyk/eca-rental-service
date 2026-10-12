@@ -80,6 +80,8 @@ grant execute on function public.finance_save_reconcile_draft(date, jsonb), publ
 -- by the same P&L rules as the month itself and saved when the month is closed (or first read while closed). The trend
 -- then reads these instead of reading every earlier month in full. A row counts only while the month is still closed
 -- at the same revision: reopening moves the month to a new revision, so its row is ignored until it is closed again.
+-- Each row also keeps the rules_version of the app rules it was worked out by (TREND_RULES_VERSION in
+-- services/finance/dashboard.ts); the app reads a row stored under other rules live again and stores it anew.
 create table if not exists finance_private.month_totals (
   finance_month date primary key references finance_private.months(finance_month),
   revision integer not null,
@@ -101,12 +103,13 @@ begin
   if p_totals is null or jsonb_typeof(p_totals) <> 'object'
     or jsonb_typeof(p_totals->'revenue') is distinct from 'number' or jsonb_typeof(p_totals->'contribution') is distinct from 'number'
     or jsonb_typeof(p_totals->'profit') is distinct from 'number' or jsonb_typeof(p_totals->'margin') not in ('number', 'null')
+    or jsonb_typeof(p_totals->'rules_version') is distinct from 'number'
     or octet_length(p_totals::text) > 4096 then
-    raise exception 'The trend figures must be revenue, contribution, profit (numbers) and margin (a number or empty)';
+    raise exception 'The trend figures must be revenue, contribution, profit (numbers), margin (a number or empty) and rules_version (a number)';
   end if;
   insert into finance_private.month_totals(finance_month, revision, totals, saved_at)
     values (p_month, p_revision, jsonb_build_object('revenue', p_totals->'revenue', 'contribution', p_totals->'contribution',
-      'profit', p_totals->'profit', 'margin', p_totals->'margin'), now())
+      'profit', p_totals->'profit', 'margin', p_totals->'margin', 'rules_version', p_totals->'rules_version'), now())
     on conflict (finance_month) do update set revision = excluded.revision, totals = excluded.totals, saved_at = excluded.saved_at;
 end$$;
 

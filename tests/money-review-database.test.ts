@@ -63,7 +63,7 @@ test('unposted Reconcile work is kept on the server per month, for Admins only',
   } finally { await db.close(); }
 });
 
-const totals = { revenue: 10000, contribution: 4000, profit: 2500, margin: 0.25 };
+const totals = { revenue: 10000, contribution: 4000, profit: 2500, margin: 0.25, rules_version: 1 };
 const stored = (db: any) => call<any[]>(db, `select public.finance_month_totals() value`);
 
 test('a closed month keeps its trend figures, which go stale when the month is reopened', async () => {
@@ -85,6 +85,9 @@ test('a closed month keeps its trend figures, which go stale when the month is r
     await assert.rejects(db.query(`select public.finance_save_month_totals('2026-10-01', 1, $1::jsonb)`, [JSON.stringify(totals)]), /closed/);
     await assert.rejects(db.query(`select public.finance_save_month_totals('2026-08-01', 2, $1::jsonb)`, [JSON.stringify(totals)]), /changed/);
     await assert.rejects(db.query(`select public.finance_save_month_totals('2026-08-01', 3, '{"revenue":"lots"}'::jsonb)`), /figures/);
+    // The rules version the figures were worked out by is kept, and required.
+    const { rules_version: _, ...withoutVersion } = totals;
+    await assert.rejects(db.query(`select public.finance_save_month_totals('2026-08-01', 3, $1::jsonb)`, [JSON.stringify(withoutVersion)]), /figures/);
 
     // Reopening moves the month to a new revision: its stored row is no longer returned, so the trend reads it live.
     await db.exec(`reset role; update finance_private.months set status='DRAFT', revision=4, frozen_input=null where finance_month='2026-08-01';`);
