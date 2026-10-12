@@ -15,7 +15,7 @@ import {
 import { clearServerReconcileDraft, loadCashOutlook, loadServerReconcileDraft, postBankStatement, reviewBankMatch, saveCashBalance, saveServerReconcileDraft } from "../../services/finance/api";
 import { balanceEntries } from "../../services/finance/statementBalances";
 import { senderLooksLike, senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
-import { chooseReconcileDraft, clearReconcileDraft, draftStatements, markReconcileDraftSynced, saveReconcileDraft, serverDraftTooLarge, type ServerReconcileDraft } from "../../services/finance/reconcileDraft";
+import { chooseReconcileDraft, draftStatements, draftToResend, saveReconcileDraft, serverDraftTooLarge, settleServerSave, type DraftStatement, type ServerReconcileDraft } from "../../services/finance/reconcileDraft";
 import { applySureMatches, isCashInHand, matchItems, matchRow, moneyInOnly, reconcilePairs, rowDepositIds, rowPaymentIds, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
 
 const vehicleCategories = [
@@ -149,6 +149,25 @@ export default function BankStatementPanel({
   const pendingSave = useRef<(() => void) | null>(null);
   // Set when a change (posting, discarding) should reach the server without waiting.
   const saveNow = useRef(false);
+  // The statements as restored: not saved or sent again until they are changed here.
+  const restored = useRef<unknown>(null);
+  // Shown while this month's work could not be kept on the server (too large, or the save failed).
+  const [localOnly, setLocalOnly] = useState(false);
+  const sendCount = useRef(0);
+  // Sends a save (or, for no statements, a clear) carrying the time the change was made; the server keeps it only when
+  // newer than what it holds, and this browser then keeps whichever copy is newer.
+  const sendDraft = (target: string, kept: DraftStatement[], savedAt: string) => {
+    const sent = ++sendCount.current;
+    const current = generation.current;
+    const note = (value: boolean) => { if (sent === sendCount.current && current === generation.current) setLocalOnly(value); };
+    (kept.length ? saveServerReconcileDraft(target, kept, savedAt) : clearServerReconcileDraft(target, savedAt))
+      .then((stored) => {
+        const store = browserStore();
+        if (store && stored) settleServerSave(store, target, savedAt, stored);
+        note(false);
+      })
+      .catch(() => note(true)); // kept in this browser; the next change tries the server again
+  };
   const inputReady = !!input;
   useEffect(() => {
     pendingSave.current?.();
@@ -158,6 +177,7 @@ export default function BankStatementPanel({
     setStatements([]);
     setRestoredAt(null);
     setDraftMonth(null);
+    setLocalOnly(false);
     if (!input) return;
     const posted = new Set((input.bank_imports ?? []).map((item) => item.source_hash));
     void (async () => {
@@ -168,8 +188,14 @@ export default function BankStatementPanel({
       if (current !== generation.current) return;
       serverDrafts.current = server.available;
       setDraftOnServer(server.available);
-      const draft = chooseReconcileDraft(browserStore(), month, posted, server);
-      setStatements(draft ? draft.statements.map((statement) => ({ ...statement, rows: withinMonth(statement.rows, month).rows, headers: [], mapping: {} })).filter((statement) => statement.rows.length) : []);
+      const store = browserStore();
+      const draft = chooseReconcileDraft(store, month, posted, server);
+      // Work of this browser that never reached the server goes once, with the time it was made (never re-stamped).
+      const resend = draftToResend(store, month, posted, server);
+      if (resend && !serverDraftTooLarge(resend.statements)) sendDraft(month, resend.statements, resend.saved_at);
+      const list = draft ? draft.statements.map((statement) => ({ ...statement, rows: withinMonth(statement.rows, month).rows, headers: [], mapping: {} })).filter((statement) => statement.rows.length) : [];
+      restored.current = list;
+      setStatements(list);
       setRestoredAt(draft ? draft.saved_at : null);
       setDraftMonth(month);
     })();
@@ -177,6 +203,8 @@ export default function BankStatementPanel({
   }, [month, inputReady]);
   useEffect(() => {
     if (draftMonth !== month) return;
+    // A draft just restored is not saved or sent again until it is changed here.
+    if (statements === restored.current) return;
     // This change supersedes any save still waiting (an older send must not write back discarded or posted work).
     pendingSave.current = null;
     const immediate = saveNow.current;
@@ -186,13 +214,12 @@ export default function BankStatementPanel({
     if (store) saveReconcileDraft(store, month, statements, now);
     if (!serverDrafts.current) return;
     const kept = draftStatements(statements);
-    if (serverDraftTooLarge(kept)) return; // over 2 MB: this browser only
+    if (serverDraftTooLarge(kept)) { setLocalOnly(true); return; } // over 1.8 MB: this browser only
     const savedAt = now.toISOString();
+    const target = month;
     const send = () => {
       if (pendingSave.current === send) pendingSave.current = null;
-      saveServerReconcileDraft(month, kept)
-        .then(() => { if (store) markReconcileDraftSynced(store, month, savedAt); })
-        .catch(() => { /* kept in this browser; the next change tries the server again */ });
+      sendDraft(target, kept, savedAt);
     };
     if (immediate) { send(); return; }
     pendingSave.current = send;
@@ -202,9 +229,7 @@ export default function BankStatementPanel({
   useEffect(() => () => pendingSave.current?.(), []);
   const discardDraft = () => {
     if (!window.confirm("Discard the unposted statements and every match made on them?")) return;
-    const store = browserStore();
-    if (store) clearReconcileDraft(store, month);
-    if (serverDrafts.current) void clearServerReconcileDraft(month).catch(() => { /* the empty save that follows clears it too */ });
+    // The empty list is saved here and sent to the server as a clear, with the time of the discard.
     saveNow.current = true;
     setStatements([]);
     setRestoredAt(null);
@@ -429,6 +454,9 @@ export default function BankStatementPanel({
           Unposted work restored (saved {new Date(restoredAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}). {draftOnServer ? "It is saved for this month, on any device, until you post it." : "It is kept in this browser until you post it."}
           <button type="button" onClick={discardDraft} disabled={busy}>Discard</button>
         </p>
+      )}
+      {draftOnServer && localOnly && statements.length > 0 && (
+        <p className="reconcile-restored mt-3">Saved in this browser only: this work could not be kept on the server (too large, or the server did not answer), so it will not open on another device.</p>
       )}
       {statements.length > 0 && (
         <div className="reconcile-statements mt-3" role="tablist" aria-label="Loaded bank statements">
