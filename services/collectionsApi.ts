@@ -2,6 +2,7 @@ import { supabase } from '../supabaseClient';
 import { readAllRows } from './pagedRead';
 import type { PaymentChange } from './paymentLog';
 import type { CatchUpPlan, CollectionContact, ContactKind, PaymentPromise } from './collections';
+import type { DailyStatusRow } from './dailyStatus';
 
 /**
  * Reads and writes for the collections tables added by supabase/migrations/20260929090000_collections_support.sql.
@@ -126,4 +127,32 @@ export async function removeContact(id: string): Promise<void> {
   const { data, error } = await supabase.from('collection_contacts').delete().eq('id', id).select('id');
   if (error) throw error;
   if (!data?.length) throw new Error('only an admin can remove a contact');
+}
+
+/** Saves a day's status rows in one request; a repeat the same day replaces them. Rejects when the table is not there yet. */
+export async function saveDailyStatus(rows: DailyStatusRow[]): Promise<void> {
+  const { error } = await supabase.from('driver_daily_status').upsert(rows, { onConflict: 'driver_id,day' });
+  if (error) throw error;
+}
+
+/** Every daily status row from `fromDay` (YYYY-MM-DD) on, oldest first. Rejects when the table is not there yet. */
+export async function loadDailyStatus(fromDay: string): Promise<(DailyStatusRow & { written_at: string })[]> {
+  // Read 1,000 rows a page, ordered by the table's key (it has no id column, so readAllRows cannot page it)
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('driver_daily_status')
+      .select('driver_id,day,owed,overdue,cycles_owed,status,late_days,last_payment_date,written_at')
+      .gte('day', fromDay)
+      .order('day', { ascending: true })
+      .order('driver_id', { ascending: true })
+      .range(from, from + 999);
+    if (error) throw error;
+    rows.push(...((data ?? []) as Record<string, unknown>[]));
+    if (!data || data.length < 1000) break;
+  }
+  return rows.map(row => ({
+    ...(row as unknown as DailyStatusRow & { written_at: string }),
+    owed: Number(row.owed) || 0, overdue: Number(row.overdue) || 0, cycles_owed: Number(row.cycles_owed) || 0,
+  }));
 }

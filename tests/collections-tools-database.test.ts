@@ -126,6 +126,32 @@ test('F2: staff and admins log contacts under their own name; only admins remove
   } finally { await db.close(); }
 });
 
+test('D1: staff and admins write one status row per driver per day (a repeat replaces it); only admins delete; the public sees nothing', async () => {
+  const db = await setup();
+  try {
+    const upsert = (owed: number, status: string) => db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status, late_days, last_payment_date)
+      values ($1, '2026-10-12', $2, $2, 1.5, $3, 9, '2026-10-01'), ($4, '2026-10-12', 0, 0, 0, 'GOOD', null, null)
+      on conflict (driver_id, day) do update set owed = excluded.owed, overdue = excluded.overdue, cycles_owed = excluded.cycles_owed,
+        status = excluded.status, late_days = excluded.late_days, last_payment_date = excluded.last_payment_date`, [DRIVER_A, owed, status, DRIVER_B]);
+    await asUser(db, STAFF_ID);
+    await upsert(600, 'MID');
+    await upsert(1300, 'BAD');
+    assert.deepEqual((await rows<{ driver_id: string; owed: string; status: string; late_days: number | null; paid: string | null; recent: boolean }>(db,
+      `select driver_id, owed, status, late_days, to_char(last_payment_date, 'YYYY-MM-DD') paid, written_at > now() - interval '1 minute' recent from public.driver_daily_status order by driver_id`))
+      .map(r => [r.driver_id, Number(r.owed), r.status, r.late_days, r.paid, r.recent]),
+      [[DRIVER_A, 1300, 'BAD', 9, '2026-10-01', true], [DRIVER_B, 0, 'GOOD', null, null, true]]);
+    await assert.rejects(db.query(`insert into public.driver_daily_status(driver_id, day, owed, overdue, cycles_owed, status) values ($1, '2026-10-13', 0, 0, 0, 'OK')`, [DRIVER_A]), /check/);
+    await db.query(`delete from public.driver_daily_status`);
+    assert.equal(await count(db, `select count(*)::int n from public.driver_daily_status`), 2, 'staff cannot delete');
+    await asAnon(db);
+    await assert.rejects(db.query(`select * from public.driver_daily_status`), /permission denied/);
+    await asUser(db, ADMIN_ID);
+    await db.query(`delete from public.driver_daily_status where driver_id = $1`, [DRIVER_B]);
+    await db.query(`delete from public.drivers where id = $1`, [DRIVER_A]);
+    assert.equal(await count(db, `select count(*)::int n from public.driver_daily_status`), 0);
+  } finally { await db.close(); }
+});
+
 test('the file can safely run twice', async () => {
   const db = await setup();
   try {

@@ -7,6 +7,10 @@
 -- F2  A contact log: every statement, ask, follow-up, thank-you, reply, dispute, escalation or note sent to or about a
 --     driver, with when, which daily run (1PM or 9PM) and who logged it. Staff and Admins read and add; only Admins
 --     remove an entry logged by mistake. Entries cannot be edited.
+-- D1  A daily status snapshot: each active driver's balance, overdue rent, cycles owed, GOOD / MID / BAD, days late and
+--     last payment date, one row per Kuala Lumpur day. The admin site writes it on the first full load of the day,
+--     worked out by the same rent rules as the driver list (nothing is calculated here). Staff and Admins read and write
+--     it (a repeat on the same day replaces that day's row); only Admins delete.
 --
 -- Safe for the current live site: it only adds columns and tables, which the current site ignores. Run it in the
 -- Supabase SQL Editor for RentalDatabase. It is all-or-nothing, and running it a second time changes nothing.
@@ -83,5 +87,47 @@ revoke all on function finance_private.stamp_collection_contact() from public, a
 drop trigger if exists collection_contacts_stamp on public.collection_contacts;
 create trigger collection_contacts_stamp before insert on public.collection_contacts
   for each row execute function finance_private.stamp_collection_contact();
+
+-- D1 ---------------------------------------------------------------------------------------------------------------
+create table if not exists public.driver_daily_status (
+  driver_id uuid not null references public.drivers(id) on delete cascade,
+  day date not null,
+  owed numeric(12, 2) not null,
+  overdue numeric(12, 2) not null,
+  cycles_owed numeric(8, 2) not null,
+  status text not null check (status in ('GOOD', 'MID', 'BAD')),
+  late_days integer,
+  last_payment_date date,
+  written_at timestamptz not null default now(),
+  primary key (driver_id, day)
+);
+create index if not exists driver_daily_status_day on public.driver_daily_status (day);
+alter table public.driver_daily_status enable row level security;
+revoke all on public.driver_daily_status from public, anon, authenticated;
+grant select, insert, update, delete on public.driver_daily_status to authenticated;
+drop policy if exists "Staff and admins read daily status" on public.driver_daily_status;
+drop policy if exists "Staff and admins write daily status" on public.driver_daily_status;
+drop policy if exists "Staff and admins rewrite daily status" on public.driver_daily_status;
+drop policy if exists "Admins delete daily status" on public.driver_daily_status;
+create policy "Staff and admins read daily status" on public.driver_daily_status for select to authenticated
+  using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
+create policy "Staff and admins write daily status" on public.driver_daily_status for insert to authenticated
+  with check (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
+create policy "Staff and admins rewrite daily status" on public.driver_daily_status for update to authenticated
+  using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')))
+  with check (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role in ('admin', 'staff')));
+create policy "Admins delete daily status" on public.driver_daily_status for delete to authenticated
+  using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.role = 'admin'));
+
+create or replace function finance_private.stamp_daily_status() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  new.written_at := now();
+  return new;
+end $$;
+revoke all on function finance_private.stamp_daily_status() from public, anon, authenticated;
+drop trigger if exists driver_daily_status_stamp on public.driver_daily_status;
+create trigger driver_daily_status_stamp before insert or update on public.driver_daily_status
+  for each row execute function finance_private.stamp_daily_status();
 
 commit;

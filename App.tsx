@@ -4,7 +4,7 @@ import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import CollectionsDataPage from './components/CollectionsDataPage';
 import type { Driver, PaymentTransaction } from './types';
-import { kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
+import { kualaLumpurNow, kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
 import { driverPortalSession, type PortalSignIn } from './services/driverPortalSession';
 import { loadPortalLang, savePortalLang, type PortalLang } from './services/portalText';
 import { supabase } from './supabaseClient';
@@ -13,12 +13,17 @@ import { Session } from '@supabase/supabase-js';
 import { signInWithAccessId } from './services/accessIdAuth';
 import { readAllRows } from './services/pagedRead';
 import { addDeposit } from './services/depositsApi';
+import { writeTodaysSnapshotOnce } from './services/dailyStatus';
+import { saveDailyStatus } from './services/collectionsApi';
 import Notice, { type NoticeMessage } from './components/Notice';
 
 /** This browser's storage, or null when the browser blocks it. */
 const browserStorage = (): Storage | null => {
   try { return window.localStorage; } catch { return null; }
 };
+
+/** The day this page last tried to write the daily status snapshot (see writeTodaysSnapshotOnce). */
+const snapshotAttempt = { day: null as string | null };
 
 /** The read-only collections data view (admins, after the normal sign-in). */
 const isCollectionsDataPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin/collections';
@@ -99,6 +104,11 @@ const App: React.FC = () => {
       setDrivers(result.formattedDrivers);
       setDataLoaded(true);
       lastFullLoad.current = Date.now();
+      // The first full load of the Kuala Lumpur day records each active driver's status; silent if it cannot
+      void writeTodaysSnapshotOnce({
+        drivers: result.formattedDrivers, now: kualaLumpurNow(), today: kualaLumpurToday(), storage: browserStorage(),
+        write: saveDailyStatus, attempted: snapshotAttempt,
+      });
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Failed to connect to database');
