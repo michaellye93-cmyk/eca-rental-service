@@ -42,6 +42,10 @@ create table if not exists public.collection_runs (
   logged_by_role text,
   constraint collection_runs_finished_after_start check (finished_at >= started_at)
 );
+-- A run is dated by the Kuala Lumpur day it started (a 9PM run saved after midnight keeps its day).
+alter table public.collection_runs drop constraint if exists collection_runs_run_date;
+alter table public.collection_runs add constraint collection_runs_run_date
+  check (run_date = (started_at at time zone 'Asia/Kuala_Lumpur')::date);
 create index if not exists collection_runs_recent on public.collection_runs (run_date desc, started_at desc);
 alter table public.collection_runs enable row level security;
 revoke all on public.collection_runs from public, anon, authenticated;
