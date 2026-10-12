@@ -1,6 +1,6 @@
 import type { Driver, PaymentTransaction } from '../types.ts';
 import { calculateDriverMetrics } from '../utils.ts';
-import { ASK_KINDS, type CollectionContact, type PaymentPromise } from './collections.ts';
+import { ASK_KINDS, type ContactSummary, type PaymentPromise } from './collections.ts';
 import { cashOf } from './moneyDefinitions.ts';
 import type { PaymentChange } from './paymentLog.ts';
 
@@ -85,7 +85,7 @@ export function runSummaryPrefill(input: {
   now: Date;
   drivers: Driver[];
   changes: PaymentChange[] | null;
-  contacts: CollectionContact[] | null;
+  contacts: ContactSummary[] | null;
   promises: PaymentPromise[] | null;
   snapshot: { status: string }[] | null;
 }): RunPrefill {
