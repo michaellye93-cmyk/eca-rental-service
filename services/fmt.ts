@@ -1,0 +1,58 @@
+/**
+ * The one home for how figures, percentages, month labels and calendar days are written. Screens import from here
+ * instead of keeping their own copies, so the same number reads the same everywhere. No React, so tests load it.
+ */
+import { formatCurrency } from '../utils.ts';
+
+export { formatCurrency };
+
+/** Ringgit with two decimals ("RM 1,234.50"). A blank, not-a-number or minus-zero amount shows "RM 0.00". */
+export const money = (amount: number | null | undefined) => formatCurrency(Number(amount || 0));
+
+/** A fraction as a whole percentage: 0.195 → "20%". */
+export const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+
+/** A fraction as a percentage with one decimal: 0.195 → "19.5%" (Finance margins). */
+export const percent1 = (fraction: number) => `${(fraction * 100).toFixed(1)}%`;
+
+/** Rounded to two decimals (sen), for money worked out in the browser. */
+export const round2 = (value: number) => Math.round(value * 100) / 100;
+
+export const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const;
+export const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+const monthLabel = (names: readonly string[], month: string) => {
+  const name = names[Number(month.slice(5, 7)) - 1];
+  return name ? `${name} ${month.slice(0, 4)}` : 'Invalid Date';
+};
+
+/** "September 2026" from YYYY-MM or YYYY-MM-DD (the same text en-MY and en-GB dates print). */
+export const monthLong = (month: string) => monthLabel(MONTH_LONG, month);
+
+/** "Sep 2026" from YYYY-MM or YYYY-MM-DD (three letters; browsers' en-GB short form prints "Sept" instead). */
+export const monthShort = (month: string) => monthLabel(MONTH_SHORT, month);
+
+/** A Date's local calendar day as YYYY-MM-DD (never the UTC day). */
+export const isoDay = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const DAY = 86_400_000;
+const dayNumber = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / DAY;
+};
+
+/** A YYYY-MM-DD date moved by a number of days. */
+export const addDays = (iso: string, days: number) => new Date((dayNumber(iso) + days) * DAY).toISOString().slice(0, 10);
+
+/** The last day of the month as YYYY-MM-DD, from YYYY-MM or YYYY-MM-DD. */
+export const monthEnd = (month: string) => {
+  const [year, number] = month.slice(0, 7).split('-').map(Number);
+  return `${month.slice(0, 7)}-${String(new Date(year, number, 0).getDate()).padStart(2, '0')}`;
+};
+
+/** The month before YYYY-MM, as YYYY-MM. */
+export const previousMonth = (month: string) => {
+  const [year, number] = month.split('-').map(Number);
+  return number === 1 ? `${year - 1}-12` : `${year}-${String(number - 1).padStart(2, '0')}`;
+};
