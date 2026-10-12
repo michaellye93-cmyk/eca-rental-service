@@ -100,7 +100,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
           <div className="finance-total is-emphasis">
             <span>Collected this month</span>
             <strong>{percent(strip.rate)}</strong>
-            <small>{money(strip.collected)} of {money(strip.billed)} billed so far</small>
+            <small>{money(strip.collected)} of {money(strip.billed)} billed so far (cash and service claims)</small>
             {thisMonthSplit && <small>{money(thisMonthSplit.current)} for this month's rent · {money(thisMonthSplit.arrears)} for old arrears</small>}
           </div>
           <div className="finance-total">

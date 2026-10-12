@@ -1,5 +1,6 @@
 import type { FinanceInput, FinanceReport } from '../../types/finance.ts';
 import { insuranceCashOutflow } from './insurance.ts';
+import { isCashMethod } from '../moneyDefinitions.ts';
 
 const cents = (value: number) => Math.round(value * 100) / 100;
 const monthKey = (value: string) => value.slice(0, 7);
@@ -19,7 +20,8 @@ export interface MonthCashFlow {
 export function monthCashFlow(input: FinanceInput, report: FinanceReport): MonthCashFlow {
   const month = monthKey(input.month.finance_month);
   // Rent settled from a deposit (contra) moves no cash this month: the cash came in as the deposit.
-  const rent_cash = cents(input.ehailing.filter((payment) => String(payment.payment_method ?? '').toUpperCase() !== 'DEPOSIT CONTRA').reduce((sum, payment) => sum + payment.cash_amount, 0));
+  // Only money that reached the business (see moneyDefinitions): no deposit forfeits; claims are never in cash_amount.
+  const rent_cash = cents(input.ehailing.filter((payment) => isCashMethod(payment.payment_method)).reduce((sum, payment) => sum + payment.cash_amount, 0));
   const smart_drive_net = cents(input.smart_rows.reduce((sum, row) => sum + row.gross_revenue - row.commission, 0));
   const other_income = cents((input.other_income ?? [])
     .filter((row) => row.status === 'CONFIRMED' && !row.cancelled_at && monthKey(row.finance_month) === month)

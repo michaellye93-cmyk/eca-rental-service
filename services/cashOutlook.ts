@@ -1,5 +1,6 @@
 import type { Driver } from '../types.ts';
 import { formatCurrency, parseDate, rentDueAndPaid } from '../utils.ts';
+import { cashOf } from './moneyDefinitions.ts';
 
 // What finance_cash_outlook(today) returns (see supabase/migrations/20260927090000_cash_position_and_outlook.sql).
 export interface CashBalanceEntry { id: string; account_label: string; balance: number; as_of: string; note: string | null; entered_at: string }
@@ -72,8 +73,8 @@ export function currentCash(balances: CashBalanceEntry[], today: string): Curren
 }
 
 /**
- * Cash received over rent due in the last COLLECTION_WEEKS weeks, for active drivers, between 0 and 1. Repair credits
- * are not cash. With no rent due the rate is 1.
+ * Cash received (see moneyDefinitions: no service claims, no deposit forfeits) over rent due in the last COLLECTION_WEEKS
+ * weeks, for active drivers, between 0 and 1. With no rent due the rate is 1.
  */
 export function collectionRate(drivers: Driver[], today: string): { rate: number; cash: number; due: number } {
   const active = drivers.filter(d => !d.isDelisted);
@@ -84,7 +85,7 @@ export function collectionRate(drivers: Driver[], today: string): { rate: number
     for (const payment of driver.paymentHistory || []) {
       if (!isIsoDate(payment.date)) continue;
       const day = dayNumber(payment.date);
-      if (day >= dayNumber(from) && day <= dayNumber(today)) cash += payment.amount;
+      if (day >= dayNumber(from) && day <= dayNumber(today)) cash += cashOf(payment);
     }
   }
   return { rate: due > 0 ? Math.min(1, Math.max(0, cash / due)) : 1, cash: cents(cash), due: cents(due) };
@@ -243,7 +244,7 @@ export function cashLine(input: CashLineInput): CashLineSummary {
     sentence = `Short: the next 30 days of bills are ${formatCurrency(-left)} more than your cash plus the money expected in.`;
   } else if (bills.total === 0) {
     status = 'WATCH';
-    sentence = 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Money → Expenses.';
+    sentence = 'Watch: no bills are recorded in Finance for the next 30 days, so the cash line cannot tell how long cash lasts. Add your monthly costs in Finance → Records.';
   } else if (daysLeft !== null && daysLeft < TIGHT_DAYS) {
     status = 'TIGHT';
     const days = daysLeft < 1 ? 'less than a day' : `under ${Math.floor(daysLeft) + 1} days`;
