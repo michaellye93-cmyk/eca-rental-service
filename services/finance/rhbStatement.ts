@@ -12,6 +12,10 @@ export interface RhbStatement {
   accountLabel: string | null;
   /** Deposits and withdrawals printed in the summary on page one, when present. */
   control: { credits: number; debits: number } | null;
+  /** The printed "Beginning Balance", when present. */
+  opening: number | null;
+  /** Each transaction's date and the balance after it (printed, or carried on from the last printed balance), oldest first. */
+  balances: { date: string; balance: number | null }[];
 }
 
 export const RHB_HEADERS = ['Date', 'Description', 'Reference', 'Debit', 'Credit'];
@@ -75,9 +79,12 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
   let control: RhbStatement['control'] = null;
   // Text is kept per column so a name or reference wrapped onto the next row is joined back in the right place.
   let lastBalance: number | null = null;
+  let opening: number | null = null;
+  const balances: RhbStatement['balances'] = [];
   let current: { date: string; columns: Map<number, string[]>; reference: string; debit: number; credit: number } | null = null;
   const finish = () => {
     if (!current) return;
+    balances.push({ date: current.date, balance: lastBalance });
     const description = tidy([...current.columns.entries()].sort((a, b) => a[0] - b[0]).map(([, parts]) => parts.join(' ')));
     rows.push({ source_row: rows.length + 1, values: { Date: current.date, Description: description, Reference: current.reference, Debit: current.debit, Credit: current.credit } });
     current = null;
@@ -95,8 +102,8 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
             if (account && !accountLabel) accountLabel = `RHB …${account[0].slice(-4)}`;
           }
           if (texts.some((text) => /Beginning Balance/i.test(text))) {
-            const opening = cells.map(signedBalance).find((value) => value !== null);
-            if (opening !== undefined && opening !== null) lastBalance = opening;
+            const printed = cells.map(signedBalance).find((value) => value !== null);
+            if (printed !== undefined && printed !== null) { lastBalance = printed; opening = printed; }
           }
           if (texts.some((text) => /Deposits \(Plus\)/i.test(text))) {
             const totals = texts.map((text) => text.match(/^([\d,]+\.\d{2})\s*\n\s*([\d,]+\.\d{2})$/)).find(Boolean);
@@ -135,6 +142,7 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
         }
       }
       if (balance !== null) lastBalance = balance;
+      else if (lastBalance !== null) lastBalance = Math.round((lastBalance + credit - debit) * 100) / 100;
       let reference = '';
       if (end > 0 && /^\d{1,10}$/.test(cellText(values[end - 1]).trim())) {
         reference = cellText(values[end - 1]).trim();
@@ -151,5 +159,5 @@ export function parseRhbStatement(workbook: ExcelJS.Workbook): RhbStatement {
     }
   }
   finish();
-  return { rows, accountLabel, control };
+  return { rows, accountLabel, control, opening, balances };
 }

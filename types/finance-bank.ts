@@ -10,5 +10,7 @@ export interface BankReviewRow extends BankSourceRow {
   /** Deposit or downpayment receipts this credit also paid (with rent, or alone when matched_kind is 'deposit'). */
   matched_deposit_ids?: string[] | null;
 }
-export interface BankStatementPreview { rows: BankReviewRow[]; issues: QualityIssue[]; total_debits: number; total_credits: number; filename: string; account_label: string; finance_month: string }
+export interface BankStatementPreview { rows: BankReviewRow[]; issues: QualityIssue[]; total_debits: number; total_credits: number; filename: string; account_label: string; finance_month: string;
+  /** Bank balance at the end of the month before and at the end of the month, when the statement shows them (RHB Excel). */
+  opening_balance?: number | null; closing_balance?: number | null }
 export interface BankImport { id: string; finance_month: string; filename: string; account_label: string; source_hash: string; imported_at: string; row_count: number; total_debits: number; total_credits: number }
