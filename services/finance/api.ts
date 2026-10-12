@@ -1,6 +1,7 @@
 import { supabase } from '../../supabaseClient';
 import type { FinanceInput, FixedCostTreatment, SmartDriveRow } from '../../types/finance';
 import type { CashBalanceEntry, CashOutlookData } from '../cashOutlook';
+import type { DraftStatement, ServerReconcileDraft } from './reconcileDraft';
 
 async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(name, args);
@@ -28,6 +29,11 @@ export const saveCashBalance = (account: string, balance: number, asOf: string, 
 export const cancelCashBalance = (id: string, reason: string) => rpc<CashBalanceEntry[]>('finance_cancel_cash_balance', { p_id: id, p_reason: reason });
 export const setFixedCostTreatment = (seriesId: string, treatment: FixedCostTreatment['treatment']) =>
   rpc<FixedCostTreatment[]>('finance_set_fixed_cost_treatment', { p_series_id: seriesId, p_treatment: treatment });
+// Unposted Reconcile work kept on the server (supabase/migrations/20261012200000_money_review.sql); each call rejects
+// until that file is run, and Reconcile then keeps the work in the browser only.
+export const loadServerReconcileDraft = (month: string) => rpc<ServerReconcileDraft | null>('finance_load_reconcile_draft', { p_month: financeMonth(month) });
+export const saveServerReconcileDraft = (month: string, statements: DraftStatement[]) => rpc<string>('finance_save_reconcile_draft', { p_month: financeMonth(month), p_statements: statements });
+export const clearServerReconcileDraft = (month: string) => rpc<null>('finance_clear_reconcile_draft', { p_month: financeMonth(month) });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
 export const generateFixedCosts = (month: string, revision: number) => rpc<FinanceInput>('finance_generate_fixed_costs', { p_month: financeMonth(month), p_revision: revision });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });

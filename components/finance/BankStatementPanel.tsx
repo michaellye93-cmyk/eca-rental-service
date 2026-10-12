@@ -12,10 +12,10 @@ import {
   readBankStatement,
   validateBankReview,
 } from "../../services/finance/bankStatements";
-import { loadCashOutlook, postBankStatement, reviewBankMatch, saveCashBalance } from "../../services/finance/api";
+import { clearServerReconcileDraft, loadCashOutlook, loadServerReconcileDraft, postBankStatement, reviewBankMatch, saveCashBalance, saveServerReconcileDraft } from "../../services/finance/api";
 import { balanceEntries } from "../../services/finance/statementBalances";
 import { senderLooksLike, senderName, unsolvedPayments, type PaymentSuggestion } from "../../services/finance/bankMatchSuggestions";
-import { clearReconcileDraft, loadReconcileDraft, saveReconcileDraft } from "../../services/finance/reconcileDraft";
+import { chooseReconcileDraft, clearReconcileDraft, draftStatements, markReconcileDraftSynced, saveReconcileDraft, serverDraftTooLarge, type ServerReconcileDraft } from "../../services/finance/reconcileDraft";
 import { applySureMatches, isCashInHand, matchItems, matchRow, moneyInOnly, reconcilePairs, rowDepositIds, rowPaymentIds, suggestAcrossStatements, summarizeProblems, withinMonth } from "../../services/finance/reconcileQueue";
 
 const vehicleCategories = [
@@ -139,29 +139,71 @@ export default function BankStatementPanel({
     window.print();
     cleanup();
   };
-  // Unposted work is kept in this browser per month: leaving the page, switching tab or reloading brings it back.
+  // Unposted work is kept per month on the server (any device) and in this browser (the fallback until the database
+  // update is run): leaving the page, switching tab, reloading or opening another device brings it back.
   const [draftMonth, setDraftMonth] = useState<string | null>(null);
   const [restoredAt, setRestoredAt] = useState<string | null>(null);
+  const [draftOnServer, setDraftOnServer] = useState(false);
+  const serverDrafts = useRef(false);
+  // A server save waiting for its pause; sent straight away when the page closes or the month changes.
+  const pendingSave = useRef<(() => void) | null>(null);
+  // Set when a change (posting, discarding) should reach the server without waiting.
+  const saveNow = useRef(false);
   const inputReady = !!input;
   useEffect(() => {
-    generation.current++;
+    pendingSave.current?.();
+    const current = ++generation.current;
     setActive(0);
     setReviewing(null);
-    const store = browserStore();
-    const draft = store && input ? loadReconcileDraft(store, month, new Set((input.bank_imports ?? []).map((item) => item.source_hash))) : null;
-    setStatements(draft ? draft.statements.map((statement) => ({ ...statement, rows: withinMonth(statement.rows, month).rows, headers: [], mapping: {} })).filter((statement) => statement.rows.length) : []);
-    setRestoredAt(draft ? draft.saved_at : null);
-    setDraftMonth(input ? month : null);
+    setStatements([]);
+    setRestoredAt(null);
+    setDraftMonth(null);
+    if (!input) return;
+    const posted = new Set((input.bank_imports ?? []).map((item) => item.source_hash));
+    void (async () => {
+      let server: { available: boolean; draft: ServerReconcileDraft | null } = { available: false, draft: null };
+      try {
+        server = { available: true, draft: await loadServerReconcileDraft(month) };
+      } catch { /* database update not run yet, or the server cannot be reached: this browser's copy */ }
+      if (current !== generation.current) return;
+      serverDrafts.current = server.available;
+      setDraftOnServer(server.available);
+      const draft = chooseReconcileDraft(browserStore(), month, posted, server);
+      setStatements(draft ? draft.statements.map((statement) => ({ ...statement, rows: withinMonth(statement.rows, month).rows, headers: [], mapping: {} })).filter((statement) => statement.rows.length) : []);
+      setRestoredAt(draft ? draft.saved_at : null);
+      setDraftMonth(month);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, inputReady]);
   useEffect(() => {
+    if (draftMonth !== month) return;
+    const immediate = saveNow.current;
+    saveNow.current = false;
     const store = browserStore();
-    if (store && draftMonth === month) saveReconcileDraft(store, month, statements);
+    const now = new Date();
+    if (store) saveReconcileDraft(store, month, statements, now);
+    if (!serverDrafts.current) return;
+    const kept = draftStatements(statements);
+    if (serverDraftTooLarge(kept)) return; // over 2 MB: this browser only
+    const savedAt = now.toISOString();
+    const send = () => {
+      if (pendingSave.current === send) pendingSave.current = null;
+      saveServerReconcileDraft(month, kept)
+        .then(() => { if (store) markReconcileDraftSynced(store, month, savedAt); })
+        .catch(() => { /* kept in this browser; the next change tries the server again */ });
+    };
+    if (immediate) { send(); return; }
+    pendingSave.current = send;
+    const timer = window.setTimeout(send, 1500);
+    return () => window.clearTimeout(timer);
   }, [statements, draftMonth, month]);
+  useEffect(() => () => pendingSave.current?.(), []);
   const discardDraft = () => {
     if (!window.confirm("Discard the unposted statements and every match made on them?")) return;
     const store = browserStore();
     if (store) clearReconcileDraft(store, month);
+    if (serverDrafts.current) void clearServerReconcileDraft(month).catch(() => { /* the empty save that follows clears it too */ });
+    saveNow.current = true;
     setStatements([]);
     setRestoredAt(null);
     setActive(0);
@@ -310,6 +352,8 @@ export default function BankStatementPanel({
             + (balancesSaved ? ` Its month-end bank balance${balancesSaved === 1 ? " was" : "s were"} added to Cash.` : "");
           // After a partial "Post all", the failure goes in the same notice so it is not hidden by the success message.
           onPosted(latest, failure ? `${done} Not posted (still loaded below): ${failure}` : done);
+          // The posted statements leave the saved draft (server and browser) straight away.
+          saveNow.current = true;
           setStatements((list) => list.filter((_, i) => !posted.includes(i)));
           setActive(0);
         }
@@ -360,7 +404,7 @@ export default function BankStatementPanel({
         <label className="text-sm font-medium">
           Bank statements
           <input
-            disabled={disabled || busy}
+            disabled={disabled || busy || draftMonth !== month}
             type="file"
             multiple
             accept=".csv,.xlsx,.xls,.json,.pdf,image/*"
@@ -376,7 +420,7 @@ export default function BankStatementPanel({
       </div>
       {restoredAt && statements.length > 0 && (
         <p className="reconcile-restored mt-3">
-          Unposted work restored (saved {new Date(restoredAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}). It is kept in this browser until you post it.
+          Unposted work restored (saved {new Date(restoredAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}). {draftOnServer ? "It is saved for this month, on any device, until you post it." : "It is kept in this browser until you post it."}
           <button type="button" onClick={discardDraft} disabled={busy}>Discard</button>
         </p>
       )}
