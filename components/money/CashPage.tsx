@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { Driver } from '../../types';
 import { formatCurrency, formatDate } from '../../utils';
 import {
-  arrearsScenarios, COLLECTION_WEEKS, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
+  arrearsScenarios, bankCheck, BANK_CHECK_TOLERANCE, COLLECTION_WEEKS, monthlyOutlook, STALE_BALANCE_DAYS, TIGHT_DAYS, WINDOW_DAYS, addDays, currentCash,
   type CashBalanceEntry, type CashLineSummary, type CashOutlookData,
 } from '../../services/cashOutlook';
 import { cancelCashBalance, saveCashBalance } from '../../services/finance/api';
@@ -21,10 +21,12 @@ interface CashPageProps {
   summary: CashLineSummary | null;
   onBalancesChange: (rows: CashBalanceEntry[]) => void;
   onReload: () => void;
+  /** The Finance month chosen at the top and its net cash flow, for the bank check. */
+  bank?: { month: string; netCashFlow: number } | null;
 }
 
 /** Money → Cash: cash in bank (typed in here), the next three months, and bills coming up. */
-export default function CashPage({ today, drivers, outlook, outlookState, summary, onBalancesChange, onReload }: CashPageProps) {
+export default function CashPage({ today, drivers, outlook, outlookState, summary, onBalancesChange, onReload, bank }: CashPageProps) {
   if (outlookState === 'unavailable' || (!outlook && outlookState !== 'loading')) {
     return (
       <div className="finance-content">
@@ -43,6 +45,7 @@ export default function CashPage({ today, drivers, outlook, outlookState, summar
     <div className="finance-content">
       <StatusBlock summary={summary} />
       <BalanceTable today={today} outlook={outlook} onBalancesChange={onBalancesChange} />
+      {bank && <BankCheckBox balances={outlook.balances} month={bank.month} netCashFlow={bank.netCashFlow} />}
       <OutlookTable today={today} outlook={outlook} drivers={drivers} rate={summary.rate} />
       <ScenarioTable today={today} outlook={outlook} drivers={drivers} overdue={summary.overdue} />
       <BillsComing today={today} outlook={outlook} />
@@ -211,6 +214,51 @@ function BalanceTable({ today, outlook, onBalancesChange }: { today: string; out
       </form>
       {error && <p role="alert" className="finance-message is-error">{error}</p>}
       {saved && <p role="status" className="finance-message is-success">{saved}</p>}
+    </section>
+  );
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monthName = (month: string) => `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+
+/** Bank at the start of the month plus the month's net cash flow should equal the bank at month end. */
+export function BankCheckBox({ balances, month, netCashFlow }: { balances: CashBalanceEntry[]; month: string; netCashFlow: number }) {
+  const check = useMemo(() => bankCheck(balances, month, netCashFlow), [balances, month, netCashFlow]);
+  const name = monthName(month);
+  const previous = monthName(`${Number(month.slice(5, 7)) === 1 ? Number(month.slice(0, 4)) - 1 : month.slice(0, 4)}-${String(Number(month.slice(5, 7)) === 1 ? 12 : Number(month.slice(5, 7)) - 1).padStart(2, '0')}`);
+  const value = (n: number | null) => (n === null ? '—' : money(n));
+  return (
+    <section className="finance-panel" aria-labelledby="bank-check-heading">
+      <div className="finance-section-heading">
+        <div>
+          <h3 id="bank-check-heading">Bank check: {name}</h3>
+          <p>The bank should move by the month's net cash flow (Overview), not its profit. Enter each account's balance dated the last day of each month.</p>
+        </div>
+      </div>
+      <div className="finance-table-wrap">
+        <table className="finance-table finance-statement">
+          <tbody>
+            <tr><td>Bank at end of {previous}</td><td>{value(check.opening)}</td></tr>
+            <tr><td>Net cash flow for {name}</td><td className={check.netCashFlow < 0 ? 'finance-negative' : ''}>{check.netCashFlow >= 0 ? '+' : ''}{money(check.netCashFlow)}</td></tr>
+            <tr className="is-subtotal"><td>Bank should be</td><td>{value(check.expected)}</td></tr>
+            <tr><td>Bank actually is (end of {name})</td><td>{value(check.closing)}</td></tr>
+            <tr className="is-total"><td>Unexplained</td><td className={check.flagged ? 'finance-negative' : ''}>{check.unexplained === null ? '—' : `${check.unexplained > 0 ? '+' : ''}${money(check.unexplained)}`}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      {check.missing.length > 0 ? (
+        <p className="finance-message is-warning">
+          Missing month-end balances: {check.missing.map(m => `${m.account} (end of ${m.when === 'start' ? previous : name})`).join(', ')}.
+          Enter them in Cash in bank, dated the last day of that month.
+        </p>
+      ) : check.flagged ? (
+        <p className="finance-message is-error">
+          {money(Math.abs(check.unexplained ?? 0))} {(check.unexplained ?? 0) < 0 ? 'less' : 'more'} in the bank than the records explain. Check for cash rent not yet
+          banked, a bill paid in another month, owner money in or out, a loan, bank charges, or a payment not recorded.
+        </p>
+      ) : (
+        <p className="finance-message is-success">The bank matches the records within {money(BANK_CHECK_TOLERANCE)}.</p>
+      )}
     </section>
   );
 }

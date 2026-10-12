@@ -560,7 +560,8 @@ export default function FinanceView(props: MoneyProps = {}) {
           <h1>{PAGE_HEADINGS[page][0]}</h1>
           <p className="finance-subtitle">{PAGE_HEADINGS[page][1]}</p>
         </div>
-        {monthBased(page) && <div className="finance-top-actions">
+        {/* Cash shows the month too: its bank check is for the chosen month. */}
+        {(monthBased(page) || page === "cash") && <div className="finance-top-actions">
           <label className="finance-month">
             <span>Reporting month</span>
             <input
@@ -606,6 +607,7 @@ export default function FinanceView(props: MoneyProps = {}) {
           summary={props.cashSummary ?? null}
           onBalancesChange={(rows) => props.onBalancesChange?.(rows)}
           onReload={() => props.onReloadOutlook?.()}
+          bank={input && report ? { month: month.slice(0, 7), netCashFlow: monthCashFlow(input, report).net } : null}
         />
       )}
       {page === "collections" && (

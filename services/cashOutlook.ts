@@ -352,3 +352,57 @@ export function arrearsScenarios(input: { today: string; outlook: CashOutlookDat
     run('allPlusArrears', 'All rent + 10% of arrears a month', 1, cents(Math.max(0, input.overdue) * 0.1)),
   ];
 }
+
+/** Unexplained differences above this many ringgit are flagged on the bank check. */
+export const BANK_CHECK_TOLERANCE = 500;
+
+export interface BankCheck {
+  month: string;
+  /** All accounts at the start of the month, or null while one is missing. */
+  opening: number | null;
+  netCashFlow: number;
+  /** Opening plus the month's net cash flow: what the bank should hold at month end. */
+  expected: number | null;
+  /** All accounts at month end, or null while one is missing. */
+  closing: number | null;
+  /** Closing less expected (negative: less money than the records explain). */
+  unexplained: number | null;
+  flagged: boolean;
+  missing: { account: string; when: 'start' | 'end' }[];
+}
+
+/**
+ * The bank check for month YYYY-MM: the balances at the start of the month plus the month's net cash flow should equal
+ * the balances at month end. A balance counts for a month boundary when it is dated the last day of the month or the
+ * 1st of the next; the later date wins, then the later entry. Every account ever entered needs both boundaries.
+ */
+export function bankCheck(balances: CashBalanceEntry[], month: string, netCashFlow: number): BankCheck {
+  const first = `${month}-01`;
+  const lastOfPrevious = addDays(first, -1);
+  const [year, number] = month.split('-').map(Number);
+  const nextFirst = `${number === 12 ? year + 1 : year}-${String(number === 12 ? 1 : number + 1).padStart(2, '0')}-01`;
+  const last = addDays(nextFirst, -1);
+  const accounts = [...new Set(balances.map(entry => entry.account_label))].sort();
+  const missing: BankCheck['missing'] = [];
+  const at = (account: string, dates: string[], when: 'start' | 'end') => {
+    const found = balances.filter(entry => entry.account_label === account && dates.includes(entry.as_of.slice(0, 10)))
+      .sort((a, b) => b.as_of.localeCompare(a.as_of) || String(b.entered_at).localeCompare(String(a.entered_at)))[0];
+    if (!found) missing.push({ account, when });
+    return found ? num(found.balance) : 0;
+  };
+  let opening = 0;
+  let closing = 0;
+  for (const account of accounts) {
+    opening += at(account, [lastOfPrevious, first], 'start');
+    closing += at(account, [last, nextFirst], 'end');
+  }
+  const startMissing = missing.some(m => m.when === 'start');
+  const endMissing = missing.some(m => m.when === 'end');
+  const expected = startMissing || !accounts.length ? null : cents(opening + netCashFlow);
+  const closingTotal = endMissing || !accounts.length ? null : cents(closing);
+  const unexplained = expected === null || closingTotal === null ? null : cents(closingTotal - expected);
+  return {
+    month, opening: startMissing || !accounts.length ? null : cents(opening), netCashFlow: cents(netCashFlow), expected, closing: closingTotal,
+    unexplained, flagged: unexplained !== null && Math.abs(unexplained) > BANK_CHECK_TOLERANCE, missing,
+  };
+}
