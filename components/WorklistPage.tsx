@@ -5,6 +5,7 @@ import { CONTACT_KINDS } from '../services/collections';
 import { buildWorklist, worklistJson, type WorklistRow } from '../services/worklist';
 import { buildAdminPath } from '../services/routes';
 import { useCollectionsExtras } from './useCollectionsExtras';
+import RunSummaryPanel from './RunSummaryPanel';
 
 const STATUS_LOOK: Record<string, string> = {
   GOOD: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -40,12 +41,11 @@ function PageLink({ to, onNavigate, className, children }: { to: string; onNavig
 /**
  * The day's collection work in one read at /admin/worklist (staff and admins, behind the normal sign-in): every active
  * driver with the next step (see nextCollectionStep). Nothing is sent from here; "Copy as JSON" gives the same rows.
+ * After a run, "Record run summary" saves what it did (see RunSummaryPanel).
  */
-export default function WorklistPage({ drivers, onNavigate, children }: {
+export default function WorklistPage({ drivers, onNavigate }: {
   drivers: Driver[];
   onNavigate: (path: string, options?: { replace?: boolean }) => void;
-  /** Extra panels shown above the list (the run summary form). */
-  children?: React.ReactNode;
 }) {
   const extras = useCollectionsExtras();
   const [copied, setCopied] = useState(false);
@@ -74,7 +74,7 @@ export default function WorklistPage({ drivers, onNavigate, children }: {
         <PageLink to={buildAdminPath({ kind: 'drivers' })} onNavigate={onNavigate} className="text-sm font-semibold text-blue-700 underline">Back to the admin site</PageLink>
       </header>
       <p className="mb-3 text-sm text-gray-600">Rent due today first, then late alerts (longest first), then by amount owed. Nothing is sent from this page.</p>
-      {children}
+      <RunSummaryPanel drivers={drivers} />
       {data && data.warnings.length > 0 && (
         <ul aria-label="Warnings" className="mb-3 space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           {data.warnings.map(warning => <li key={warning}>{warning}</li>)}

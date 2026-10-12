@@ -3,6 +3,7 @@ import { readAllRows } from './pagedRead';
 import type { PaymentChange } from './paymentLog';
 import type { CatchUpPlan, CollectionContact, ContactKind, PaymentPromise } from './collections';
 import type { DailyStatusRow } from './dailyStatus';
+import type { CollectionRun, NewCollectionRun } from './collectionRuns';
 
 /**
  * Reads and writes for the collections tables added by supabase/migrations/20260929090000_collections_support.sql.
@@ -155,4 +156,30 @@ export async function loadDailyStatus(fromDay: string): Promise<(DailyStatusRow 
     ...(row as unknown as DailyStatusRow & { written_at: string }),
     owed: Number(row.owed) || 0, overdue: Number(row.overdue) || 0, cycles_owed: Number(row.cycles_owed) || 0,
   }));
+}
+
+/** Every payment change (added, edited, deleted) since `since` (an ISO time), oldest first. Rejects when the log is not there. */
+export async function loadPaymentChangesSince(since: string): Promise<PaymentChange[]> {
+  return readAllRows<PaymentChange>(() => supabase
+    .from('payment_changes')
+    .select('id,payment_id,driver_id,action,changed_at,changed_by_name,changed_by_role,before,after')
+    .gte('changed_at', since), 'id', true);
+}
+
+/** The latest `limit` run summaries, newest first. Rejects when the table is not there yet (20261012230000_collection_runs.sql). */
+export async function loadRecentRuns(limit = 7): Promise<CollectionRun[]> {
+  const { data, error } = await supabase
+    .from('collection_runs')
+    .select('*')
+    .order('run_date', { ascending: false })
+    .order('started_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map(row => ({ ...row, collected: Number(row.collected) || 0 }) as CollectionRun);
+}
+
+/** Records a run summary under the signed-in account (the database stamps who and when). */
+export async function saveRun(run: NewCollectionRun): Promise<void> {
+  const { error } = await supabase.from('collection_runs').insert(run);
+  if (error) throw error;
 }
