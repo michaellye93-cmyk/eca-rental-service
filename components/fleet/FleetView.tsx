@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Copy, MessageCircle } from 'lucide-react';
 import Notice, { type NoticeMessage } from '../Notice';
 import { ConfirmDialog } from '../Dialog';
 import FleetList, { type FleetFilter } from './FleetList';
 import CarFormDialog from './CarFormDialog';
 import VehicleInfoCard from './VehicleInfoCard';
 import { fleet } from '../../services/fleet/client';
+import { fleetReminderText } from '../../services/fleet/reminder';
 import { detailsChanged, emptyDetails, type Car, type InsuranceCover, type VehicleDetails } from '../../services/fleet/rules';
 
 interface FleetViewProps {
@@ -107,6 +109,21 @@ export default function FleetView({ today, isAdmin = false, onCarsChange }: Flee
     await reload();
   };
 
+  // This week's reminder (staff and admins): cars due in the next 30 days, expired or missing, shared on WhatsApp
+  const shareReminder = () => {
+    if (!cars) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(fleetReminderText(cars, today, cover))}`, '_blank', 'noopener,noreferrer');
+  };
+  const copyReminder = async () => {
+    if (!cars) return;
+    try {
+      await navigator.clipboard.writeText(fleetReminderText(cars, today, cover));
+      setNotice({ type: 'success', text: "This week's list is copied. Paste it into WhatsApp." });
+    } catch {
+      setNotice({ type: 'error', text: "Couldn't copy the list. Use Send this week's list instead." });
+    }
+  };
+
   if (!cars) {
     return loadError ? (
       <div role="alert" className="p-6 text-sm text-gray-700">
@@ -134,6 +151,14 @@ export default function FleetView({ today, isAdmin = false, onCarsChange }: Flee
         onEdit={setEditing}
         onOpen={setViewing}
         onDelete={setDeleting}
+        actions={<>
+          <button type="button" onClick={shareReminder} title="Opens WhatsApp with the cars due in the next 30 days, expired or missing" className="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm">
+            <MessageCircle className="w-4 h-4" aria-hidden="true" /> Send this week's list
+          </button>
+          <button type="button" onClick={() => void copyReminder()} aria-label="Copy this week's list" title="Copy this week's list" className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 text-sm font-semibold px-3 py-2 rounded-lg flex items-center gap-2 shadow-sm">
+            <Copy className="w-4 h-4" aria-hidden="true" /> Copy
+          </button>
+        </>}
       />
       {viewing && (
         <VehicleInfoCard car={viewing} details={details.get(viewing.id) ?? null} detailsProblem={detailsProblem}

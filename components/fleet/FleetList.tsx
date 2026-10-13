@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { AlertTriangle, Building2, CarFront, Pencil, Plus, Search, StickyNote, Trash2, Users } from 'lucide-react';
 import { formatDate } from '../../utils';
 import { attentionCount, byUrgency, carStatuses, EXPIRY_LABELS, financeInsurance, matchesSearch, needsAttention, type Car, type ExpiryTone, type InsuranceCover } from '../../services/fleet/rules';
@@ -29,10 +30,12 @@ interface FleetListProps {
   /** Opens the car's vehicle details card (from its plate). */
   onOpen: (car: Car) => void;
   onDelete: (car: Car) => void;
+  /** Extra buttons beside "Add car" (the weekly reminder's share and copy). */
+  actions?: ReactNode;
 }
 
 /** The Fleet page's tiles, search and car cards; FleetView loads and saves around it. */
-export default function FleetList({ cars, today, cover, onUseFinanceInsurance, filter, onFilterChange, query, onQueryChange, onAdd, onEdit, onOpen, onDelete }: FleetListProps) {
+export default function FleetList({ cars, today, cover, onUseFinanceInsurance, filter, onFilterChange, query, onQueryChange, onAdd, onEdit, onOpen, onDelete, actions }: FleetListProps) {
   const tiles: { id: FleetFilter; label: string; count: number; Icon: typeof CarFront; look: string }[] = [
     { id: 'ALL', label: 'All cars', count: cars.length, Icon: CarFront, look: 'text-gray-900' },
     { id: 'ATTENTION', label: 'Needs attention', count: attentionCount(cars, today, cover), Icon: AlertTriangle, look: 'text-rose-600' },
@@ -53,9 +56,12 @@ export default function FleetList({ cars, today, cover, onUseFinanceInsurance, f
           <h2 className="text-lg font-bold text-gray-900">Fleet</h2>
           <p className="text-sm text-gray-500">Road tax, insurance and inspection reminders</p>
         </div>
-        <button type="button" onClick={onAdd} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm">
-          <Plus className="w-4 h-4" aria-hidden="true" /> Add car
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {actions}
+          <button type="button" onClick={onAdd} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm">
+            <Plus className="w-4 h-4" aria-hidden="true" /> Add car
+          </button>
+        </div>
       </div>
 
       <div role="group" aria-label="Filter cars" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
