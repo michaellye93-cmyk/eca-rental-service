@@ -43,7 +43,7 @@ agreed format.
 
 | Section | Screens | Logic / data access | Main tables |
 | --- | --- | --- | --- |
-| Drivers | `AdminDashboard.tsx`, `ExpandedDriverDetails.tsx`, `DriverDeposits.tsx`, `CollectionsPanels.tsx`, `CollectionsDataPage.tsx` | `App.tsx`, `utils.ts`, `services/collections*.ts`, `services/depositsApi.ts`, `services/driverChanges.ts`, `services/paymentLog.ts` | `drivers`, `payments`, `driver_deposits`, `payment_changes`, `driver_changes`, `payment_promises`, `catch_up_plans`, `collection_settings`, `driver_screenings` |
+| Drivers | `AdminDashboard.tsx` (the shell: sections, addresses, dialogs), `components/drivers/` (driver form, payment window, overview cards, list controls, row, contact details, `useScreening`, `useDriverListData`), `ExpandedDriverDetails.tsx`, `DriverDeposits.tsx`, `CollectionsPanels.tsx`, `CollectionsDataPage.tsx` | `App.tsx`, `utils.ts`, `services/collections*.ts`, `services/depositsApi.ts`, `services/driverChanges.ts`, `services/paymentLog.ts` | `drivers`, `payments`, `driver_deposits`, `payment_changes`, `driver_changes`, `payment_promises`, `catch_up_plans`, `collection_settings`, `driver_screenings` |
 | Fleet | `components/fleet/` | `services/fleet/` | `cars` (road tax, insurance, inspection dates), `car_details` |
 | Agreements | `components/agreements/` | `services/agreements/` (`defaults.ts` holds the clause drafts) | `agreement_settings` (company details, payment accounts, saved templates), `driver_agreements` (text copy for the driver page) |
 | Finance (Money, admin only) | `components/finance/`, `components/money/` | `services/finance/` | everything in the `finance_private` schema, reached only through `public.finance_*` functions |
@@ -56,6 +56,8 @@ Notes:
 - **Fleet.** The plate is typed on the car; the database keeps `cars.plate_key` (capitals, no spaces, as drivers and
   Finance store plates). Admins also see Finance's insurance end date for the plate (`finance_insurance_cover`): a
   later Finance date sets the reminder until "Use this date" saves it on the car. Nothing is written automatically.
+  "Send this week's list" opens WhatsApp with a plain-text list of cars due in the next 30 days, expired or missing
+  (`services/fleet/reminder.ts`); "Copy" puts the same text on the clipboard.
 - **Agreements.** The PDF is made in the browser (jsPDF, A4) and never stored. It reads the driver, Fleet's
   `car_details` and `driver_deposits`; only signing-day details are typed. A text copy goes to `driver_agreements`
   so the driver can see and download it on their phone. The Grab and "other EHO" authorization letters live here too.
