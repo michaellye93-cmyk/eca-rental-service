@@ -4,7 +4,7 @@ import type { FinanceInput, FinanceVehicle, Insurance, RecurringCost } from "../
 import type { DriverWithMetrics } from "../../types";
 import type { SectionKind } from "../../services/finance/workspace";
 import type { FinanceEditableExportKind } from "../../services/finance/exports";
-import { insuranceCashOutflow, insuranceProblems } from "../../services/finance/insurance";
+import { insuranceCashOutflow, insuranceHeaderTotals, insuranceProblems, overlappingInsurance } from "../../services/finance/insurance";
 import Dialog from "./FinanceDialog";
 import PlatesToCheck from "./PlatesToCheck";
 import { InsuranceForm, RecurringForm, VehicleForm } from "./FinanceRecordForms";
@@ -62,11 +62,8 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
     (sum: number, cost: RecurringCost) => sum + cost.monthly_amount,
     0,
   );
-  const activeInsurance = input.insurance.filter((policy: Insurance) => !policy.cancelled_at);
-  const insuranceCostTotal = activeInsurance.reduce(
-    (sum: number, policy: Insurance) => sum + (policy.responsibility === "ECA_PAID" && policy.premium > 0 ? policy.premium : 0),
-    0,
-  );
+  const insuranceTotals = insuranceHeaderTotals(input.insurance, new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }));
+  const insuranceOverlaps = overlappingInsurance(input.insurance);
   const displayedCosts = costSort
     ? activeCosts
         .map((cost: RecurringCost, index: number) => ({ cost, index }))
@@ -178,7 +175,7 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
           <SectionHeading
             title="Insurance"
             detail="Excel columns: Car Plate, Premium (RM), Coverage Start, Coverage End, RESPONSIBILITY. RM0 records may have blank coverage dates."
-            summary={<strong>Total cost: {money(insuranceCostTotal)}</strong>}
+            summary={<><strong>Active now: {money(insuranceTotals.active)} · All years: {money(insuranceTotals.allYears)}</strong>{insuranceOverlaps.size > 0 && <small className="finance-inline-warning">{insuranceOverlaps.size} policies overlap another policy for the same car, so the shared days are charged twice. See the warnings below.</small>}</>}
             action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("insurance", input.insurance.filter((row: Insurance) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add policy</button><FileButton
                 disabled={disabled}
                 label="Import Excel"
@@ -189,7 +186,8 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
             headers={["Vehicle", "Responsibility", "Premium (RM)", "Coverage", "Finance cash outflow", "Actions"]}
           >
             {input.insurance.filter((x: Insurance) => !x.cancelled_at).map((x: Insurance) => {
-              const problems = insuranceProblems(x);
+              const overlaps = insuranceOverlaps.get(x) ?? [];
+              const problems = [...insuranceProblems(x), ...(overlaps.length ? [`Overlaps ${overlaps.map((other: Insurance) => `${other.coverage_start} – ${other.coverage_end}`).join(", ")} for this car; both are charged for the shared days. Fix the dates or delete the duplicate.`] : [])];
               const cashOutflow = insuranceCashOutflow(x, input.calculation_version ?? 1);
               return <tr key={x.id ?? `${x.plate_key}${x.coverage_start}`}>
                 <td>

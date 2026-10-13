@@ -48,3 +48,24 @@ export function insuranceCashOutflow(policy: Insurance, calculationVersion = 2):
   if (calculationVersion === 1) return policy.responsibility !== 'OWNER_PAID' && policy.premium > 0 && validInsuranceDate(policy.payment_date) ? {date:policy.payment_date,amount:policy.premium} : {date:null,amount:0};
   return insuranceStatus(policy) === 'ECA Paid' ? {date: policy.coverage_start, amount: policy.premium} : {date: null, amount: 0};
 }
+const charged = (policy: Insurance) => !policy.cancelled_at && insuranceStatus(policy) === 'ECA Paid';
+const cents = (value: number) => Math.round(value * 100) / 100;
+/** The Insurance header: ECA-paid premiums whose cover includes today, and every one on record (all years, expired too). */
+export function insuranceHeaderTotals(policies: Insurance[], today: string): {active: number; allYears: number} {
+  const live = policies.filter(charged);
+  return {
+    active: cents(live.filter((policy) => policy.coverage_start! <= today && today <= policy.coverage_end!).reduce((sum, policy) => sum + policy.premium, 0)),
+    allYears: cents(live.reduce((sum, policy) => sum + policy.premium, 0)),
+  };
+}
+/** Charged policies for the same car whose cover dates share at least one day: each would be charged for those days. */
+export function overlappingInsurance(policies: Insurance[]): Map<Insurance, Insurance[]> {
+  const plate = (policy: Insurance) => (policy.plate_key ?? '').toUpperCase().replace(/\s/g, '');
+  const live = policies.filter(charged);
+  const result = new Map<Insurance, Insurance[]>();
+  for (const policy of live) {
+    const others = live.filter((other) => other !== policy && plate(other) === plate(policy) && other.coverage_start! <= policy.coverage_end! && policy.coverage_start! <= other.coverage_end!);
+    if (others.length) result.set(policy, others);
+  }
+  return result;
+}
