@@ -53,18 +53,14 @@ import {
   type WorkspaceMeta,
 } from "../../services/finance/workspace";
 import BankStatementPanel from "./BankStatementPanel";
-import { DataTable, Empty, FileButton, SectionHeading, Skeleton } from "./FinancePrimitives";
+import { DataTable, Skeleton } from "./FinancePrimitives";
 import Overview from "./FinanceOverview";
 import Vehicles, { VehicleDialog } from "./FinanceVehicles";
-import SettingsSection from "./FinanceSettingsSection";
+import Expenses, { type ExpenseWorkspaceTab, type UploadKind } from "./FinanceRecords";
 import FinanceImportPreview from "./FinanceImportPreview";
 import Dialog from "./FinanceDialog";
 import FinanceAudit from "./FinanceAudit";
 import MonthClose, { groupedIssues, readableIssue } from "./FinanceMonthClose";
-import {
-  ExpenseForm,
-} from "./FinanceRecordForms";
-import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from "./FinanceCustomizationForms";
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
 import { monthCashFlow, needsStoredTotals, planTrend, storedRevisionMap, storedTotals, trendMonths, trendRow, type StoredMonthTotals, type TrendRow } from "../../services/finance/dashboard";
 import CashPage from "../money/CashPage";
@@ -74,7 +70,6 @@ import "./finance.css";
 import "./finance-mobile.css";
 
 const CollectionsPage = React.lazy(() => import("../money/CollectionsPage"));
-const ServiceClaims = React.lazy(() => import("../money/ServiceClaims"));
 import { monthLoadNeeded, type Page } from "../../services/finance/pages";
 export type { Page } from "../../services/finance/pages";
 // Report → act → record → close: what happened, who owes, which cars earn, then the entries and the month close.
@@ -111,7 +106,6 @@ interface MoneyProps {
   /** Changes a payment's method to Cash (in hand) on the Drivers page (Reconcile's "Paid in cash"). */
   onMarkPaymentCash?: (paymentId: string) => Promise<void>;
 }
-type UploadKind = "SMART_DRIVE" | "WORKSHOP" | SectionKind;
 type UploadPreview = {
   kind: UploadKind;
   file: File;
@@ -812,7 +806,7 @@ export default function FinanceView(props: MoneyProps = {}) {
               onSaveSummary={(action: "ADD" | "UPDATE" | "CANCEL", record: object) => invoke(() => saveWorkshopSummary(action, record, revise), "Workshop monthly total saved.")}
               onLink={(summaryId: string, expenseId: string) => invoke(() => linkWorkshopAllocation(summaryId, expenseId, revise), "Workshop expense allocated.")}
               onFile={selectFile}
-              onExport={(kind: FinanceEditableExportKind, rows: readonly Record<string, unknown>[]) => exportRecords(kind, rows)}
+              onExport={(kind: FinanceEditableExportKind, rows: readonly object[]) => exportRecords(kind, rows as readonly Record<string, unknown>[])}
               onSaveSetting={async (kind: "vehicle" | "recurring_cost" | "insurance", record: any) => {
                 const action = kind === "vehicle" && record.old_plate ? "CORRECT_PLATE" : (record.id || record.vehicle_id) ? "UPDATE" : "ADD";
                 let reason = record.correction_reason || (action === "ADD" ? "Added in Finance" : "Edited in Finance");
@@ -926,165 +920,7 @@ export default function FinanceView(props: MoneyProps = {}) {
 
 
 
-type ExpenseWorkspaceTab = FinanceExpense["payment_source"] | "monthly_vehicle_costs" | "insurance" | "other_income" | "service_claims" | "vehicle_master";
 
-function Expenses({
-  input,
-  month,
-  disabled,
-  onSaveExpense,
-  onDeleteExpense,
-  onFile,
-  initialSource,
-  onSaveSummary,
-  onLink,
-  onExport,
-  onSaveSetting,
-  onDeleteVehicle,
-  onCancel,
-  onSaveFixed,
-  treatments,
-  onTreatment,
-  drivers,
-  onSaveOtherIncome,
-  onExportOtherIncome,
-}: any) {
-  const { ask, askText, dialog } = useConfirm();
-  const [tab, setTab] = useState<ExpenseWorkspaceTab>(initialSource);
-  const [editor, setEditor] = useState<string | null | undefined>(undefined);
-  const groups: Array<[ExpenseWorkspaceTab, string, string]> = [
-    ["Workshop Billing", "Workshop", "Workshop bills paid directly by ECA."],
-    [
-      "Vehicle Direct Cost",
-      "Other Vehicle Costs",
-      "Road tax, permits, repairs and other vehicle-specific costs.",
-    ],
-    ["Corporate Opex", "Operation Fix Cost", "Excel: Frequency, Start Month, End Month, Expense Date, Category, Description, Amount (RM), Payee, Source, Notes. Monthly recurring costs require Start Month; Expense Date is optional."],
-    ["monthly_vehicle_costs", "Monthly Vehicle Costs", "Ongoing vehicle payout, rental and financing obligations."],
-    ["insurance", "Insurance", "Insurance responsibility, coverage and premiums."],
-    ["other_income", "Other Income", "Income outside rent and Smart Drive. It counts in the P&L once Confirmed."],
-    ["service_claims", "Service Claims", "Repairs drivers paid and deducted from rent (read only)."],
-    ["vehicle_master", "Vehicle Master", "Vehicle identity and Finance classification."],
-  ];
-  const isSettingsTab = tab === "monthly_vehicle_costs" || tab === "insurance" || tab === "vehicle_master";
-  const linkedExpenseIds = new Set((input.workshop_allocations ?? []).map((allocation: { expense_id: string }) => allocation.expense_id));
-  const isExpenseTab = tab === "Workshop Billing" || tab === "Vehicle Direct Cost" || tab === "Corporate Opex";
-  const visible = input.expenses.filter(
-    (x: FinanceExpense) => isExpenseTab && x.payment_source === tab && !x.cancelled_at && x.finance_month.slice(0, 7) === month.slice(0, 7),
-  );
-  const activeFixedTemplates = (input.fixed_cost_templates ?? []).filter((row: any) => !row.cancelled_at);
-  const representedOccurrences = tab === "Corporate Opex"
-    ? activeFixedTemplates
-        .map((template: any) => visible.find((row: FinanceExpense) => row.fixed_cost_template_id === template.id))
-        .filter((row: FinanceExpense | undefined): row is FinanceExpense => Boolean(row))
-    : [];
-  const displayedExpenses = tab === "Corporate Opex"
-    ? visible.filter((row: FinanceExpense) => !representedOccurrences.includes(row))
-    : visible;
-  return (
-    <div className="finance-content">
-      <div className="finance-tabs">
-        {groups.map(([id, label]) => (
-          <button
-            className={tab === id ? "is-active" : ""}
-            onClick={() => { setTab(id); setEditor(undefined); }}
-            key={id}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {isSettingsTab && <SettingsSection
-        key={tab}
-        tab={tab}
-        input={input}
-        drivers={drivers}
-        month={month}
-        disabled={disabled}
-        onSave={onSaveSetting}
-        onDelete={onDeleteVehicle}
-        onCancel={onCancel}
-        onFile={onFile}
-        onExport={onExport}
-      />}
-      {tab === "Corporate Opex" && <FixedOperatingCostsPanel
-        templates={input.fixed_cost_templates ?? []}
-        occurrences={representedOccurrences}
-        month={month}
-        disabled={disabled}
-        onSave={onSaveFixed}
-        treatments={treatments}
-        onTreatment={onTreatment}
-        onExport={() => onExport("fixed_cost", (input.fixed_cost_templates ?? []).filter((row: any) => !row.cancelled_at))}
-        onImport={(file) => onFile("fixed_cost", file)}
-      />}
-      {isExpenseTab && <section className="finance-panel">
-        <SectionHeading
-          title={tab === "Corporate Opex" ? "One-off company costs" : groups.find((x) => x[0] === tab)?.[1] ?? "Expenses"}
-          detail={tab === "Corporate Opex" ? "Company costs that happen once. Monthly ones are in the list above. Excel columns: Frequency, Start Month, End Month, Expense Date, Category, Amount (RM)." : groups.find((x) => x[0] === tab)?.[2]}
-          summary={<p><strong>{money(displayedExpenses.reduce((sum: number, row: FinanceExpense) => sum + row.amount, 0))}</strong> this month</p>}
-          action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport(tab === "Workshop Billing" ? "workshop" : tab === "Corporate Opex" ? "company_expenses" : "vehicle_expenses", displayedExpenses)}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add expense</button><FileButton
-              disabled={disabled}
-              label="Upload Excel"
-              onFile={(file) =>
-                onFile(tab === "Workshop Billing" ? "WORKSHOP" : tab === "Corporate Opex" ? "corporate_expense" : "vehicle_expense", file)
-              }
-            /></div>}
-        />
-        <DataTable
-          headers={["Date", "Vehicle", "Category", "Supplier", "Amount", "Actions"]}
-        >
-          {displayedExpenses.length ? (
-            displayedExpenses.map((row: FinanceExpense) => (
-              <tr key={row.id ?? `${row.billing_date}${row.category}`}>
-                <td>{row.billing_date ?? (row.frequency === "MONTHLY_RECURRING" ? `${row.finance_month.slice(0, 7)} (monthly recurring)` : row.frequency === "MONTHLY_SUMMARY" ? `${row.finance_month.slice(0, 7)} (monthly total)` : "—")}</td>
-                <td>
-                  {row.plate_key
-                    ? (input.vehicles.find(
-                        (v: FinanceVehicle) => v.plate_key === row.plate_key,
-                      )?.display_plate ?? "Unmatched")
-                    : "—"}
-                </td>
-                <td>{row.category}</td>
-                <td>{row.supplier ?? "—"}</td>
-                <td className="finance-strong">{money(row.amount)}{tab === "Workshop Billing" && (input.workshop_summaries ?? []).some((summary: any) => !summary.cancelled_at && summary.finance_month.slice(0, 7) === month.slice(0, 7)) && <> {linkedExpenseIds.has(row.id ?? "") ? <span className="finance-tag is-good">Linked</span> : <span className="finance-tag">Not linked</span>}</>}</td>
-                <td><div className="finance-dialog-actions"><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(row.id ?? null)}>Edit</button><button className="finance-destructive" disabled={disabled} onClick={async () => { if (!(await ask(`Delete ${row.category} for ${money(row.amount)} from ${row.finance_month.slice(0, 7)} open calculations? Closed snapshots and audit history remain unchanged.`))) return; const reason = await askText(`Reason for deleting ${row.category}`); if (reason?.trim()) void onDeleteExpense(row, reason.trim()); }}>Delete</button></div></td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={6}>
-                <Empty text="No records in this section for the selected month." />
-              </td>
-            </tr>
-          )}
-        </DataTable>
-      </section>
-      }
-      {tab === "Workshop Billing" && (
-        <WorkshopSummaryPanel summaries={input.workshop_summaries ?? []} expenses={input.expenses} vehicles={input.vehicles} allocations={input.workshop_allocations ?? []} month={month} disabled={disabled} onSave={onSaveSummary} onLink={onLink} />
-      )}
-      {tab === "other_income" && <>
-        <OtherIncomePanel
-          records={input.other_income ?? []}
-          vehicles={input.vehicles}
-          month={month}
-          disabled={disabled}
-          onSave={onSaveOtherIncome}
-          onExport={onExportOtherIncome}
-          onImport={(file) => onFile("other_income", file)}
-        />
-      </>}
-      {tab === "service_claims" && (
-        <React.Suspense fallback={<Skeleton lines={4} />}>
-          <ServiceClaims drivers={drivers ?? []} month={month} />
-        </React.Suspense>
-      )}
-      {editor !== undefined && isExpenseTab && <Dialog title={editor ? "Edit expense" : "Add expense"} onClose={() => setEditor(undefined)}><ExpenseForm input={input} month={month} source={tab} disabled={disabled} onSave={async (record) => { const saved = await onSaveExpense(record); if (saved) setEditor(undefined); return saved; }} onCancel={async (record, reason) => { const saved = await onDeleteExpense(record, reason); if (saved) setEditor(undefined); return saved; }} initialId={editor ?? undefined} /></Dialog>}
-      {dialog}
-    </div>
-  );
-}
 
 
 function PreviewDialog(props: any) {
