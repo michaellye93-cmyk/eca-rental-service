@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Driver, DriverMetrics, DriverStatus, type CollectionTone } from '../types';
-import { driverWithNric, buildLateAlerts, calculateDriverMetrics, cashAtRiskOrder, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, kualaLumpurNow, kualaLumpurToday, mondayToSunday, normalizeMalaysianPhone, normalizePlate, outstandingDaysAgo, parseDate, plateMatches, rentDayTag, rentDueAndPaid, startOfMonthBaseline, whatsappLink, withDayTag } from '../utils';
+import { Driver, DriverStatus, type CollectionTone } from '../types';
+import { driverWithNric, buildLateAlerts, calculateDriverMetrics, overdueRent, LATE_ALERT_DAYS, contractCyclesBetween, dayTagCheck, formatCurrency, formatDate, formatNric, formatPhone, generateDriverInvoices, kualaLumpurNow, kualaLumpurToday, mondayToSunday, normalizeMalaysianPhone, normalizePlate, parseDate, plateMatches, rentDayTag, rentDueAndPaid, whatsappLink, withDayTag } from '../utils';
 const FinanceView = React.lazy(() => import('./finance/FinanceView'));
 const FleetView = React.lazy(() => import('./fleet/FleetView'));
 const AgreementsView = React.lazy(() => import('./agreements/AgreementsView'));
@@ -44,14 +44,14 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { ExpandedDriverDetails } from './ExpandedDriverDetails';
-import { loadScreenedDriverIds, markScreened } from '../services/screening';
+import { useScreening } from './drivers/useScreening';
+import { compareForList, DEFAULT_LIST_SORT, useDriverListData, type ListSort } from './drivers/useDriverListData';
 import Dialog, { ConfirmDialog } from './Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { BankBadge, PaymentNoteLines, useBankStatus, usePaymentLog } from './PaymentNotes';
 import { findPossibleDuplicates, isBankReceipt, type PossibleDuplicate } from '../services/paymentLog';
 import { catchUpStatus, collectionSummary, latestPromise, promiseStatus, runningPlan, type CatchUpStatus } from '../services/collections';
 import { useCollectionsExtras } from './useCollectionsExtras';
-import { driverAccount } from '../services/driverAccount';
 import CollectionsPanels, { planLabel } from './CollectionsPanels';
 import StatementDialog from './StatementDialog';
 import { buildAdminPath, linkedWindowLeft, storedFinancePage, type AdminRoute, type DriverAction } from '../services/routes';
@@ -188,33 +188,6 @@ const PLAN_CHIP: Record<CatchUpStatus['state'], string> = {
 
 /** Smooth scrolling, unless the viewer prefers reduced motion. */
 const scrollBehavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
-
-type ListSort = { key: 'RISK_STATUS' | 'OUTSTANDING' | 'DEFAULT'; direction: 'asc' | 'desc' };
-const DEFAULT_LIST_SORT: ListSort = { key: 'DEFAULT', direction: 'desc' };
-const STATUS_PRIORITY = { [DriverStatus.BAD]: 3, [DriverStatus.MID]: 2, [DriverStatus.GOOD]: 1 };
-
-/** The driver list's order: by risk, by outstanding, or by default (cash at risk first: late alerts, then amount owed). */
-function compareForList(
-  a: { name: string; lateDays: number | null; metrics: DriverMetrics; activeBalance: { baseValue: number } },
-  b: { name: string; lateDays: number | null; metrics: DriverMetrics; activeBalance: { baseValue: number } },
-  sort: ListSort,
-): number {
-  if (sort.key === 'RISK_STATUS') {
-    const diff = STATUS_PRIORITY[b.metrics.status] - STATUS_PRIORITY[a.metrics.status];
-    if (diff !== 0) return sort.direction === 'desc' ? diff : -diff;
-    return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
-  }
-  if (sort.key === 'OUTSTANDING') {
-    const diff = b.activeBalance.baseValue - a.activeBalance.baseValue;
-    if (diff !== 0) return sort.direction === 'desc' ? diff : -diff;
-    return b.metrics.cyclesOwed - a.metrics.cyclesOwed;
-  }
-  // Default: cash at risk first (late alerts, longest late at the top), then amount owed
-  return cashAtRiskOrder(
-    { name: a.name, lateDays: a.lateDays, outstanding: a.activeBalance.baseValue },
-    { name: b.name, lateDays: b.lateDays, outstanding: b.activeBalance.baseValue },
-  );
-}
 
 /** Contact-details order: by name or category when chosen, otherwise the list's own order. */
 function sortForDetails<T extends Driver>(rows: T[], config: { key: 'CATEGORY' | 'NAME' | null; direction: 'asc' | 'desc' | null }): T[] {
@@ -409,49 +382,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const { notes: paymentWindowNotes, recorders: paymentWindowRecorders } = usePaymentLog(isPaymentModalOpen ? liveDriverForPayment : null);
   const paymentWindowBank = useBankStatus(isPaymentModalOpen ? liveDriverForPayment : null);
 
+
   // --- Daily screening, shared between staff (Kuala Lumpur calendar day) ---
-  const [screenedDriverIds, setScreenedDriverIds] = useState<string[]>([]);
-  const [screeningDate, setScreeningDate] = useState<string>(() => kualaLumpurToday());
-  // False when the shared screening table is not available yet: marks then last only while this page is open
-  const [screeningShared, setScreeningShared] = useState(true);
-  const [screeningReload, setScreeningReload] = useState(0);
-
-  // Today's marks from every member of staff
-  useEffect(() => {
-    let live = true;
-    loadScreenedDriverIds(screeningDate)
-      .then(ids => {
-        if (!live) return;
-        setScreeningShared(true);
-        setScreenedDriverIds(previous => [...new Set([...ids, ...previous.filter(id => !ids.includes(id))])]);
-      })
-      .catch(() => { if (live) setScreeningShared(false); });
-    return () => { live = false; };
-  }, [screeningDate, screeningReload]);
-
-  // A new list at Kuala Lumpur midnight, and other staff's marks when this tab comes back into view
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const today = kualaLumpurToday();
-      if (today !== screeningDate) {
-        setScreenedDriverIds([]);
-        setScreeningDate(today);
-      }
-    }, 10000);
-    const reloadWhenVisible = () => { if (document.visibilityState === 'visible') setScreeningReload(n => n + 1); };
-    document.addEventListener('visibilitychange', reloadWhenVisible);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', reloadWhenVisible);
-    };
-  }, [screeningDate]);
-
-  const handleScreenDriver = (driverId: string) => {
-    if (screenedDriverIds.includes(driverId)) return;
-    setScreenedDriverIds(previous => (previous.includes(driverId) ? previous : [...previous, driverId]));
-    markScreened(driverId, screeningDate).catch(() => setScreeningShared(false));
-  };
-
+  const { screenedDriverIds, screeningDate, screeningShared, handleScreenDriver } = useScreening();
 
   // --- Auto-Calculate Duration when Dates Change ---
   useEffect(() => {
@@ -475,63 +408,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [isDriverModalOpen, editingId, formData.contractStartDate, formData.rentalCycle]);
 
 
-  // Enhance drivers with metrics for sorting
-  const driverData = useMemo(() => drivers.map(d => {
-    // The driver's account facts (the same ones the driver's phone page reads): status, weeks owed, last pay, due date
-    const now = kualaLumpurNow();
-    const account = driverAccount(d, now);
-    const metrics = account.metrics;
-    const activeBalance = { baseValue: metrics.principalOutstanding, accruedInterest: metrics.penaltyAmount };
-    // The recovery bar compares today's balance with the balance at the end of last month
-    const recoveryBaseline = calculateDriverMetrics(d, startOfMonthBaseline(now)).principalOutstanding;
-    // Late-alert days drive the list's default order (delisted drivers are never late alerts)
-    const lateDays = account.lateDays;
-
-    
-    // --- DEBT TREND INDICATOR (VIRTUAL SNAPSHOT LOGIC) ---
-    // Role: Senior Database Engineer
-    // Action: Simulating a "Snapshot Table" by calculating historical state on-the-fly.
-    // This ensures immediate trend availability without waiting for a cron job.
-
-    // 1. Current Snapshot (Base Only)
-    const currentDebt = metrics.principalOutstanding;
-
-    // 2. Historical Snapshot (7 Days Ago): base principal at the end of that day
-    const lastWeekDebt = outstandingDaysAgo(d, 7);
-
-    // 3. Trend Calculation
-    const trendValue = currentDebt - lastWeekDebt;
-    const isDebtIncreasing = trendValue > 0;
-    const isDebtDecreasing = trendValue < 0;
-
-    // 4. Debt Streak Calculation (3-Week Increase)
-    const debt14 = outstandingDaysAgo(d, 14);
-    const debt21 = outstandingDaysAgo(d, 21);
-
-    // Logic: Debt must be strictly increasing week-over-week
-    const inc1 = currentDebt > lastWeekDebt;
-    const inc2 = lastWeekDebt > debt14;
-    const inc3 = debt14 > debt21;
-    
-    // Trigger warning if debt has increased for 3 consecutive weeks AND current debt is significant (> 0)
-    const isDebtStreak = inc1 && inc2 && inc3 && currentDebt > 0;
-
-    return {
-        ...d,
-        account,
-        metrics,
-        activeBalance, // Exposed for UI
-        recoveryBaseline,
-        lateDays,
-        debtTrend: {
-            value: Math.abs(trendValue),
-            direction: isDebtIncreasing ? 'UP' : isDebtDecreasing ? 'DOWN' : 'FLAT',
-            raw: trendValue,
-            isStreak: isDebtStreak
-        }
-    };
-    // Worked out again when the Kuala Lumpur day rolls over (screeningDate), so days late and due dates move on overnight
-  }), [drivers, screeningDate]);
+  // Each driver with the list's figures; worked out again when the Kuala Lumpur day rolls over (screeningDate)
+  const driverData = useDriverListData(drivers, screeningDate);
 
   // Each active driver's open or recently missed promise, and running catch-up plan, for the row's chips
   const collectionChips = useMemo(() => {
