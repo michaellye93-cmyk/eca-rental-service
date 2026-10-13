@@ -285,7 +285,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // The Fleet tab's red count: loaded once here, then kept current by the Fleet page. No count if the list can't
   // load (the Fleet page itself reports errors).
   const [fleetCars, setFleetCars] = useState<FleetCar[] | null>(null);
-  // Admins: Finance's insurance dates, so the count agrees with the Fleet page's cards.
+  // Admins: Finance's insurance dates, read once here and passed to the Fleet page, so the count and its cards agree.
   const [fleetCover, setFleetCover] = useState<InsuranceCover | undefined>(undefined);
   useEffect(() => {
     let active = true;
@@ -703,7 +703,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <section aria-label="Fleet" className="min-h-[500px]">
             <ScreenLoadBoundary>
               <React.Suspense fallback={<div className="p-6">Loading Fleet…</div>}>
-                <FleetView today={todayStr} isAdmin={userRole === 'admin'} onCarsChange={setFleetCars} />
+                <FleetView today={todayStr} insuranceCover={fleetCover} onCarsChange={setFleetCars} />
               </React.Suspense>
             </ScreenLoadBoundary>
           </section>

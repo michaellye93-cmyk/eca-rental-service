@@ -12,8 +12,9 @@ import { detailsChanged, emptyDetails, type Car, type InsuranceCover, type Vehic
 interface FleetViewProps {
   /** Kuala Lumpur's date, YYYY-MM-DD. */
   today: string;
-  /** Admins also see Finance's insurance dates (staff cannot read Finance). */
-  isAdmin?: boolean;
+  /** Admins: Finance's insurance end date per plate, loaded once by the dashboard. None for staff (they cannot read
+   *  Finance), or when it can't be read: Fleet then uses its own dates. */
+  insuranceCover?: InsuranceCover;
   /** Called with the car list after every load, so the Fleet tab's count stays current. */
   onCarsChange?: (cars: Car[]) => void;
 }
@@ -23,10 +24,8 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 const CAR_SAVED = 'The car is saved,';
 
 /** The Fleet page: loads the car list, and lets staff and admins add, edit and delete cars. */
-export default function FleetView({ today, isAdmin = false, onCarsChange }: FleetViewProps) {
+export default function FleetView({ today, insuranceCover: cover, onCarsChange }: FleetViewProps) {
   const [cars, setCars] = useState<Car[] | null>(null);
-  // Finance's insurance end date per plate; none for staff, or when it can't be read (Fleet then uses its own dates)
-  const [cover, setCover] = useState<InsuranceCover | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FleetFilter>('ALL');
   const [query, setQuery] = useState('');
@@ -57,8 +56,7 @@ export default function FleetView({ today, isAdmin = false, onCarsChange }: Flee
     } catch (err) {
       setDetailsProblem(`Vehicle details can't be read yet: ${reason(err)}`);
     }
-    if (isAdmin) setCover(await fleet.insuranceCover().catch(() => undefined));
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => { void reload(); }, [reload]);
 
