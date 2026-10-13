@@ -194,11 +194,20 @@ type Asking =
 export function useConfirm() {
   const [asking, setAsking] = useState<Asking | null>(null);
   const count = useRef(0);
+  const open = useRef<Asking | null>(null);
+  /** A new question while one is open first answers the open one as cancelled (false, or null for text). */
+  const replace = useCallback((next: Asking) => {
+    const previous = open.current;
+    open.current = next;
+    setAsking(next);
+    if (previous?.kind === 'confirm') previous.resolve(false);
+    else if (previous?.kind === 'text') previous.resolve(null);
+  }, []);
   const ask = useCallback(
     (message: React.ReactNode, options: { destructive?: boolean } = {}) =>
       new Promise<boolean>((resolve) => {
         count.current += 1;
-        setAsking({ kind: 'confirm', key: count.current, message, destructive: options.destructive ?? true, resolve });
+        replace({ kind: 'confirm', key: count.current, message, destructive: options.destructive ?? true, resolve });
       }),
     [],
   );
@@ -206,13 +215,14 @@ export function useConfirm() {
     (title: string) =>
       new Promise<string | null>((resolve) => {
         count.current += 1;
-        setAsking({ kind: 'text', key: count.current, title, resolve });
+        replace({ kind: 'text', key: count.current, title, resolve });
       }),
     [],
   );
   let dialog: React.ReactNode = null;
   if (asking?.kind === 'confirm') {
     const answer = (yes: boolean) => {
+      if (open.current === asking) open.current = null;
       setAsking(null);
       asking.resolve(yes);
     };
@@ -223,6 +233,7 @@ export function useConfirm() {
     );
   } else if (asking?.kind === 'text') {
     const answer = (value: string | null) => {
+      if (open.current === asking) open.current = null;
       setAsking(null);
       asking.resolve(value);
     };
