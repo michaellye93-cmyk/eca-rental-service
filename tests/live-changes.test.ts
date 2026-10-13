@@ -53,6 +53,19 @@ test('a change for a driver not loaded is left out and reported (the caller relo
   assert.deepEqual(result.unknownDrivers, ['d9']);
 });
 
+test('a payment for a driver deleted in the same read, or deleted again later in it, needs no full reload', () => {
+  const forGone = applyLiveChanges(LIST, {
+    driverRows: new Map([['d9', null]]),
+    payments: [change('INSERT', 'p9', 'd9', { date: '2026-10-01', amount: 450 })],
+  });
+  assert.deepEqual(forGone.unknownDrivers, []);
+  const removedLater = applyLiveChanges(LIST, {
+    payments: [change('INSERT', 'p9', 'd9', { date: '2026-10-01', amount: 450 }, undefined, 401), change('DELETE', 'p9', 'd9', null, undefined, 402)],
+  });
+  assert.deepEqual(removedLater.unknownDrivers, []);
+  assert.equal(removedLater.drivers, LIST);
+});
+
 test('rows are applied in the order they were logged (id), whatever order they arrive in or their times say', () => {
   // The edit's transaction started first (earlier changed_at) but was logged after the insert
   const insert = change('INSERT', 'p4', 'd1', { date: '2026-09-21', amount: 450 }, '2026-10-12T05:00:02+00:00', 201);

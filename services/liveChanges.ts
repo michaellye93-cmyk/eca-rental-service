@@ -43,9 +43,9 @@ const samePayment = (a: PaymentTransaction, b: PaymentTransaction) =>
  * each changed driver as just read again: its details replace the old ones (its payments are kept), a driver not in the
  * list is added at the top (the list loads newest first), null removes it. Payment changes are then applied in the order
  * they were logged (by id): the payment leaves whichever driver held it and, unless deleted, joins the driver in its
- * row, so a change applied twice never makes two copies. A payment for a driver not in the list is left out and its
- * driver reported in `unknownDrivers` (the caller reloads in full). Changed drivers are new objects; untouched drivers
- * keep theirs, so their rent figures stay cached.
+ * row, so a change applied twice never makes two copies. A payment that ends up with a driver not in the list is left
+ * out and its driver reported in `unknownDrivers` (the caller reloads in full), unless that driver was found deleted.
+ * Changed drivers are new objects; untouched drivers keep theirs, so their rent figures stay cached.
  */
 export function applyLiveChanges(
   drivers: Driver[],
@@ -56,11 +56,15 @@ export function applyLiveChanges(
   const payments = new Map(drivers.map(driver => [driver.id, driver.paymentHistory]));
   const touched = new Set<string>();
   const removed = new Set<string>();
-  const unknown = new Set<string>();
+  /** Drivers read again and found gone (whether or not they were in the list). */
+  const gone = new Set<string>();
+  /** Payments last seen going to a driver not in the list, by payment id. */
+  const strays = new Map<string, string>();
   let listChanged = false;
 
   for (const [id, row] of changes.driverRows ?? []) {
     if (!row) {
+      gone.add(id);
       if (profiles.has(id) && !removed.has(id)) { removed.add(id); listChanged = true; }
       continue;
     }
@@ -79,7 +83,8 @@ export function applyLiveChanges(
     const target = change.action !== 'DELETE' && change.after ? String(change.after.driver_id) : null;
     const next = target && change.after ? paymentFromRow(change.after) : null;
     const from = holder.get(paymentId) ?? null;
-    if (target && !loaded(target)) unknown.add(target);
+    strays.delete(paymentId);
+    if (target && !loaded(target)) strays.set(paymentId, target);
     if (from && from === target && next) {
       const current = payments.get(from)!.find(payment => payment.id === paymentId);
       if (current && samePayment(current, next)) continue;
@@ -96,12 +101,14 @@ export function applyLiveChanges(
     }
   }
 
-  if (!listChanged && touched.size === 0) return { drivers, unknownDrivers: [...unknown] };
+  // Only a payment that ends up with a driver not in the list, and not deleted, needs a full reload
+  const unknown = [...new Set([...strays.values()].filter(driverId => !gone.has(driverId)))];
+  if (!listChanged && touched.size === 0) return { drivers, unknownDrivers: unknown };
   const byId = new Map(drivers.map(driver => [driver.id, driver]));
   const next = order
     .filter(id => !removed.has(id))
     .map(id => (touched.has(id) ? withPayments(profiles.get(id)!, payments.get(id)!) : byId.get(id)!));
-  return { drivers: next, unknownDrivers: [...unknown] };
+  return { drivers: next, unknownDrivers: unknown };
 }
 
 /** How far before the last change seen each read starts, so a change saved just before it is not missed. */
