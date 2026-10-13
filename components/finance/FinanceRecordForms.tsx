@@ -438,6 +438,13 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete, initialI
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!values.display_plate.trim()) return;
+    const duplicate = isPlateCorrection && input.vehicles.find((vehicle) => vehicle.plate_key === correctedPlate);
+    if (duplicate) {
+      setError(duplicate.deleted_at
+        ? `${correctedPlate} was deleted from Vehicle Master earlier, so this car can't take that plate.`
+        : `${duplicate.display_plate} is already in Vehicle Master. If ${original?.display_plate} is a duplicate of it, use Delete vehicle on ${original?.display_plate} instead.`);
+      return;
+    }
     if (isPlateCorrection && !plateCorrectionReason.trim()) {
       setError("Enter a reason to confirm this plate correction.");
       return;
