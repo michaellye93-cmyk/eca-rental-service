@@ -24,7 +24,7 @@ Claude owns this project end to end. Finish approved work with minimal process, 
 ## 4. Commands and verification
 - `npm run dev` (port 3000) · `npm run lint` (tsc) · `npm test` (node --test) · `npm run build`.
 - `npm test` is fully local (in-memory PGlite database, mocked AI calls) and never touches production.
-- `npm run lint` does **not** type-check React components until `@types/react` is installed; verify screen changes with a production build plus a render or browser check.
+- `npm run lint` type-checks components too (`@types/react` is installed); still verify screen changes with a production build plus a render or browser check.
 - Write the failing test first for behaviour changes and bug fixes (test-driven development). Never weaken or delete tests to get green; report failures with exit status and the relevant excerpt.
 - Run lint, tests and build on the final candidate before calling work done. Rerun only checks invalidated by later changes.
 
