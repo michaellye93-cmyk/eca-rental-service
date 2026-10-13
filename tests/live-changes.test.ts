@@ -132,3 +132,20 @@ test('a missing table is told apart from other errors', () => {
   assert.equal(isMissingTable({ code: '57014', message: 'canceling statement due to statement timeout' }), false);
   assert.equal(isMissingTable(new TypeError('Failed to fetch')), false);
 });
+
+test('a payment change with no driver in its new row is treated like a delete, not as an unknown driver', () => {
+  const moved = change('UPDATE', 'p1', 'd1', { date: '2026-09-07', amount: 450 });
+  (moved.after as Record<string, unknown>).driver_id = null;
+  const result = applyLiveChanges(LIST, { payments: [moved] });
+  assert.deepEqual(result.unknownDrivers, []);
+  assert.deepEqual(ids(result.drivers.find(d => d.id === 'd1')), []);
+});
+
+test('after a failed read, nothing more is tried until 3 minutes have passed', () => {
+  const base = { now: 1_000_000_000, lastFullLoad: 1_000_000_000 - 90_000, fullLoadDay: '2026-10-12', today: '2026-10-12', awayMs: 0, live: 'all' as const };
+  assert.equal(refreshKind('timer', { ...base, lastFailure: base.now - 60_000 }), 'none');
+  assert.equal(refreshKind('return', { ...base, lastFailure: base.now - 120_000, awayMs: 11 * 60_000 }), 'none');
+  assert.equal(refreshKind('timer', { ...base, today: '2026-10-13', lastFailure: base.now - 60_000 }), 'none');
+  assert.equal(refreshKind('timer', { ...base, lastFailure: base.now - 180_000 }), 'light');
+  assert.equal(refreshKind('timer', { ...base, lastFailure: null }), 'light');
+});

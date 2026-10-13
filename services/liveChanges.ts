@@ -80,7 +80,8 @@ export function applyLiveChanges(
 
   for (const change of [...(changes.payments ?? [])].sort((a, b) => a.id - b.id)) {
     const paymentId = String(change.payment_id);
-    const target = change.action !== 'DELETE' && change.after ? String(change.after.driver_id) : null;
+    // A new row with no driver is treated like a delete (the payment leaves the list), not as an unknown driver
+    const target = change.action !== 'DELETE' && change.after?.driver_id ? String(change.after.driver_id) : null;
     const next = target && change.after ? paymentFromRow(change.after) : null;
     const from = holder.get(paymentId) ?? null;
     strays.delete(paymentId);
@@ -140,8 +141,10 @@ const AWAY_FULL_RELOAD_MS = 10 * 60_000;
  */
 export function refreshKind(
   trigger: 'timer' | 'return',
-  state: { now: number; lastFullLoad: number; fullLoadDay: string; today: string; live: LiveMode; awayMs: number },
+  state: { now: number; lastFullLoad: number; fullLoadDay: string; today: string; live: LiveMode; awayMs: number; lastFailure?: number | null },
 ): 'light' | 'full' | 'none' {
+  // After a failed read (database unreachable), back off: try again at most every 3 minutes until a read succeeds
+  if (state.lastFailure != null && state.now - state.lastFailure < FULL_EVERY_MS - LIGHT_EVERY_MS / 12) return 'none';
   const sinceFull = state.now - state.lastFullLoad;
   if (state.live === 'off') {
     // The 3-minute timer, run on the minute: allow a few seconds of timer drift

@@ -92,6 +92,8 @@ const App: React.FC = () => {
     { mode: 'off', payments: null, drivers: null, seenPayments: new Set(), seenDrivers: new Set() });
   const lightReadBusy = useRef(false);
   const hiddenAt = useRef<number | null>(null);
+  /** When the last read failed (cleared by a successful one): refreshes back off to every 3 minutes meanwhile. */
+  const lastFailure = useRef<number | null>(null);
   const driversRef = useRef(drivers);
   driversRef.current = drivers;
 
@@ -139,6 +141,7 @@ const App: React.FC = () => {
       setDrivers(result.formattedDrivers);
       setDataLoaded(true);
       lastFullLoad.current = Date.now();
+      lastFailure.current = null;
       fullLoadDay.current = kualaLumpurToday();
       live.current = { ...result.cursors, seenPayments: new Set(), seenDrivers: new Set() };
       // The first full load of the Kuala Lumpur day records each active driver's status; silent if it cannot
@@ -147,6 +150,7 @@ const App: React.FC = () => {
         write: saveDailyStatus, attempted: snapshotAttempt,
       });
     } catch (err: any) {
+      lastFailure.current = Date.now();
       console.error('Error fetching data:', err);
       setError(err.message || 'Failed to connect to database');
     } finally {
@@ -300,9 +304,13 @@ const App: React.FC = () => {
       for (const row of driverChanges) state.seenDrivers.add(row.id);
       state.payments = latestChangedAt(read.payments, state.payments);
       state.drivers = latestChangedAt(read.drivers, state.drivers);
+      lastFailure.current = null;
     } catch (err) {
-      console.warn('Live update failed; reloading the list in full', err);
-      void fetchDriversAndPayments(true, true);
+      // Back off while the database is unreachable: one full reload now, then at most one try every 3 minutes
+      const backingOff = lastFailure.current !== null;
+      lastFailure.current = Date.now();
+      console.warn('Live update failed', err);
+      if (!backingOff) void fetchDriversAndPayments(true, true);
     } finally {
       lightReadBusy.current = false;
     }
@@ -317,7 +325,7 @@ const App: React.FC = () => {
       const now = Date.now();
       const kind = refreshKind(trigger, {
         now, lastFullLoad: lastFullLoad.current, fullLoadDay: fullLoadDay.current, today: kualaLumpurToday(), live: live.current.mode,
-        awayMs: hiddenAt.current === null ? 0 : now - hiddenAt.current,
+        lastFailure: lastFailure.current, awayMs: hiddenAt.current === null ? 0 : now - hiddenAt.current,
       });
       if (kind === 'full') void fetchDriversAndPayments(true, true);
       else if (kind === 'light') void lightRead();
