@@ -14,8 +14,6 @@ import type {
   FinanceInput,
   FinanceVehicle,
   FixedCostTreatment,
-  Insurance,
-  RecurringCost,
   SmartDriveRow,
 } from "../../types/finance";
 import {
@@ -37,7 +35,6 @@ import {
 } from "../../services/finance/api";
 import { addDeposit, depositKindFor, depositKindLabel } from "../../services/depositsApi";
 import { buildFinanceReport, fixedCostsMissing } from "../../services/finance/calculations";
-import { insuranceCashOutflow, insuranceProblems } from "../../services/finance/insurance";
 import {
   previewSmartDrive,
   readFinanceWorkbook,
@@ -59,16 +56,13 @@ import BankStatementPanel from "./BankStatementPanel";
 import { DataTable, Empty, FileButton, SectionHeading, Skeleton } from "./FinancePrimitives";
 import Overview from "./FinanceOverview";
 import Vehicles, { VehicleDialog } from "./FinanceVehicles";
+import SettingsSection from "./FinanceSettingsSection";
 import FinanceImportPreview from "./FinanceImportPreview";
 import Dialog from "./FinanceDialog";
 import FinanceAudit from "./FinanceAudit";
-import PlatesToCheck from "./PlatesToCheck";
 import MonthClose, { groupedIssues, readableIssue } from "./FinanceMonthClose";
 import {
   ExpenseForm,
-  VehicleForm,
-  RecurringForm,
-  InsuranceForm,
 } from "./FinanceRecordForms";
 import { FixedOperatingCostsPanel, OtherIncomePanel, WorkshopSummaryPanel } from "./FinanceCustomizationForms";
 import { exportFinanceEditableWorkbook, type FinanceEditableExportKind } from "../../services/finance/exports";
@@ -1092,194 +1086,6 @@ function Expenses({
   );
 }
 
-function SettingsSection({ tab, input, month, disabled, onSave, onDelete, onCancel, onFile, onExport, drivers }: any) {
-  const [editor, setEditor] = useState<string | null | undefined>(undefined);
-  const [costSort, setCostSort] = useState<{
-    key: "type" | "amount";
-    direction: "asc" | "desc";
-  } | null>(null);
-  const [vehicleSort, setVehicleSort] = useState<{
-    key: "business" | "ownership";
-    direction: "asc" | "desc";
-  } | null>(null);
-  const activeVehicles = input.vehicles.filter(
-    (vehicle: FinanceVehicle) => !vehicle.deleted_at,
-  );
-  const displayedVehicles = vehicleSort
-    ? activeVehicles
-        .map((vehicle: FinanceVehicle, index: number) => ({ vehicle, index }))
-        .sort((left: { vehicle: FinanceVehicle; index: number }, right: { vehicle: FinanceVehicle; index: number }) => {
-          const leftValue = vehicleSort.key === "business" ? left.vehicle.business_unit : left.vehicle.ownership_type;
-          const rightValue = vehicleSort.key === "business" ? right.vehicle.business_unit : right.vehicle.ownership_type;
-          const comparison = leftValue.localeCompare(rightValue, "en", { sensitivity: "base" });
-          if (comparison !== 0) return vehicleSort.direction === "asc" ? comparison : -comparison;
-          return left.index - right.index;
-        })
-        .map(({ vehicle }: { vehicle: FinanceVehicle }) => vehicle)
-    : activeVehicles;
-  const activeCosts = input.recurring_costs.filter(
-    (cost: RecurringCost) => !cost.cancelled_at,
-  );
-  const monthlyCostTotal = activeCosts.reduce(
-    (sum: number, cost: RecurringCost) => sum + cost.monthly_amount,
-    0,
-  );
-  const activeInsurance = input.insurance.filter((policy: Insurance) => !policy.cancelled_at);
-  const insuranceCostTotal = activeInsurance.reduce(
-    (sum: number, policy: Insurance) => sum + (policy.responsibility === "ECA_PAID" && policy.premium > 0 ? policy.premium : 0),
-    0,
-  );
-  const displayedCosts = costSort
-    ? activeCosts
-        .map((cost: RecurringCost, index: number) => ({ cost, index }))
-        .sort((left: { cost: RecurringCost; index: number }, right: { cost: RecurringCost; index: number }) => {
-          const comparison = costSort.key === "type"
-            ? left.cost.cost_type.localeCompare(right.cost.cost_type, "en", { sensitivity: "base" })
-            : left.cost.monthly_amount - right.cost.monthly_amount;
-          if (comparison !== 0) return costSort.direction === "asc" ? comparison : -comparison;
-          return left.index - right.index;
-        })
-        .map(({ cost }: { cost: RecurringCost }) => cost)
-    : activeCosts;
-  const toggleCostSort = (key: "type" | "amount") =>
-    setCostSort((current) => ({
-      key,
-      direction: current?.key === key && current.direction === "asc" ? "desc" : "asc",
-    }));
-  const costSortHeader = (key: "type" | "amount", label: string) => {
-    const direction = costSort?.key === key ? costSort.direction : null;
-    return {
-      key,
-      ariaSort: direction === "asc" ? "ascending" as const : direction === "desc" ? "descending" as const : "none" as const,
-      content: <button type="button" className="finance-table-sort" onClick={() => toggleCostSort(key)} aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}>
-        {label} <span className="finance-sort-indicator" aria-hidden="true">{direction === "asc" ? "▲" : direction === "desc" ? "▼" : "↕"}</span>
-      </button>,
-    };
-  };
-  const vehicleSortHeader = (key: "business" | "ownership", label: string) => {
-    const direction = vehicleSort?.key === key ? vehicleSort.direction : null;
-    return {
-      key,
-      ariaSort: direction === "asc" ? "ascending" as const : direction === "desc" ? "descending" as const : "none" as const,
-      content: <button type="button" className="finance-table-sort" onClick={() => setVehicleSort((current) => ({ key, direction: current?.key === key && current.direction === "asc" ? "desc" : "asc" }))} aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}>
-        {label} <span className="finance-sort-indicator" aria-hidden="true">{direction === "asc" ? "▲" : direction === "desc" ? "▼" : "↕"}</span>
-      </button>,
-    };
-  };
-  return (
-    <>
-      {tab === "vehicle_master" ? (
-        <>
-        <section className="finance-panel">
-          <SectionHeading
-            title="Vehicle Master"
-            detail="Excel columns: Car Plate, Business Unit, Ownership Type, Status."
-            action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("vehicle_master", input.vehicles.filter((row: FinanceVehicle) => !row.deleted_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add vehicle</button><FileButton
-                disabled={disabled}
-                label="Import Vehicle Master Excel"
-                onFile={(file) => onFile("vehicle", file)}
-              /></div>}
-          />
-          <DataTable
-            headers={["Car plate", "Model", vehicleSortHeader("business", "Business unit"), vehicleSortHeader("ownership", "Ownership"), "Status", "Actions"]}
-          >
-            {displayedVehicles.map((v: FinanceVehicle) => (
-              <tr key={v.plate_key}>
-                <td className="finance-strong">{v.display_plate}</td>
-                <td>{v.model ?? "—"}</td>
-                <td>{v.business_unit}</td>
-                <td>{v.ownership_type}</td>
-                <td>{v.status}</td>
-                <td><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(v.vehicle_id ?? v.plate_key)}>Edit</button></td>
-              </tr>
-            ))}
-          </DataTable>
-        </section>
-        <PlatesToCheck vehicles={input.vehicles} drivers={drivers ?? []} />
-        </>
-      ) : tab === "monthly_vehicle_costs" ? (
-        <section className="finance-panel">
-          <SectionHeading
-            title="Monthly Vehicle Costs"
-            detail="Excel columns: Car Plate, Start Month, Cost Type, Monthly Amount. Active costs are applied automatically."
-            summary={<strong>Total cost: {money(monthlyCostTotal)}</strong>}
-            action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("vehicle_monthly_costs", input.recurring_costs.filter((row: RecurringCost) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add monthly cost</button><FileButton
-                disabled={disabled}
-                label="Import Excel"
-                onFile={(file) => onFile("recurring_cost", file)}
-              /></div>}
-          />
-          <DataTable
-            headers={[
-              "Vehicle",
-              costSortHeader("type", "Type"),
-              costSortHeader("amount", "Monthly amount"),
-              "Active from",
-              "End month",
-              "Actions",
-            ]}
-          >
-            {displayedCosts.map((x: RecurringCost) => (
-              <tr key={x.id ?? `${x.plate_key}${x.cost_type}`}>
-                <td>
-                  {input.vehicles.find(
-                    (v: FinanceVehicle) => v.plate_key === x.plate_key,
-                  )?.display_plate ?? "Unmatched"}
-                </td>
-                <td>{x.cost_type}</td>
-                <td>{money(x.monthly_amount)}</td>
-                <td>{x.start_month.slice(0, 7)}</td>
-                <td>{x.end_month?.slice(0, 7) ?? "Ongoing"}</td>
-                <td><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(x.id ?? null)}>Edit</button></td>
-              </tr>
-            ))}
-          </DataTable>
-        </section>
-      ) : (
-        <section className="finance-panel">
-          <SectionHeading
-            title="Insurance"
-            detail="Excel columns: Car Plate, Premium (RM), Coverage Start, Coverage End, RESPONSIBILITY. RM0 records may have blank coverage dates."
-            summary={<strong>Total cost: {money(insuranceCostTotal)}</strong>}
-            action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("insurance", input.insurance.filter((row: Insurance) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add policy</button><FileButton
-                disabled={disabled}
-                label="Import Excel"
-                onFile={(file) => onFile("insurance", file)}
-              /></div>}
-          />
-          <DataTable
-            headers={["Vehicle", "Responsibility", "Premium (RM)", "Coverage", "Finance cash outflow", "Actions"]}
-          >
-            {input.insurance.filter((x: Insurance) => !x.cancelled_at).map((x: Insurance) => {
-              const problems = insuranceProblems(x);
-              const cashOutflow = insuranceCashOutflow(x, input.calculation_version ?? 1);
-              return <tr key={x.id ?? `${x.plate_key}${x.coverage_start}`}>
-                <td>
-                  {input.vehicles.find(
-                    (v: FinanceVehicle) => v.plate_key === x.plate_key,
-                  )?.display_plate ?? "Unmatched"}
-                </td>
-                <td>
-                  {x.responsibility?.replace("_", " ") ?? "Not specified"}
-                  {problems.length > 0 && <small className="finance-inline-warning">{problems.join(" ")}</small>}
-                </td>
-                <td>{money(x.premium)}</td>
-                <td>
-                  {x.coverage_start ?? "—"} – {x.coverage_end ?? "—"}
-                </td>
-                <td>{money(cashOutflow.amount)}{cashOutflow.date ? ` · ${cashOutflow.date}` : ""}</td>
-                <td><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(x.id ?? null)}>Edit</button></td>
-              </tr>;
-            })}
-          </DataTable>
-        </section>
-      )}
-      {editor !== undefined && <Dialog title={editor ? `Edit ${tab === "vehicle_master" ? "vehicle" : tab === "monthly_vehicle_costs" ? "monthly cost" : "policy"}` : `Add ${tab === "vehicle_master" ? "vehicle" : tab === "monthly_vehicle_costs" ? "monthly cost" : "policy"}`} onClose={() => setEditor(undefined)}>
-        {tab === "vehicle_master" ? <VehicleForm input={input} month={month} disabled={disabled} onSave={async (kind, record) => { const saved = await onSave(kind, record); if (saved) setEditor(undefined); return saved; }} onDelete={onDelete} initialId={editor ?? undefined} /> : tab === "monthly_vehicle_costs" ? <RecurringForm input={input} month={month} disabled={disabled} onSave={async (kind, record) => { const saved = await onSave(kind, record); if (saved) setEditor(undefined); return saved; }} onCancel={onCancel} initialId={editor ?? undefined} /> : <InsuranceForm input={input} month={month} disabled={disabled} onSave={async (kind, record) => { const saved = await onSave(kind, record); if (saved) setEditor(undefined); return saved; }} onCancel={onCancel} initialId={editor ?? undefined} />}
-      </Dialog>}
-    </>
-  );
-}
 
 function PreviewDialog(props: any) {
   return (
