@@ -104,7 +104,7 @@ export function calculateFinance(input: FinanceInput) {
     ids.add(payment.source_payment_id);
     if (!payment.driver_id || !payment.driver_name_snapshot?.trim()) issues.push({ code: 'MISSING_DRIVER', severity: 'error', detail: 'E-hailing payment has no complete driver snapshot', source_id: payment.source_payment_id });
     if (!normalizePlate(payment.plate_key)) issues.push({ code: 'MISSING_PLATE', severity: 'error', detail: 'E-hailing payment has no plate', source_id: payment.source_payment_id });
-    // No blanket warning per payment: since 6 Oct 2026 each payment keeps the car it was paid against.
+    // No blanket warning per payment: payments store their car (since 6 Oct 2026), and a car that changes is caught below.
     if (payment.attribution_changed) issues.push({ code: 'HISTORICAL_ATTRIBUTION_CHANGED', severity: 'warning', detail: 'Historical payment vehicle attribution has changed', source_id: payment.source_payment_id, plate_key: payment.plate_key });
     const vehicle = contributionFor(payment.plate_key, payment.source_payment_id);
     vehicle.cash += payment.cash_amount; vehicle.service_claim += payment.service_claim;
