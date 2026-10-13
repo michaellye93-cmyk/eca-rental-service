@@ -359,6 +359,8 @@ export default function FinanceView(props: MoneyProps = {}) {
   const invoke = async (
     work: () => Promise<FinanceInput | void>,
     message: string,
+    // A form inside a dialog covers the page error line, so it asks for the failure back to show it in place.
+    rethrow = false,
   ) => {
     const current = generation.current;
     setBusy(true);
@@ -382,6 +384,7 @@ export default function FinanceView(props: MoneyProps = {}) {
         setError(
           cause instanceof Error ? cause.message : "Finance action failed.",
         );
+      if (rethrow) throw cause;
       return false;
     } finally {
       if (current === generation.current) setBusy(false);
@@ -766,7 +769,7 @@ export default function FinanceView(props: MoneyProps = {}) {
                   if (!window.confirm("A matching monthly obligation exists. Add this as a separate obligation?")) return Promise.resolve(false);
                   reason = "Explicit separate obligation confirmed in Finance";
                 }
-                return invoke(() => mutateRecord(kind, action, record, month, revise, reason), "Finance record saved.");
+                return invoke(() => mutateRecord(kind, action, record, month, revise, reason), "Finance record saved.", true);
               }}
               onDeleteVehicle={(vehicle: FinanceVehicle) =>
                 invoke(() => deleteVehicle(month, vehicle.plate_key, revise), "Vehicle deleted from the current master list.")
