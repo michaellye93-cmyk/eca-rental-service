@@ -65,9 +65,9 @@ test('accepts canonical database month dates while the UI supplies a year-month'
   assert.equal(report.issues.some((entry) => entry.code === 'MISSING_COST_MASTER'), false);
 });
 
-test('reports snapshot controls and editable historical attribution even on first ingestion', () => {
+test('reports snapshot controls on first ingestion, without a blanket warning on every payment (each payment keeps its own car)', () => {
   const report = calculateFinance(input({ month: { ...month, source_count: 2, total_cash: 99, total_claim: 2 }, smart_import: null, ehailing: [{ source_payment_id: 'p1', driver_id: 'd1', driver_name_snapshot: '', car_plate_snapshot: 'XAA 1001', plate_key: 'XAA1001', payment_date: '2026-08-01', cash_amount: 100, service_claim: 2, gross_rental_revenue: 102, payment_method: null, refreshed_at: '', finance_month: '2026-08-01', attribution_changed: false }] }));
-  assert.deepEqual(new Set(report.issues.map((entry) => entry.code)), new Set(['MISSING_DRIVER', 'HISTORICAL_ATTRIBUTION_POSSIBLE', 'MISSING_REFRESHED_AT', 'SOURCE_COUNT_MISMATCH', 'SOURCE_CASH_MISMATCH', 'MISSING_SMART_IMPORT', 'MISSING_COST_MASTER']));
+  assert.deepEqual(new Set(report.issues.map((entry) => entry.code)), new Set(['MISSING_DRIVER', 'MISSING_REFRESHED_AT', 'SOURCE_COUNT_MISMATCH', 'SOURCE_CASH_MISMATCH', 'MISSING_SMART_IMPORT', 'MISSING_COST_MASTER']));
 });
 
 test('uses coverage fractions for partial months and keeps the premium balanced', () => {
@@ -85,7 +85,8 @@ test('retains unmatched revenue and reports duplicate and incomplete source data
   const unmatched = report.vehicles.find((vehicle) => vehicle.plate_key === 'UNMATCHED')!;
   assert.equal(unmatched.revenue, 50);
   const codes = new Set(report.issues.map((issue) => issue.code));
-  for (const code of ['DUPLICATE_SOURCE_ID', 'MISSING_DRIVER', 'MISSING_PLATE', 'HISTORICAL_ATTRIBUTION_CHANGED', 'HISTORICAL_ATTRIBUTION_POSSIBLE', 'UNMATCHED_PLATE']) assert.equal(codes.has(code), true);
+  for (const code of ['DUPLICATE_SOURCE_ID', 'MISSING_DRIVER', 'MISSING_PLATE', 'HISTORICAL_ATTRIBUTION_CHANGED', 'UNMATCHED_PLATE']) assert.equal(codes.has(code), true);
+  assert.equal(codes.has('HISTORICAL_ATTRIBUTION_POSSIBLE'), false);
 });
 
 test('adds confirmed Other Income once and excludes drafts or cancelled receipts', () => {

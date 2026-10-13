@@ -37,8 +37,6 @@ export function readableIssue(issue: QualityIssue) {
     MISSING_DRIVER: "An E-Hailing payment needs its driver details checked.",
     COST_WITHOUT_REVENUE:
       "Vehicles have costs with no revenue recorded this month.",
-    HISTORICAL_ATTRIBUTION_POSSIBLE:
-      "Confirm that historical payments are assigned to the correct vehicles.",
     HISTORICAL_ATTRIBUTION_CHANGED:
       "Vehicle assignments changed since the previous refresh. Check the affected payments.",
     BANK_MATCH_CHANGED:
@@ -71,9 +69,7 @@ export function groupedIssues(issues: QualityIssue[]) {
   return [...groups.values()].sort(
     (a, b) =>
       Number(b.issue.severity === "error") -
-        Number(a.issue.severity === "error") ||
-      Number(a.issue.code === "HISTORICAL_ATTRIBUTION_POSSIBLE") -
-        Number(b.issue.code === "HISTORICAL_ATTRIBUTION_POSSIBLE"),
+        Number(a.issue.severity === "error"),
   );
 }
 type Props = {
