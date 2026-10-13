@@ -41,4 +41,13 @@ grant execute on function finance_private.insurance_cover() to authenticated;
 revoke all on function public.finance_insurance_cover() from public, anon, authenticated;
 grant execute on function public.finance_insurance_cover() to authenticated;
 
+-- 3. The live updates read the change logs by time: index them so each minute's read stays quick.
+create index if not exists payment_changes_changed_at on public.payment_changes (changed_at);
+do $$
+begin
+  if to_regclass('public.driver_changes') is not null then
+    create index if not exists driver_changes_changed_at on public.driver_changes (changed_at);
+  end if;
+end$$;
+
 commit;

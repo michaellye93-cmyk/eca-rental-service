@@ -118,3 +118,15 @@ test("Fleet can read Finance's latest insurance cover per plate, for Admins only
     assert.equal((await db.query<{ n: number }>(`select jsonb_array_length(public.finance_insurance_cover()) n`)).rows[0].n, 2, 'runs twice');
   } finally { await db.close(); }
 });
+
+test('the change logs are indexed by time for the live updates, and running the file again changes nothing', async () => {
+  const db = await setup();
+  try {
+    await migrate(db, ONE_VEHICLE);
+    await migrate(db, ONE_VEHICLE);
+    const rows = (await db.query<{ tablename: string; indexdef: string }>(
+      `select tablename, indexdef from pg_indexes where schemaname = 'public' and indexname in ('payment_changes_changed_at', 'driver_changes_changed_at') order by tablename`)).rows;
+    assert.deepEqual(rows.map(r => r.tablename), ['driver_changes', 'payment_changes']);
+    for (const row of rows) assert.match(row.indexdef, /\(changed_at\)/);
+  } finally { await db.close(); }
+});
