@@ -38,29 +38,30 @@ test('a standing arrangement does not hold back a thank-you, a missed-promise fo
   assert.equal(step({ arrangement, owed: 1000, lastPaymentDate: TODAY }), 'Thank for payment', 'a part payment today is thanked first');
   assert.equal(step({ arrangement, owed: 1000, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
   assert.equal(step({ arrangement, owed: 1000, dueTodayUnpaid: 1000, promise: { state: 'MISSED', date: '2026-10-10', loggedOn: '2026-10-08' } }), 'Promise missed: follow up');
-  assert.equal(step({ arrangement, owed: 1000, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 24 hours');
+  assert.equal(step({ arrangement, owed: 1000, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 6 hours');
   assert.equal(step({ arrangement, owed: 1000, promise: { state: 'OPEN', date: '2026-10-14', loggedOn: '2026-10-08' }, lastAskAt: kl('2026-10-08T13:00:00') }), 'Wait: promised 14/10');
 });
 
-test('the due day: a due-day message even within 24 hours of an ask, once', () => {
+test('the due day: a due-day message even within 6 hours of an ask, once', () => {
   assert.equal(step({ owed: 450, dueTodayUnpaid: 450 }), 'Due-day message');
   assert.equal(step({ owed: 900, dueTodayUnpaid: 450, lastAskAt: kl('2026-10-11T21:00:00') }), 'Due-day message', 'asked last night');
-  assert.equal(step({ owed: 450, dueTodayUnpaid: 450, lastAskAt: kl('2026-10-12T12:30:00') }), 'Wait: asked within 24 hours', 'already asked today');
+  assert.equal(step({ owed: 450, dueTodayUnpaid: 450, lastAskAt: kl('2026-10-12T12:30:00') }), 'Wait: asked within 6 hours', 'already asked today');
 });
 
-test('the 24-hour rule, then a follow-up two days after an ask that is still unpaid', () => {
-  assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-11T14:00:00') }), 'Wait: asked within 24 hours');
-  assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-11T12:00:00') }), 'Wait: asked yesterday');
+test('the 6-hour rule (owner, 13 Oct): wait within 6 hours of an ask, then follow up while still unpaid', () => {
+  assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 6 hours');
+  assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-12T06:00:00') }), 'Follow up (asked 7 hours ago, still unpaid)', 'the 1pm ask, followed up at the 9pm run');
+  assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-11T14:00:00') }), 'Follow up (asked 1 day ago, still unpaid)');
   assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-10T21:00:00') }), 'Follow up (asked 2 days ago, still unpaid)');
   assert.equal(step({ owed: 900, lastAskAt: kl('2026-10-05T13:00:00') }), 'Follow up (asked 7 days ago, still unpaid)');
   assert.equal(step({ owed: 900 }), 'Ask: owing, no ask logged');
 });
 
-test('a missed promise is followed up even within 24 hours of an ask, until a follow-up after the promised date', () => {
+test('a missed promise is followed up even within 6 hours of an ask, until a follow-up after the promised date', () => {
   const missed = { state: 'MISSED' as const, date: '2026-10-11', loggedOn: '2026-10-08' };
   assert.equal(step({ owed: 900, promise: missed, lastAskAt: kl('2026-10-11T20:00:00') }), 'Promise missed: follow up');
   assert.equal(step({ owed: 900, promise: missed }), 'Promise missed: follow up');
-  assert.equal(step({ owed: 900, promise: missed, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 24 hours', 'followed up this morning');
+  assert.equal(step({ owed: 900, promise: missed, lastAskAt: kl('2026-10-12T09:00:00') }), 'Wait: asked within 6 hours', 'followed up this morning');
   assert.equal(step({ owed: 900, promise: { state: 'KEPT', date: '2026-10-11', loggedOn: '2026-10-08' }, lastAskAt: kl('2026-10-09T13:00:00') }), 'Follow up (asked 3 days ago, still unpaid)');
 });
 
@@ -126,7 +127,7 @@ test('one row per active driver: rent due today first, then late alerts (longest
   assert.equal(late.late_days, 27);
   assert.deepEqual(late.promise, { amount: 900, date: '2026-10-10', status: 'MISSED', paid_so_far: 0 });
   assert.deepEqual(late.last_contact, { at: kl('2026-10-12T10:00:00'), kind: 'NOTE', run_slot: '1PM' });
-  assert.equal(late.next_step, 'Wait: asked within 24 hours', 'the statement this morning came after the promised date');
+  assert.equal(late.next_step, 'Wait: asked within 6 hours', 'the statement this morning came after the promised date');
   assert.equal(owes.owed, 450);
   assert.equal(owes.next_step, 'Follow up (asked 3 days ago, still unpaid)');
   assert.equal(monthly.owed, 0);

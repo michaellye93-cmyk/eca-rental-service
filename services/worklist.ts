@@ -11,22 +11,21 @@ import { buildCollectionsData, type ContactSummary, type CollectionsData, type C
 
 /**
  * What to do next with a driver. The owner's seven steps, plus three that close gaps in them (owing but never asked,
- * asked more than 24 hours but less than two days ago, and an open promise date).
+ * and an open promise date).
  */
 export type NextStep =
   | 'Nothing due'
   | 'Due-day message'
-  | `Follow up (asked ${number} days ago, still unpaid)`
+  | `Follow up (asked ${number} ${"day" | "days" | "hours"} ago, still unpaid)`
   | 'Promise missed: follow up'
-  | 'Wait: asked within 24 hours'
+  | 'Wait: asked within 6 hours'
   | `Arrangement: ${string} — check before asking`
   | 'Thank for payment'
   | 'Ask: owing, no ask logged'
-  | 'Wait: asked yesterday'
   | `Wait: promised ${string}`;
 
 export interface StepInput {
-  /** The real moment (not a Kuala Lumpur wall-clock Date): the 24-hour rule is measured from it. */
+  /** The real moment (not a Kuala Lumpur wall-clock Date): the 6-hour rule is measured from it. */
   now: Date;
   /** Kuala Lumpur calendar day, YYYY-MM-DD. */
   today: string;
@@ -58,15 +57,18 @@ const dayMonth = (isoDay: string) => `${Number(isoDay.slice(8, 10))}/${Number(is
  * The next step with a driver, by the collection rules:
  * - Nothing owed: thank a payment dated today or yesterday that has not been thanked since; otherwise nothing is due.
  * - A payment today or yesterday not yet thanked: thank first (the conversation continues from there).
- * - A missed promise: follow up, even within 24 hours of an ask, until a follow-up is logged after the promised date.
+ * - A missed promise: follow up, even within 6 hours of an ask, until a follow-up is logged after the promised date.
  * - An open promise logged today or yesterday: wait for it, even on the due day (no due-day message over a fresh promise).
- * - Rent due today and unpaid: the due-day message, even within 24 hours of an ask, unless already asked today.
+ * - Rent due today and unpaid: the due-day message, even within 6 hours of an ask, unless already asked today.
  * - An open promise date: wait for it.
- * - Asked within 24 hours: wait. Never asked: ask. Asked two or more days ago and still unpaid: follow up; asked
- *   yesterday but more than 24 hours ago: wait.
+ * - Asked within 6 hours: wait (owner's rule, 13 Oct 2026). Never asked: ask. Asked 6 hours ago or more and still
+ *   unpaid: follow up.
  * A standing arrangement overrides the weekly ask rhythm, not thanks or missed promises: its text replaces only the
  * ask, the follow-up and the due-day message (the waits still show).
  */
+/** No new ask to the same driver within this many hours of the last one (owner's rule, 13 Oct 2026). */
+export const WAIT_AFTER_ASK_HOURS = 6;
+
 export function nextCollectionStep(input: StepInput): NextStep {
   const { today } = input;
   const dayOf = (iso: string) => kualaLumpurToday(new Date(iso));
@@ -86,9 +88,12 @@ export function nextCollectionStep(input: StepInput): NextStep {
   if (input.dueTodayUnpaid > 0.005 && askDay !== today) return ask('Due-day message');
   if (promised) return promised;
   if (!input.lastAskAt || !askDay) return ask('Ask: owing, no ask logged');
-  if (input.now.getTime() - Date.parse(input.lastAskAt) < 24 * HOUR_MS) return 'Wait: asked within 24 hours';
+  const sinceAsk = input.now.getTime() - Date.parse(input.lastAskAt);
+  if (sinceAsk < WAIT_AFTER_ASK_HOURS * HOUR_MS) return 'Wait: asked within 6 hours';
   const days = daysBetween(askDay, today);
-  return days >= 2 ? ask(`Follow up (asked ${days} days ago, still unpaid)`) : 'Wait: asked yesterday';
+  return ask(days >= 1
+    ? `Follow up (asked ${days} ${days === 1 ? 'day' : 'days'} ago, still unpaid)`
+    : `Follow up (asked ${Math.floor(sinceAsk / HOUR_MS)} hours ago, still unpaid)`);
 }
 
 /** One active driver on the worklist. Built field by field: NRIC, phone, email and address are never included. */
@@ -124,7 +129,7 @@ const lastThanks = (contacts: ContactSummary[] | null, driverId: string): string
 
 /**
  * The worklist: every active driver, rent falling due today first, then the data view's order (late alerts with the
- * longest late first, then by amount owed). `instant` is the real moment, for the 24-hour rule.
+ * longest late first, then by amount owed). `instant` is the real moment, for the 6-hour rule.
  */
 export function buildWorklist(input: CollectionsInput & { instant: Date }): WorklistData {
   const data: CollectionsData = buildCollectionsData(input);
