@@ -301,8 +301,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
               <button key={key} type="button" aria-pressed={paper === key} onClick={() => {
                   setPaper(key);
                   setResult(null);
-                  // The rent demand's discount table runs to 14 days, so its deadline does too
-                  if ((LETTER_KINDS as string[]).includes(key)) setPayWithin(key === 'TUNTUT_SEWA' ? '14' : '7');
+                  // The cancellation and rent demand carry a discount table that runs to 14 days, so their deadline does too
+                  if ((LETTER_KINDS as string[]).includes(key)) setPayWithin(key === 'CTOS_LOD' ? '7' : '14');
                   // Agreements and authorization letters are only for current drivers
                   else if (driver?.isDelisted) setDriverId('');
                 }}

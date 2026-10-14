@@ -113,7 +113,7 @@ test('the three built-in letters are in Malay, name their purpose, and use only 
   assert.deepEqual(LETTER_KINDS, ['BATAL_SEWABELI', 'TUNTUT_SEWA', 'CTOS_LOD']);
   const known = new Set(LETTER_PLACEHOLDERS.map(p => p.key));
   const words: Record<string, RegExp[]> = {
-    BATAL_SEWABELI: [/PEMBATALAN/i, /Sewa Beli/, /\{\{total_debt\}\}/, /\{\{vehicle_plate\}\}/],
+    BATAL_SEWABELI: [/PEMBATALAN/i, /Sewa Beli/, /\{\{total_debt\}\}/, /\{\{vehicle_plate\}\}/, /\{\{amount_7_days\}\}/, /\{\{pay_by_date\}\}/],
     TUNTUT_SEWA: [/TUNTUTAN/i, /\{\{total_debt\}\}/, /\{\{pay_by_date\}\}/],
     CTOS_LOD: [/CTOS/, /\{\{total_debt\}\}/, /\{\{pay_by_date\}\}/],
   };
@@ -154,7 +154,7 @@ test('every built-in letter fits on its page(s) with the company logo, and a lon
   for (const kind of LETTER_KINDS) {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     drawLetter(doc, defaultLetter(kind), COMPANY, png);
-    assert.ok(doc.getNumberOfPages() <= 2, `${kind} is at most two pages`);
+    assert.ok(doc.getNumberOfPages() <= (kind === 'CTOS_LOD' ? 2 : 1), `${kind} fits its pages (CTOS: Malay and English)`);
     assert.ok(doc.output().includes('/Subtype /Image'));
   }
   const long = { title: 'Fixture', body: Array.from({ length: 60 }, (_, i) => `${i + 1}. A fixture paragraph long enough to wrap onto a second line of the page for testing the layout.`).join('\n\n') };
