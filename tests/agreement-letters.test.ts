@@ -109,7 +109,7 @@ test('the three built-in letters are in Malay, name their purpose, and use only 
     assert.ok(LETTER_LABELS[kind]);
     for (const pattern of words[kind]) assert.match(`${letter.title}\n${letter.body}`, pattern, `${kind}: ${pattern}`);
     for (const key of placeholdersIn(`${letter.title}\n${letter.body}`)) assert.ok(known.has(key), `${kind}: {{${key}}} is not filled by the letter`);
-    assert.doesNotMatch(letter.body, /d{6,}/, 'company numbers and accounts come from the database, never the draft');
+    assert.doesNotMatch(letter.body, /\d{6,}/, 'company numbers and accounts come from the database, never the draft');
   }
 });
 
