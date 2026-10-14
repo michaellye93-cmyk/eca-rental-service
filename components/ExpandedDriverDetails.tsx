@@ -1,13 +1,13 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Driver } from '../types';
-import { categoryLabel, formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
+import { categoryLabel, formatCurrency, formatDate, formatPhone, latestInvoices, parseDate, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
 import { BankBadge, DeletedPayments, PaymentNoteLines, useBankStatus, usePaymentNotes } from './PaymentNotes';
 import DriverDeposits from './DriverDeposits';
 import { loadDriverChanges } from '../services/collectionsApi';
 import { driverChangeLines, type DriverChange } from '../services/driverChanges';
 import { collectionSummary } from '../services/collections';
-import { Phone, User, FileText, Clock, DollarSign, History } from 'lucide-react';
+import { Phone, User, FileText, Clock, DollarSign, History, ChevronRight } from 'lucide-react';
 
 // The chart library loads only when a driver row is opened, not with the driver list
 const OutstandingTrend = React.lazy(() => import('./drivers/OutstandingTrend'));
@@ -62,6 +62,9 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
   // Who recorded and changed each payment (payments from before the change log carry nothing)
   const notes = usePaymentNotes(driver);
   const bankStatus = useBankStatus(driver);
+  // The latest payment by date, whatever order the list is in
+  const latestPayment = useMemo(() => driver.paymentHistory.reduce<Driver['paymentHistory'][number] | null>(
+    (latest, payment) => (!latest || parseDate(payment.date) > parseDate(latest.date) ? payment : latest), null), [driver]);
   // Latest payment compared with the driver's average timing: 3+ days later reads as slipping, 2+ days earlier as recovering
   const velocity = driver.performanceVelocity || 0;
   const paymentTiming = velocity > 3
@@ -175,12 +178,21 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
         {/* Deposits and payments */}
         <div className="lg:col-span-2 space-y-4">
           <DriverDeposits driver={driver} isAdmin={isAdmin} onContraPayment={onContraPayment} onEditDriver={onEditDriver} />
-          <h5 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" aria-hidden="true" />
-            Payments
-          </h5>
-
           <DeletedPayments notes={notes} payments={driver.paymentHistory} />
+          {/* Closed by default so the trend and deposits stay in view; the summary shows the latest payment */}
+          <details className="group">
+            <summary className="cursor-pointer list-none flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-1 py-1 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+              <ChevronRight className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-90" aria-hidden="true" />
+              <Clock className="w-4 h-4 text-gray-500" aria-hidden="true" />
+              <span className="text-sm font-bold text-gray-900">Payments</span>
+              <span className="text-xs text-gray-600">
+                {driver.paymentHistory.length === 0 ? 'none recorded yet'
+                  : `${driver.paymentHistory.length} recorded${latestPayment ? ` · latest ${formatCurrency(latestPayment.amount)} on ${formatDate(latestPayment.date, 'N/A')}` : ''}`}
+              </span>
+              <span className="text-xs font-semibold text-blue-700 group-open:hidden">Show</span>
+              <span className="text-xs font-semibold text-blue-700 hidden group-open:inline">Hide</span>
+            </summary>
+          <div className="mt-4">
           {driver.paymentHistory.length === 0 ? (
             <div className="p-12 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-gray-600 text-xs">
               No payments recorded yet.
@@ -204,6 +216,8 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
               ))}
             </ul>
           )}
+          </div>
+          </details>
         </div>
 
         <ProfileHistory driver={driver} />
