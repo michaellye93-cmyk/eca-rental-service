@@ -10,6 +10,7 @@ import type {
   WorkshopSummary,
 } from "../../types/finance";
 import Dialog from "./FinanceDialog";
+import { otherIncomeTotals } from "../../services/finance/calculations";
 
 
 const nullable = (value: string) => value.trim() || null;
@@ -448,6 +449,7 @@ export function OtherIncomePanel({
     (row) =>
       !row.cancelled_at && row.finance_month.slice(0, 7) === month.slice(0, 7),
   );
+  const incomeTotals = otherIncomeTotals(current);
   const vehicleByPlate = useMemo(
     () => new Map(vehicles.map((vehicle) => [vehicle.plate_key, vehicle])),
     [vehicles],
@@ -492,7 +494,8 @@ export function OtherIncomePanel({
         <div>
           <h3>Other Income</h3>
           <p>Record income outside the standard rental import for this month.</p>
-          <strong>{formatCurrency(current.reduce((sum, row) => sum + row.amount, 0))} recorded this month</strong>
+          <strong>{formatCurrency(incomeTotals.counted)} counted this month</strong>
+          {incomeTotals.draft > 0 && <p className="finance-message is-warning">{formatCurrency(incomeTotals.draft)} in Draft, not counted until Confirmed. Edit a line and set its Status to Confirmed.</p>}
         </div>
         <div className="finance-dialog-actions">{onExport && <button type="button" className="finance-secondary" onClick={onExport}>Export Excel</button>}{onImport && <><input ref={incomeImportRef} className="finance-file-input" type="file" accept=".xlsx" disabled={disabled} onChange={(event) => { onImport(event.target.files?.[0]); event.target.value = ""; }} /><button type="button" className="finance-secondary" disabled={disabled} onClick={() => incomeImportRef.current?.click()}>Upload Excel</button></>}<button
           type="button"

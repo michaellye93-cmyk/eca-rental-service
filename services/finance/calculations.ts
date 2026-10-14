@@ -199,3 +199,9 @@ export function fixedCostsMissing(input: FinanceInput): boolean {
 }
 
 export const buildFinanceReport = calculateFinance;
+
+/** Other Income for a month split into what the P&L counts (Confirmed) and Draft lines that wait for confirming. */
+export function otherIncomeTotals(rows: ReadonlyArray<{ amount: number; status: 'DRAFT' | 'CONFIRMED' }>) {
+  const sum = (status: 'DRAFT' | 'CONFIRMED') => round2(rows.filter((row) => row.status === status).reduce((total, row) => total + row.amount, 0));
+  return { counted: sum('CONFIRMED'), draft: sum('DRAFT') };
+}
