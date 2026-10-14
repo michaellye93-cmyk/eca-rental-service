@@ -1,3 +1,4 @@
+import { LETTER_KINDS, letterFromStored, type LetterKind, type LetterTemplate } from './letters.ts';
 import { companyFromStored, soundTemplate, templateFromStored, type AgreementKind, type AgreementTemplate, type CompanyDetails } from './template.ts';
 
 /** The part of the Supabase client the Agreements page uses. */
@@ -10,6 +11,10 @@ export interface AgreementSettings {
   company: CompanyDetails;
   /** Which templates are the built-in draft (never saved). */
   builtIn: Record<AgreementKind, boolean>;
+  /** The letters' wording (cancellation, rent demand, CTOS letter of demand). */
+  letters: Record<LetterKind, LetterTemplate>;
+  /** Which letters are the built-in draft (never saved). */
+  letterBuiltIn: Record<LetterKind, boolean>;
 }
 
 /** What is kept of an agreement: enough to show it again exactly as it was downloaded. */
@@ -41,6 +46,7 @@ const check = <T>(result: Result<T>): T | null => {
 };
 
 const templateKey = (kind: AgreementKind) => `template:${kind}`;
+const letterKey = (kind: LetterKind) => `letter:${kind}`;
 
 /**
  * Reads and saves the agreement templates and company details, and keeps a text copy of each downloaded agreement
@@ -62,10 +68,17 @@ export function agreementApi(client: AgreementClient) {
         },
         company: companyFromStored(stored.get('company')),
         builtIn: { SEWA_BIASA: !stored.has(templateKey('SEWA_BIASA')), SEWABELI: !stored.has(templateKey('SEWABELI')) },
+        letters: Object.fromEntries(LETTER_KINDS.map(kind => [kind, letterFromStored(kind, stored.get(letterKey(kind)))])) as Record<LetterKind, LetterTemplate>,
+        letterBuiltIn: Object.fromEntries(LETTER_KINDS.map(kind => [kind, !stored.has(letterKey(kind))])) as Record<LetterKind, boolean>,
       };
     },
     saveTemplate: (kind: AgreementKind, template: AgreementTemplate) => save(templateKey(kind), template),
     saveCompany: (company: CompanyDetails) => save('company', company),
+    saveLetter: (kind: LetterKind, letter: LetterTemplate) => save(letterKey(kind), letter),
+    /** Goes back to the letter's built-in draft by removing the saved one. */
+    async resetLetter(kind: LetterKind): Promise<void> {
+      check(await settings().delete().eq('key', letterKey(kind)));
+    },
     /** Keeps a copy of a downloaded agreement (its template and filled-in values, not the PDF) for the driver's own page. */
     async saveCopy(driverId: string, copy: AgreementCopy): Promise<void> {
       check(await client.from('driver_agreements').insert({ driver_id: driverId, kind: copy.kind, content: copy }));

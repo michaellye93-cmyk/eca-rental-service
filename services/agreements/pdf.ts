@@ -1,4 +1,5 @@
 import type { jsPDF } from 'jspdf';
+import { LETTER_FOOTER_NOTE, letterBlocks, type LetterTemplate } from './letters.ts';
 import { BLANK, fillText, isClauseHeading, parseParagraphs, parseRows, sectionHeading, startsNewPage, type AgreementTemplate } from './template.ts';
 
 // A4 in millimetres
@@ -50,6 +51,54 @@ function drawLogo(doc: jsPDF, x: number, y: number, size: number) {
   doc.setLineWidth(0.2);
   doc.setLineCap('butt');
   doc.setLineJoin('miter');
+}
+
+/**
+ * The letterhead (logo, company name, number, address and contacts over a gold rule) and footer (Private & Confidential,
+ * page numbers) on every page: one look for the agreements and every letter. `label` names the paper top right; the
+ * agreement adds the initials line, a letter its `note` above the footer.
+ */
+export function drawPageFrame(doc: jsPDF, values: Record<string, string>, { label, initials = false, note = '', logo }: { label: string; initials?: boolean; note?: string; logo?: string }) {
+  const font = (style: 'normal' | 'bold' | 'italic', size: number, colour: Rgb = INK) => {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    doc.setTextColor(...colour);
+  };
+  const pages = doc.getNumberOfPages();
+  const company = values.company_name || '';
+  const companyLine = [values.company_reg_no && `Company No. ${values.company_reg_no}`, values.company_address].filter(Boolean).join('  ·  ');
+  const contactLine = [values.company_phone && `Tel: ${values.company_phone}`, values.company_email].filter(Boolean).join('  ·  ');
+  const ref = values.agreement_ref || values.letter_ref ? `Ref. ${values.agreement_ref || values.letter_ref}` : '';
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
+    if (logo) doc.addImage(logo, 'PNG', MARGIN, 10, 16, 16, 'agreement-logo', 'FAST');
+    else drawLogo(doc, MARGIN, 11, 15);
+    const textX = MARGIN + 19;
+    font('bold', 11, NAVY);
+    if (company) doc.text(company, textX, 16);
+    font('normal', 7.5, GREY);
+    if (companyLine) doc.text((doc.splitTextToSize(companyLine, PAGE_W - MARGIN - textX - 34) as string[])[0], textX, 20.5);
+    if (contactLine) doc.text(contactLine, textX, 24.5);
+    font('bold', 7.5, NAVY);
+    doc.text(label, PAGE_W - MARGIN, 16, { align: 'right' });
+    font('normal', 7.5, GREY);
+    if (ref) doc.text(ref, PAGE_W - MARGIN, 20.5, { align: 'right' });
+    doc.setDrawColor(...GOLD);
+    doc.setLineWidth(0.5);
+    doc.line(MARGIN, 29, PAGE_W - MARGIN, 29);
+    doc.setLineWidth(0.2);
+
+    if (note) {
+      font('italic', 8, GREY);
+      doc.text(note, PAGE_W / 2, PAGE_H - 19.5, { align: 'center' });
+    }
+    doc.setDrawColor(...RULE);
+    doc.line(MARGIN, PAGE_H - 17, PAGE_W - MARGIN, PAGE_H - 17);
+    font('normal', 8, GREY);
+    if (initials) doc.text("Lessor's initials ________      Lessee's initials ________", MARGIN, PAGE_H - 11.5);
+    doc.text('Private & Confidential', initials ? PAGE_W / 2 + 18 : PAGE_W / 2, PAGE_H - 11.5, { align: 'center' });
+    doc.text(`Page ${page} of ${pages}`, PAGE_W - MARGIN, PAGE_H - 11.5, { align: 'right' });
+  }
 }
 
 /** The company logo printed in the letterhead (public/agreement-logo.png); the drawn mark is used if it can't load. */
@@ -232,37 +281,7 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
   });
 
   // Letterhead and footer on every page
-  const pages = doc.getNumberOfPages();
-  const company = values.company_name || '';
-  const companyLine = [values.company_reg_no && `Company No. ${values.company_reg_no}`, values.company_address].filter(Boolean).join('  ·  ');
-  const contactLine = [values.company_phone && `Tel: ${values.company_phone}`, values.company_email].filter(Boolean).join('  ·  ');
-  const ref = values.agreement_ref ? `Ref. ${values.agreement_ref}` : '';
-  for (let page = 1; page <= pages; page++) {
-    doc.setPage(page);
-    if (logo) doc.addImage(logo, 'PNG', MARGIN, 10, 16, 16, 'agreement-logo', 'FAST');
-    else drawLogo(doc, MARGIN, 11, 15);
-    const textX = MARGIN + 19;
-    font('bold', 11, NAVY);
-    if (company) doc.text(company, textX, 16);
-    font('normal', 7.5, GREY);
-    if (companyLine) doc.text(wrap(companyLine, PAGE_W - MARGIN - textX - 34)[0], textX, 20.5);
-    if (contactLine) doc.text(contactLine, textX, 24.5);
-    font('bold', 7.5, NAVY);
-    doc.text(fill(template.title).toUpperCase().split('(')[0].trim(), PAGE_W - MARGIN, 16, { align: 'right' });
-    font('normal', 7.5, GREY);
-    if (ref) doc.text(ref, PAGE_W - MARGIN, 20.5, { align: 'right' });
-    doc.setDrawColor(...GOLD);
-    doc.setLineWidth(0.5);
-    doc.line(MARGIN, 29, PAGE_W - MARGIN, 29);
-    doc.setLineWidth(0.2);
-
-    doc.setDrawColor(...RULE);
-    doc.line(MARGIN, PAGE_H - 17, PAGE_W - MARGIN, PAGE_H - 17);
-    font('normal', 8, GREY);
-    doc.text("Lessor's initials ________      Lessee's initials ________", MARGIN, PAGE_H - 11.5);
-    doc.text('Private & Confidential', PAGE_W / 2 + 18, PAGE_H - 11.5, { align: 'center' });
-    doc.text(`Page ${page} of ${pages}`, PAGE_W - MARGIN, PAGE_H - 11.5, { align: 'right' });
-  }
+  drawPageFrame(doc, values, { label: fill(template.title).toUpperCase().split('(')[0].trim(), initials: true, logo });
   doc.setTextColor(0, 0, 0);
 }
 
@@ -292,5 +311,127 @@ export async function downloadAgreementPdf(template: AgreementTemplate, values: 
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   drawAgreement(doc, template, values, await loadLogo());
+  doc.save(fileName);
+}
+
+/**
+ * Draws a filled letter into an empty jsPDF document (A4, millimetres) under the same letterhead and footer as the
+ * agreements. See LetterTemplate for how the body is laid out.
+ */
+export function drawLetter(doc: jsPDF, letter: LetterTemplate, values: Record<string, string>, logo?: string) {
+  const SIZE = 10.5;
+  const STEP = 5;
+  let y = TOP + 2;
+  const fill = (text: string) => fillText(text, values);
+  const font = (style: 'normal' | 'bold' | 'italic', size: number, colour: Rgb = INK) => {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    doc.setTextColor(...colour);
+  };
+  const wrap = (text: string, width: number): string[] => doc.splitTextToSize(text, width) as string[];
+  const room = (height: number) => {
+    if (y + height > BOTTOM - 6) {
+      doc.addPage();
+      y = TOP + 2;
+    }
+  };
+  const lines = (text: string[], x: number) => {
+    for (const line of text) {
+      room(STEP);
+      doc.text(line, x, y + 3.6);
+      y += STEP;
+    }
+  };
+  /** A title centred in a ruled box. */
+  const title = (text: string) => {
+    font('bold', 13, NAVY);
+    const rows = wrap(fill(text).toUpperCase(), WIDTH - 30);
+    const height = rows.length * 6 + 5;
+    room(height + 6);
+    const boxW = Math.min(WIDTH, Math.max(...rows.map(row => doc.getTextWidth(row))) + 16);
+    doc.setDrawColor(...NAVY);
+    doc.setLineWidth(0.4);
+    doc.rect((PAGE_W - boxW) / 2, y, boxW, height);
+    doc.setLineWidth(0.2);
+    rows.forEach((row, i) => doc.text(row, PAGE_W / 2, y + 6.8 + i * 6, { align: 'center' }));
+    y += height + 6;
+  };
+
+  title(letter.title);
+  for (const block of letterBlocks(letter.body)) {
+    if (block.type === 'page') {
+      doc.addPage();
+      y = TOP + 2;
+    } else if (block.type === 'title') {
+      title(block.text);
+    } else if (block.type === 'quote') {
+      font('italic', SIZE - 1);
+      lines(wrap(fill(block.text), WIDTH - 20), MARGIN + 10);
+      y += 2.5;
+    } else if (block.type === 'fields') {
+      // Bold labels with their colons lined up, then a rule under the block
+      font('bold', SIZE);
+      const labelW = Math.min(70, Math.max(...block.rows.map(([label]) => doc.getTextWidth(label))) + 3);
+      room(block.rows.length * STEP + 4);
+      for (const [label, value] of block.rows) {
+        font('bold', SIZE);
+        const text = wrap(fill(value), WIDTH - labelW - 5);
+        room(text.length * STEP);
+        doc.text(fill(label), MARGIN, y + 3.6);
+        doc.text(':', MARGIN + labelW, y + 3.6);
+        font('normal', SIZE);
+        text.forEach((line, i) => doc.text(line, MARGIN + labelW + 4, y + 3.6 + i * STEP));
+        y += text.length * STEP;
+      }
+      doc.setDrawColor(...RULE);
+      doc.line(MARGIN, y + 2, PAGE_W - MARGIN, y + 2);
+      y += 6;
+    } else if (block.type === 'table') {
+      const columns = Math.max(...block.rows.map(row => row.length));
+      const tableW = WIDTH * 0.8;
+      const colW = tableW / columns;
+      const x0 = MARGIN + (WIDTH - tableW) / 2;
+      room((block.rows.length + 1) * 8 + 4);
+      doc.setDrawColor(...INK);
+      if (block.heading) {
+        doc.setFillColor(...BAND);
+        doc.rect(x0, y, tableW, 8, 'FD');
+        font('bold', SIZE);
+        doc.text(fill(block.heading), x0 + tableW / 2, y + 5.4, { align: 'center' });
+        y += 8;
+      }
+      for (const row of block.rows) {
+        font('normal', SIZE);
+        const cells = Array.from({ length: columns }, (_, i) => wrap(fill(row[i] ?? ''), colW - 4));
+        const height = Math.max(...cells.map(cell => cell.length)) * STEP + 3;
+        room(height);
+        cells.forEach((cell, i) => {
+          doc.rect(x0 + i * colW, y, colW, height);
+          doc.text(cell, x0 + i * colW + colW / 2, y + 5.2, { align: 'center', lineHeightFactor: 1.35 });
+        });
+        y += height;
+      }
+      y += 5;
+    } else {
+      font('normal', SIZE);
+      const numbered = CLAUSE_NUMBER.exec(block.text);
+      const indent = numbered ? 8 : 0;
+      const text = numbered ? block.text.slice(numbered[0].length) : block.text;
+      const rows = text.split(/\r?\n/).flatMap(part => wrap(fill(part), WIDTH - indent));
+      room(Math.min(rows.length, 2) * STEP);
+      if (numbered) doc.text(numbered[1], MARGIN, y + 3.6);
+      lines(rows, MARGIN + indent);
+      y += 2.5;
+    }
+  }
+  drawPageFrame(doc, values, { label: fill(letter.title).toUpperCase(), note: LETTER_FOOTER_NOTE, logo });
+  doc.setTextColor(0, 0, 0);
+}
+
+/** Builds the letter in the browser and downloads it. Nothing is uploaded or stored. jsPDF loads only when used. */
+export async function downloadLetterPdf(letter: LetterTemplate, values: Record<string, string>, fileName: string) {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  drawLetter(doc, letter, values, await loadLogo());
   doc.save(fileName);
 }

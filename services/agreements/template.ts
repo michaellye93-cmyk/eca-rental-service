@@ -102,7 +102,8 @@ const amount = (typed: string): number | null => {
   const value = Number(cleaned);
   return Number.isFinite(value) ? value : null;
 };
-const ringgit = (value: number | null) =>
+/** "RM 1,234.50"; '' for no amount. */
+export const ringgit = (value: number | null) =>
   value === null ? '' : `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** The last day of an agreement: the day before `cycles` weeks or months after the start (a month end is kept, 31 Jan + 1 month = 28 Feb). */

@@ -5,12 +5,16 @@ import {
   COMPANY_FIELDS, KIND_LABELS, LAYOUT_LABELS, PLACEHOLDERS, defaultTemplate, sectionHeading,
   type AgreementKind, type AgreementSection, type AgreementTemplate, type CompanyDetails, type SectionLayout,
 } from '../../services/agreements/template';
+import { LETTER_KINDS, LETTER_LABELS, LETTER_PLACEHOLDERS, defaultLetter, type LetterKind, type LetterTemplate } from '../../services/agreements/letters';
 
 interface TemplateEditorProps {
   templates: Record<AgreementKind, AgreementTemplate>;
+  letters: Record<LetterKind, LetterTemplate>;
   company: CompanyDetails;
   onSaveTemplate: (kind: AgreementKind, template: AgreementTemplate) => Promise<void>;
   onResetTemplate: (kind: AgreementKind) => Promise<void>;
+  onSaveLetter: (kind: LetterKind, letter: LetterTemplate) => Promise<void>;
+  onResetLetter: (kind: LetterKind) => Promise<void>;
   onSaveCompany: (company: CompanyDetails) => Promise<void>;
   onDone: () => void;
 }
@@ -25,22 +29,34 @@ const HINTS: Record<SectionLayout, string> = {
   signature: 'One signature box per line: Party | Name | ID | Date. Leave the date out to write it by hand. A line with no bar is printed as wording.',
 };
 
-/** Admins change each agreement type's sections and the company details here. */
-export default function TemplateEditor({ templates, company, onSaveTemplate, onResetTemplate, onSaveCompany, onDone }: TemplateEditorProps) {
-  const [kind, setKind] = useState<AgreementKind>('SEWABELI');
+const LETTER_HINT = 'Paragraphs are separated by an empty line. Start with a number (1.) to hang the text after it; "> " prints in italics; "# " is another boxed title; lines of "Label | value" print as a bold list, three or more cells as a ruled table (a first line with no bar heads it); "---" alone starts a new page.';
+const isLetter = (id: AgreementKind | LetterKind): id is LetterKind => (LETTER_KINDS as string[]).includes(id);
+const nameOf = (id: AgreementKind | LetterKind) => (isLetter(id) ? LETTER_LABELS[id] : KIND_LABELS[id]);
+
+/** Admins change each agreement type's sections, each letter's wording and the company details here. */
+export default function TemplateEditor({ templates, letters, company, onSaveTemplate, onResetTemplate, onSaveLetter, onResetLetter, onSaveCompany, onDone }: TemplateEditorProps) {
+  const [selected, setSelected] = useState<AgreementKind | LetterKind>('SEWABELI');
+  const kind: AgreementKind = isLetter(selected) ? 'SEWABELI' : selected;
   const [drafts, setDrafts] = useState(templates);
+  const [letterDrafts, setLetterDrafts] = useState(letters);
   const [companyDraft, setCompanyDraft] = useState(company);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   // What is saved now, to tell which drafts changed
-  const [saved, setSaved] = useState({ templates, company });
+  const [saved, setSaved] = useState({ templates, letters, company });
   const template = drafts[kind];
   const KINDS = ['SEWABELI', 'SEWA_BIASA'] as const;
   const changedKinds = KINDS.filter(id => JSON.stringify(drafts[id]) !== JSON.stringify(saved.templates[id]));
+  const changedLetters = LETTER_KINDS.filter(id => JSON.stringify(letterDrafts[id]) !== JSON.stringify(saved.letters[id]));
   const companyChanged = JSON.stringify(companyDraft) !== JSON.stringify(saved.company);
-  const unsaved = changedKinds.length > 0 || companyChanged;
+  const unsaved = changedKinds.length > 0 || changedLetters.length > 0 || companyChanged;
+  const changedNames = [...changedKinds, ...changedLetters].map(nameOf);
+  const letter = isLetter(selected) ? letterDrafts[selected] : null;
+  const setLetter = (change: Partial<LetterTemplate>) => {
+    if (isLetter(selected)) setLetterDrafts(current => ({ ...current, [selected]: { ...current[selected], ...change } }));
+  };
 
   const setTemplate = (next: AgreementTemplate) => setDrafts(current => ({ ...current, [kind]: next }));
   const setSection = (index: number, change: Partial<AgreementSection>) =>
@@ -73,6 +89,11 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
       setMessage({ ok: false, text: `Give the ${KIND_LABELS[untitled]} agreement and every section a title.` });
       return;
     }
+    const emptyLetter = LETTER_KINDS.find(id => !letterDrafts[id].title.trim() || !letterDrafts[id].body.trim());
+    if (emptyLetter) {
+      setMessage({ ok: false, text: `Give the ${LETTER_LABELS[emptyLetter]} a title and some wording.` });
+      return;
+    }
     if (!unsaved) {
       setMessage({ ok: true, text: 'Nothing to save: no changes.' });
       return;
@@ -85,6 +106,11 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
           setSaved(current => ({ ...current, templates: { ...current.templates, [id]: drafts[id] } }));
           done.push(`${KIND_LABELS[id]} template`);
         }
+        for (const id of changedLetters) {
+          await onSaveLetter(id, letterDrafts[id]);
+          setSaved(current => ({ ...current, letters: { ...current.letters, [id]: letterDrafts[id] } }));
+          done.push(LETTER_LABELS[id]);
+        }
         if (companyChanged) {
           await onSaveCompany(companyDraft);
           setSaved(current => ({ ...current, company: companyDraft }));
@@ -93,10 +119,23 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
       } catch (err) {
         throw new Error(`${done.length ? `Saved: ${done.join(', ')}. ` : ''}Not saved: ${reason(err)}`);
       }
-    }, `Saved: ${[...changedKinds.map(id => `${KIND_LABELS[id]} template`), ...(companyChanged ? ['company details'] : [])].join(', ')}.`);
+    }, `Saved: ${[...changedKinds.map(id => `${KIND_LABELS[id]} template`), ...changedLetters.map(id => LETTER_LABELS[id]), ...(companyChanged ? ['company details'] : [])].join(', ')}.`);
   };
   const reset = () => {
     setConfirmReset(false);
+    if (isLetter(selected)) {
+      const id = selected;
+      void run(async () => {
+        try {
+          await onResetLetter(id);
+        } catch (err) {
+          throw new Error(`Not reset: ${reason(err)}`);
+        }
+        setLetterDrafts(current => ({ ...current, [id]: defaultLetter(id) }));
+        setSaved(current => ({ ...current, letters: { ...current.letters, [id]: defaultLetter(id) } }));
+      }, `${LETTER_LABELS[id]} is back to the built-in draft.`);
+      return;
+    }
     void run(async () => {
       try {
         await onResetTemplate(kind);
@@ -111,11 +150,11 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Agreement type" className="inline-flex rounded-lg border border-gray-300 bg-white p-1">
-          {(['SEWABELI', 'SEWA_BIASA'] as const).map(id => (
-            <button key={id} type="button" aria-pressed={kind === id} onClick={() => setKind(id)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md ${kind === id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-              {KIND_LABELS[id]}{changedKinds.includes(id) && <span className="ml-1" title="Unsaved changes">•</span>}
+        <div role="group" aria-label="Template" className="inline-flex flex-wrap rounded-lg border border-gray-300 bg-white p-1">
+          {([...KINDS, ...LETTER_KINDS] as (AgreementKind | LetterKind)[]).map(id => (
+            <button key={id} type="button" aria-pressed={selected === id} onClick={() => setSelected(id)}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md ${selected === id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+              {nameOf(id)}{(changedKinds as string[]).concat(changedLetters).includes(id) && <span className="ml-1" title="Unsaved changes">•</span>}
             </button>
           ))}
         </div>
@@ -132,6 +171,22 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
       {message && <p role={message.ok ? 'status' : 'alert'} className={`text-sm rounded p-2 border ${message.ok ? 'text-emerald-800 bg-emerald-50 border-emerald-200' : 'text-rose-700 bg-rose-50 border-rose-200'}`}>{message.text}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+        {letter ? (
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+            <div>
+              <label htmlFor="letter-title" className={labelLook}>Letter title (printed boxed at the top)</label>
+              <input id="letter-title" className={inputLook} value={letter.title} onChange={event => setLetter({ title: event.target.value })} />
+            </div>
+            <div>
+              <label htmlFor="letter-body" className={labelLook}>Wording</label>
+              <textarea id="letter-body" rows={Math.min(40, Math.max(12, letter.body.split('\n').length + 2))} className={`${inputLook} font-mono text-[13px]`}
+                value={letter.body} onChange={event => setLetter({ body: event.target.value })} />
+            </div>
+            <p className="text-xs text-gray-500">{LETTER_HINT} The letterhead and footer are the same as the agreements'.</p>
+          </div>
+        </div>
+        ) : (
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <label htmlFor="agreement-title" className={labelLook}>Agreement title</label>
@@ -174,11 +229,12 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
             <Plus className="w-4 h-4" aria-hidden="true" /> Add section
           </button>
         </div>
+        )}
 
         <aside className="space-y-4 lg:sticky lg:top-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
             <h3 className="font-bold text-gray-900">Company details</h3>
-            <p className="text-xs text-gray-500">Printed on both agreement types.</p>
+            <p className="text-xs text-gray-500">Printed on both agreement types and every letter.</p>
             {COMPANY_FIELDS.map(({ key, label }) => (
               <div key={key}>
                 <label htmlFor={`company-${key}`} className={labelLook}>{label}</label>
@@ -188,9 +244,11 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
           </div>
           <details className="bg-white rounded-xl border border-gray-200 p-4">
             <summary className="font-bold text-gray-900 cursor-pointer">Fill-in fields</summary>
-            <p className="text-xs text-gray-500 mt-2 mb-2">Type these in any section; the generator fills them. Any other {'{{name}}'} becomes an extra box to fill.</p>
+            <p className="text-xs text-gray-500 mt-2 mb-2">{letter
+              ? 'Type these anywhere in the letter; the page fills them for the chosen driver. Anything else in braces prints as a line to write on.'
+              : <>Type these in any section; the generator fills them. Any other {'{{name}}'} becomes an extra box to fill.</>}</p>
             <ul className="text-xs space-y-1">
-              {PLACEHOLDERS.map(({ key, label }) => (
+              {(letter ? LETTER_PLACEHOLDERS : PLACEHOLDERS).map(({ key, label }) => (
                 <li key={key} className="flex justify-between gap-2"><code className="text-blue-700">{`{{${key}}}`}</code><span className="text-gray-500 text-right">{label}</span></li>
               ))}
             </ul>
@@ -199,12 +257,12 @@ export default function TemplateEditor({ templates, company, onSaveTemplate, onR
       </div>
       {confirmLeave && (
         <ConfirmDialog title="Leave without saving" confirmLabel="Leave without saving" onConfirm={onDone} onCancel={() => setConfirmLeave(false)}>
-          <p>You have unsaved changes{changedKinds.length ? ` to ${changedKinds.map(id => KIND_LABELS[id]).join(' and ')}` : ''}{companyChanged ? `${changedKinds.length ? ' and' : ' to'} the company details` : ''}. Leave and lose them?</p>
+          <p>You have unsaved changes{changedNames.length ? ` to ${changedNames.join(', ')}` : ''}{companyChanged ? `${changedNames.length ? ' and' : ' to'} the company details` : ''}. Leave and lose them?</p>
         </ConfirmDialog>
       )}
       {confirmReset && (
         <ConfirmDialog title="Use the built-in draft" confirmLabel="Use built-in draft" onConfirm={reset} onCancel={() => setConfirmReset(false)}>
-          <p>Replace the saved {KIND_LABELS[kind]} sections with the built-in draft? Your changes to this type are lost. Company details stay.</p>
+          <p>Replace the saved {nameOf(selected)} {isLetter(selected) ? 'wording' : 'sections'} with the built-in draft? Your changes to it are lost. Company details stay.</p>
         </ConfirmDialog>
       )}
     </div>

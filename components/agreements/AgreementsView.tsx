@@ -8,7 +8,8 @@ import { loadDeposits } from '../../services/depositsApi';
 import { receivedByKind } from '../../services/depositTotals';
 import { agreementApi, type AgreementSettings } from '../../services/agreements/api';
 import { blankInput, carForPlate, fromDriver, withDeposits } from '../../services/agreements/prefill';
-import { agreementFileName, downloadAgreementPdf } from '../../services/agreements/pdf';
+import { agreementFileName, downloadAgreementPdf, downloadLetterPdf } from '../../services/agreements/pdf';
+import { LETTER_KINDS, LETTER_LABELS, letterFileName, letterValues, type LetterKind } from '../../services/agreements/letters';
 import { downloadGrabLetterPdf, grabLetterFileName, grabLetterValues, otherLetterFileName } from '../../services/agreements/grabLetter';
 import {
   KIND_LABELS, agreementValues, extraPlaceholders, fieldLabel, longDate, missingFields, type AgreementInput,
@@ -18,6 +19,7 @@ import AgreementPreview from './AgreementPreview';
 import TemplateEditor from './TemplateEditor';
 import GrabLetterPreview from './GrabLetterPreview';
 import SearchPick from './SearchPick';
+import LetterPreview from './LetterPreview';
 
 interface AgreementsViewProps {
   drivers: Driver[];
@@ -86,9 +88,16 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const [downloading, setDownloading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const busy = useRef(false);
-  // Which paper this page makes: the rental agreement, the Grab authorization letter, or the one for other e-hailing operators
-  const [paper, setPaper] = useState<'agreement' | 'grab' | 'other'>('agreement');
+  // Which paper this page makes: the rental agreement, the Grab or other e-hailing operator's authorization letter, or a
+  // letter to the driver (cancellation, rent demand, CTOS letter of demand)
+  const [paper, setPaper] = useState<'agreement' | 'grab' | 'other' | LetterKind>('agreement');
   const [letterDate, setLetterDate] = useState(today);
+  // Typed for a letter to the driver; the reference starts as the driver's NRIC digits, as on the owner's own letters
+  const [letterRef, setLetterRef] = useState('');
+  const [payWithin, setPayWithin] = useState('7');
+  const [repairCost, setRepairCost] = useState('');
+  const [paintDentCost, setPaintDentCost] = useState('');
+  const demand = (LETTER_KINDS as string[]).includes(paper) ? paper as LetterKind : null;
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +120,12 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
 
   // Choosing a driver starts the signing-day details afresh, then fills them from the agreement last saved for them
   const [lastSaved, setLastSaved] = useState('');
+  const chosenNric = drivers.find(d => d.id === driverId)?.nric ?? '';
+  useEffect(() => {
+    setLetterRef(chosenNric.replace(/\D/g, ''));
+    setRepairCost('');
+    setPaintDentCost('');
+  }, [driverId, chosenNric]);
   useEffect(() => {
     setExtra({});
     setAgreementDate(today);
@@ -139,6 +154,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   }, [driverId, drivers]);
 
   const activeDrivers = useMemo(() => drivers.filter(d => !d.isDelisted).sort((a, b) => a.name.localeCompare(b.name)), [drivers]);
+  // Letters to a driver go to delisted drivers too: a cancelled or repossessed driver usually is
+  const allDrivers = useMemo(() => [...drivers].sort((a, b) => Number(!!a.isDelisted) - Number(!!b.isDelisted) || a.name.localeCompare(b.name)), [drivers]);
   const driver = drivers.find(d => d.id === driverId) ?? null;
 
   if (problem) {
@@ -155,6 +172,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     return (
       <TemplateEditor
         templates={settings.templates}
+        letters={settings.letters}
         company={settings.company}
         onSaveTemplate={async (kind, template) => {
           await api.saveTemplate(kind, template);
@@ -162,6 +180,18 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
         }}
         onResetTemplate={async kind => {
           await api.resetTemplate(kind);
+          await load();
+        }}
+        onSaveLetter={async (kind, letter) => {
+          try {
+            await api.saveLetter(kind, letter);
+          } catch (err) {
+            throw new Error(/check constraint/.test(reason(err)) ? 'run the agreement letters SQL file in Supabase first' : reason(err));
+          }
+          setSettings(current => current && { ...current, letters: { ...current.letters, [kind]: letter }, letterBuiltIn: { ...current.letterBuiltIn, [kind]: false } });
+        }}
+        onResetLetter={async kind => {
+          await api.resetLetter(kind);
           await load();
         }}
         onSaveCompany={async company => {
@@ -202,6 +232,24 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     ['the plate', letter.vehicle_plate], ['the registered owner (Fleet)', letter.owner_name], ["the owner's ID (Fleet)", letter.owner_ic_no],
     ['the date', letter.letter_date],
   ] as const).filter(([, value]) => !value).map(([label]) => label);
+  const days = Math.max(1, Math.min(90, Math.round(Number(payWithin)) || 7));
+  const demandValues = driver && demand ? letterValues({
+    driver, car: car ?? null, company: settings.company, letterDate, payWithinDays: days, reference: letterRef.trim(), repairCost, paintDentCost,
+  }) : null;
+  const demandMissing = demandValues ? ([
+    ["the driver's name", demandValues.customer_name], ["the driver's NRIC", demandValues.customer_nric], ['the plate', demandValues.vehicle_plate],
+    ['the date', demandValues.letter_date], ['the company name (Edit templates)', demandValues.company_name],
+  ] as const).filter(([, value]) => !value).map(([label]) => label) : [];
+  const downloadDemand = async () => {
+    if (!driver || !demand || !demandValues) return;
+    setResult(null);
+    try {
+      await downloadLetterPdf(settings.letters[demand], demandValues, letterFileName(demand, demandValues.vehicle_plate, demandValues.customer_name));
+      setResult({ ok: true, text: 'Downloaded. Nothing was saved.' });
+    } catch (err) {
+      setResult({ ok: false, text: `The PDF couldn't be made: ${reason(err)}.` });
+    }
+  };
   const downloadLetter = async () => {
     if (!driver) return;
     setResult(null);
@@ -245,7 +293,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
           <h2 className="text-lg font-bold text-gray-900">Agreements</h2>
           <p className="text-sm text-gray-500">Choose the driver, check and download. Details come from the driver's profile, Deposits and Fleet.</p>
           <div role="group" aria-label="Paper to make" className="mt-2 inline-flex flex-wrap rounded-lg border border-gray-300 bg-white p-0.5 text-sm font-semibold">
-            {([['agreement', 'Rental agreement'], ['grab', 'Grab authorization letter'], ['other', 'Other EHO authorize letter']] as const).map(([key, label]) => (
+            {([['agreement', 'Rental agreement'], ['grab', 'Grab authorization letter'], ['other', 'Other EHO authorize letter'], ...LETTER_KINDS.map(kind => [kind, LETTER_LABELS[kind]] as const)] as const).map(([key, label]) => (
               <button key={key} type="button" aria-pressed={paper === key} onClick={() => { setPaper(key); setResult(null); }}
                 className={`px-3 py-1.5 rounded-md ${paper === key ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{label}</button>
             ))}
@@ -270,9 +318,22 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             )}
           >
             <SearchPick id="agreement-driver" value={driverId} onChange={id => { setDriverId(id); setResult(null); }}
-              placeholder="Search a driver's name or plate" options={activeDrivers.map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}` }))} />
+              placeholder="Search a driver's name or plate" options={(demand ? allDrivers : activeDrivers).map(d => ({ id: d.id, label: `${d.name} · ${d.carPlate}${d.isDelisted ? ' · delisted' : ''}` }))} />
             {!driver ? (
               <p className="text-sm text-gray-500">New customer? Add them first with <b>Add Driver</b> and record their deposit or downpayment, then choose them here.</p>
+            ) : demand && demandValues ? (
+              <>
+                <Facts rows={[
+                  ['Name', demandValues.customer_name], ['NRIC', demandValues.customer_nric], ['Phone', demandValues.customer_phone],
+                  ['Agreement type', demandValues.agreement_type], ['Rent', demandValues.rent_amount && `${demandValues.rent_amount} per ${demandValues.rental_cycle}`],
+                  [`Rent owed at ${demandValues.arrears_as_of || 'the letter date'}`, demandValues.rent_arrears], ['Total owed', demandValues.total_debt],
+                ]} />
+                {driver.isDelisted && <p className="text-xs text-gray-500">Delisted{driver.delistDate ? ` on ${longDate(driver.delistDate)}` : ''}: rent owed is counted up to then.</p>}
+                {demand === 'BATAL_SEWABELI' && demandValues.agreement_type !== 'Sewa Beli' && (
+                  <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">This driver is on Sewa Biasa; this letter cancels a Sewa Beli agreement.</p>
+                )}
+                <p className="text-xs text-gray-500">Rent owed comes from their payments (no late charge). To change the driver's details, use <b>Edit driver</b>.</p>
+              </>
             ) : paper !== 'agreement' ? (
               <>
                 <Facts rows={[['Name', letter.driver_name], ['NRIC', letter.driver_ic_no]]} />
@@ -321,7 +382,35 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             </Step>
           )}
 
-          {driver && paper !== 'agreement' && (
+          {driver && demand && (
+            <Step number={3} title="Letter details">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="demand-letter-date" className={labelLook}>Date</label>
+                  <input id="demand-letter-date" type="date" className={inputLook} value={letterDate} onChange={event => setLetterDate(event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="demand-letter-ref" className={labelLook}>Reference no.</label>
+                  <input id="demand-letter-ref" className={inputLook} value={letterRef} onChange={event => setLetterRef(event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="demand-letter-days" className={labelLook}>Days to pay</label>
+                  <input id="demand-letter-days" type="number" min={1} max={90} className={inputLook} value={payWithin} onChange={event => setPayWithin(event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="demand-letter-repair" className={labelLook}>Repair cost (RM, optional)</label>
+                  <input id="demand-letter-repair" inputMode="decimal" className={inputLook} value={repairCost} onChange={event => setRepairCost(event.target.value)} />
+                </div>
+                <div>
+                  <label htmlFor="demand-letter-paint" className={labelLook}>Paint and dent cost (RM, optional)</label>
+                  <input id="demand-letter-paint" inputMode="decimal" className={inputLook} value={paintDentCost} onChange={event => setPaintDentCost(event.target.value)} />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">Costs typed here are added to the rent owed. Pay by: {demandValues?.pay_by_date || 'the letter date plus the days to pay'}.</p>
+            </Step>
+          )}
+
+          {driver && (paper === 'grab' || paper === 'other') && (
             <Step number={3} title="Letter details">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -357,7 +446,34 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
           )}
         </div>
 
-        {paper !== 'agreement' ? (
+        {demand ? (
+        <div className="space-y-3 xl:sticky xl:top-4">
+          <div className={card}>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4" aria-hidden="true" /> Check and download</h3>
+            {!driver ? (
+              <p className="text-sm text-gray-500">Choose a driver to see their letter.</p>
+            ) : demandMissing.length > 0 ? (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 flex gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>Still empty (they print as a blank line to write in): {demandMissing.join(', ')}.</span>
+              </p>
+            ) : (
+              <p className="text-sm text-emerald-700">Every box is filled in.</p>
+            )}
+            {result && <p role={result.ok ? 'status' : 'alert'} className={`text-sm ${result.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{result.text}</p>}
+            <button type="button" onClick={() => void downloadDemand()} disabled={!driver}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold py-2.5 rounded-lg shadow-sm flex items-center justify-center gap-2">
+              <Download className="w-4 h-4" aria-hidden="true" /> Download PDF
+            </button>
+            <p className="text-xs text-gray-500">The PDF is made on this computer and is not saved anywhere.{isAdmin ? ' Change the wording under Edit templates.' : ''}</p>
+          </div>
+          {driver && demandValues && (
+            <div className="max-h-[75vh] overflow-y-auto rounded-xl">
+              <LetterPreview letter={settings.letters[demand]} values={demandValues} />
+            </div>
+          )}
+        </div>
+        ) : paper !== 'agreement' ? (
         <div className="space-y-3 xl:sticky xl:top-4">
           <div className={card}>
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4" aria-hidden="true" /> Check and download</h3>
