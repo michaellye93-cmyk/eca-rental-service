@@ -48,7 +48,7 @@ test('the agreement reads like a formal agreement: parties paragraph, letterhead
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   drawAgreement(doc, defaultTemplate('SEWABELI'), { company_name: 'Fixture Rentals Sdn Bhd', company_reg_no: '000000-X', customer_name: 'Fixture Driver One', agreement_ref: 'FIX-001' });
   const text = doc.output();
-  for (const words of ['THIS AGREEMENT is made on', 'IN WITNESS WHEREOF', "Lessee's initials", "Lessor's initials", 'Ref. FIX-001']) {
+  for (const words of ['THIS AGREEMENT is made on', 'Signed by the parties on the date shown against each signature', "Lessee's initials", "Lessor's initials", 'Ref. FIX-001']) {
     assert.ok(text.includes(words), words);
   }
   // The company name heads every page
