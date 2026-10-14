@@ -123,7 +123,7 @@ const BELI_TERMS = para(
   '3. RENT AND PAYMENT',
   ...rentClauses(3),
   '3.6 Downpayment. The downpayment in Section A is required and paid before handover. It is not Rent, not a security deposit and not refundable.',
-  '3.7 Security deposit. Any security deposit in Section A is not Rent. The Lessor may use it for unpaid sums, loss or damage. If the Lessee moves to another vehicle from the Lessor, the deposit is held for the new agreement; otherwise any balance is refunded within 14 days after the Vehicle is returned and checked or the transfer under clause 7 is completed.',
+  '3.7 Security deposit. Any security deposit in Section A is not Rent. The Lessor may use it for unpaid sums, loss or damage. Any balance is refunded within 14 days after the Vehicle is returned and checked or the transfer under clause 7 is completed. If the Lessee moves to another vehicle from the Lessor, the deposit is settled before the new agreement starts and is not carried over to it.',
   useOfVehicle(4, 9),
   services(5),
   '6. PAYMENT PERFORMANCE AND OWNERSHIP REWARD',
