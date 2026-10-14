@@ -234,12 +234,16 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   ] as const).filter(([, value]) => !value).map(([label]) => label);
   const days = Math.max(1, Math.min(90, Math.round(Number(payWithin)) || 7));
   const demandValues = driver && demand ? letterValues({
-    driver, car: car ?? null, company: settings.company, letterDate, payWithinDays: days, reference: letterRef.trim(), repairCost, paintDentCost,
+    driver, car: car ?? null, company: settings.company, letterDate, today, payWithinDays: days, reference: letterRef.trim(), repairCost, paintDentCost,
   }) : null;
   const demandMissing = demandValues ? ([
     ["the driver's name", demandValues.customer_name], ["the driver's NRIC", demandValues.customer_nric], ['the plate', demandValues.vehicle_plate],
     ['the date', demandValues.letter_date], ['the company name (Edit templates)', demandValues.company_name],
+    ...(demand && settings.letters[demand].body.includes('{{company_bank_account}}') ? [['the payment account (Edit templates)', demandValues.company_bank_account] as const] : []),
+    ...(demand && settings.letters[demand].body.includes('{{company_phone}}') ? [['the company phone (Edit templates)', demandValues.company_phone] as const] : []),
   ] as const).filter(([, value]) => !value).map(([label]) => label) : [];
+  const nothingOwed = !!demandValues && demandValues.total_debt === 'RM 0.00';
+  const datedAhead = !!demand && letterDate > today;
   const downloadDemand = async () => {
     if (!driver || !demand || !demandValues) return;
     setResult(null);
@@ -294,7 +298,14 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
           <p className="text-sm text-gray-500">Choose the driver, check and download. Details come from the driver's profile, Deposits and Fleet.</p>
           <div role="group" aria-label="Paper to make" className="mt-2 inline-flex flex-wrap rounded-lg border border-gray-300 bg-white p-0.5 text-sm font-semibold">
             {([['agreement', 'Rental agreement'], ['grab', 'Grab authorization letter'], ['other', 'Other EHO authorize letter'], ...LETTER_KINDS.map(kind => [kind, LETTER_LABELS[kind]] as const)] as const).map(([key, label]) => (
-              <button key={key} type="button" aria-pressed={paper === key} onClick={() => { setPaper(key); setResult(null); }}
+              <button key={key} type="button" aria-pressed={paper === key} onClick={() => {
+                  setPaper(key);
+                  setResult(null);
+                  // The rent demand's discount table runs to 14 days, so its deadline does too
+                  if ((LETTER_KINDS as string[]).includes(key)) setPayWithin(key === 'TUNTUT_SEWA' ? '14' : '7');
+                  // Agreements and authorization letters are only for current drivers
+                  else if (driver?.isDelisted) setDriverId('');
+                }}
                 className={`px-3 py-1.5 rounded-md ${paper === key ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{label}</button>
             ))}
           </div>
@@ -328,7 +339,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
                   ['Agreement type', demandValues.agreement_type], ['Rent', demandValues.rent_amount && `${demandValues.rent_amount} per ${demandValues.rental_cycle}`],
                   [`Rent owed at ${demandValues.arrears_as_of || 'the letter date'}`, demandValues.rent_arrears], ['Total owed', demandValues.total_debt],
                 ]} />
-                {driver.isDelisted && <p className="text-xs text-gray-500">Delisted{driver.delistDate ? ` on ${longDate(driver.delistDate)}` : ''}: rent owed is counted up to then.</p>}
+                {driver.isDelisted && <p className="text-xs text-gray-500">Delisted{driver.delistDate ? ` on ${longDate(driver.delistDate)}` : ''}: no rent is charged after that day; payments since then are counted.</p>}
                 {demand === 'BATAL_SEWABELI' && demandValues.agreement_type !== 'Sewa Beli' && (
                   <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">This driver is on Sewa Biasa; this letter cancels a Sewa Beli agreement.</p>
                 )}
@@ -460,6 +471,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
             ) : (
               <p className="text-sm text-emerald-700">Every box is filled in.</p>
             )}
+            {nothingOwed && <p className="text-sm text-amber-800">This driver owes nothing at the letter date.</p>}
+            {datedAhead && <p className="text-sm text-amber-800">The letter is dated ahead: rent is counted only up to today.</p>}
             {result && <p role={result.ok ? 'status' : 'alert'} className={`text-sm ${result.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{result.text}</p>}
             <button type="button" onClick={() => void downloadDemand()} disabled={!driver}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-bold py-2.5 rounded-lg shadow-sm flex items-center justify-center gap-2">

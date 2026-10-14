@@ -76,7 +76,20 @@ test('a monthly driver owes months; a delisted driver owes only up to the delist
     driver: driver({ isDelisted: true, delistDate: '2026-08-20' }), car: null, company: COMPANY, letterDate: '2026-10-14', payWithinDays: 7, reference: '',
   });
   assert.equal(delisted.rent_arrears, 'RM 300.00'); // 3, 10, 17 Aug due; 2 paid
-  assert.equal(delisted.arrears_as_of, '20 Ogos 2026');
+  assert.equal(delisted.arrears_as_of, '14 Oktober 2026');
+  // A payment after the delist date still counts against what they owe
+  const paidLater = letterValues({
+    driver: driver({ isDelisted: true, delistDate: '2026-08-20', paymentHistory: [
+      { id: 'p1', amount: 300, date: '2026-08-03' } as Driver['paymentHistory'][number],
+      { id: 'p2', amount: 300, date: '2026-09-15' } as Driver['paymentHistory'][number],
+    ] }), car: null, company: COMPANY, letterDate: '2026-10-14', payWithinDays: 7, reference: '',
+  });
+  assert.equal(paidLater.rent_arrears, 'RM 300.00');
+  // A letter dated ahead counts rent only up to today, never rent not yet due
+  const ahead = letterValues({ driver: driver(), car: null, company: COMPANY, letterDate: '2027-01-01', today: '2026-10-14', payWithinDays: 7, reference: '' });
+  assert.equal(ahead.rent_arrears, 'RM 2,700.00');
+  assert.equal(ahead.arrears_as_of, '14 Oktober 2026');
+  assert.equal(ahead.letter_date, '1 Januari 2027');
   const withCosts = letterValues({
     driver: driver(), car: null, company: COMPANY, letterDate: '2026-10-14', payWithinDays: 7, reference: '', repairCost: '1,000', paintDentCost: 'RM 300.50',
   });
@@ -109,6 +122,7 @@ test('the three built-in letters are in Malay, name their purpose, and use only 
     assert.ok(LETTER_LABELS[kind]);
     for (const pattern of words[kind]) assert.match(`${letter.title}\n${letter.body}`, pattern, `${kind}: ${pattern}`);
     for (const key of placeholdersIn(`${letter.title}\n${letter.body}`)) assert.ok(known.has(key), `${kind}: {{${key}}} is not filled by the letter`);
+    assert.doesNotMatch(letter.body, /^>/m, 'no quoted clause: signed agreements differ');
     assert.doesNotMatch(letter.body, /\d{6,}/, 'company numbers and accounts come from the database, never the draft');
   }
 });

@@ -68,6 +68,8 @@ export interface LetterInput {
   car: { plateNumber: string; make: string; model: string } | null;
   company: Partial<CompanyDetails>;
   letterDate: string;
+  /** Kuala Lumpur's date (YYYY-MM-DD): rent is never counted past it. */
+  today?: string;
   payWithinDays: number;
   reference: string;
   /** Costs added to the rent owed, typed for this letter (e.g. after the car came back damaged). */
@@ -112,13 +114,14 @@ export const LETTER_PLACEHOLDERS: { key: string; label: string }[] = [
 
 /**
  * Every value for one letter. The rent owed is the rent schedule's (calculateDriverMetrics: rent only, no late charge)
- * as at the end of the letter date, or of the delist date for a delisted driver, whose rent stopped then.
+ * as at the end of the letter date, counting every payment up to then (a delisted driver's rent already stops at the
+ * delist date). A letter dated ahead counts only up to `today`, so it never asks for rent not yet due.
  */
 export const letterValues = (input: LetterInput): Record<string, string> => {
   const { driver, car, company } = input;
   const letterDay = parts(input.letterDate) ? input.letterDate : '';
-  const delisted = driver.isDelisted && parts(driver.delistDate ?? '') && (!letterDay || driver.delistDate! < letterDay) ? driver.delistDate! : '';
-  const asOf = delisted || letterDay;
+  const today = input.today && parts(input.today) ? input.today : '';
+  const asOf = today && (!letterDay || letterDay > today) ? today : letterDay;
   const asOfDate = asOf ? new Date(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)) - 1, Number(asOf.slice(8, 10)), 12) : undefined;
   const metrics = calculateDriverMetrics(driver, asOfDate);
   const arrears = Math.max(0, metrics.principalOutstanding);
@@ -192,8 +195,7 @@ const DEFAULT_LETTERS: Record<LetterKind, LetterTemplate> = {
       recipient,
       'Tuan/Puan,',
       '1. Kami merujuk kepada Perjanjian Sewa Beli bertarikh {{start_date}} di antara {{company_name}} ("Syarikat") dan tuan/puan bagi kenderaan {{vehicle_make_model}} bernombor pendaftaran {{vehicle_plate}} ("Kenderaan"), dengan sewa sebanyak {{rent_amount}} se{{rental_cycle}}.',
-      '2. Sewa di bawah Perjanjian tersebut telah tidak dibayar melebihi empat belas (14) hari selepas tarikh ia sepatutnya dibayar. Perjanjian memberi hak kepada Syarikat untuk mengambil balik Kenderaan apabila perkara ini berlaku:',
-      '> Sekiranya sewa atau mana-mana bahagiannya tidak dibayar selama empat belas (14) hari selepas tarikh ia sepatutnya dibayar, sama ada dituntut secara rasmi atau tidak, Pemberi Sewa berhak mengambil balik Kenderaan.',
+      '2. Sewa di bawah Perjanjian tersebut telah tidak dibayar melebihi empat belas (14) hari selepas tarikh ia sepatutnya dibayar, dan tunggakan itu tidak dijelaskan walaupun tuan/puan telah diberi notis. Ini merupakan pelanggaran Perjanjian yang memberi hak kepada Syarikat untuk menamatkan Perjanjian dan mengambil balik Kenderaan mengikut terma-terma Perjanjian.',
       '3. Oleh yang demikian, dengan surat ini Syarikat memaklumkan bahawa Perjanjian Sewa Beli bagi Kenderaan {{vehicle_plate}} telah DIBATALKAN dan Kenderaan telah DITARIK BALIK. Semua hak tuan/puan di bawah Perjanjian, termasuk hak untuk memiliki Kenderaan, turut tamat. Sewa yang telah dibayar tidak akan dikembalikan.',
       '4. Walau bagaimanapun, pembatalan ini tidak menghapuskan hutang tuan/puan. Jumlah yang masih perlu dijelaskan kepada Syarikat ialah {{debt_breakdown}}. Jumlah ini termasuk sewa tertunggak sehingga {{arrears_as_of}}.',
       '5. Tuan/puan diminta menjelaskan jumlah {{total_debt}} tersebut secara sekali gus (lump sum), atau melalui kaedah lain yang dipersetujui oleh kedua-dua pihak, ke akaun {{company_bank_account}}. Sila hubungi Syarikat di {{company_phone}} untuk berbincang.',
