@@ -113,7 +113,7 @@ const BELI_TERMS = para(
   `1.1 Rental only. The Rent is a market rent for using the Vehicle and the Lessor's services under this Agreement. The Lessee builds up no ownership or equity, and nothing is refunded if the Ownership Reward is not earned.\nSewa sahaja. Sewa ialah sewa pasaran untuk menggunakan Kenderaan dan perkhidmatan Pemberi Sewa di bawah Perjanjian ini. Penyewa tidak memperoleh apa-apa hak milik atau ekuiti, dan tiada bayaran dikembalikan jika Ganjaran Pemilikan tidak diperoleh.\n${INITIALS}`,
   `1.2 Ownership Reward. If the Lessee meets every condition in clause 6, the Lessor gives the Lessee an option to buy the Vehicle for RM1 by a separate Completion Letter (clause 7). Until then the Lessee has no right to the Vehicle beyond this lease.\nGanjaran Pemilikan. Jika Penyewa memenuhi setiap syarat dalam klausa 6, Pemberi Sewa memberi Penyewa opsyen untuk membeli Kenderaan dengan harga RM1 melalui Surat Penyelesaian yang berasingan (klausa 7). Sehingga itu, Penyewa tiada hak ke atas Kenderaan selain sewaan ini.\n${INITIALS}`,
   `1.3 Paying late is not enough. Settling everything in the end does not by itself earn the Ownership Reward. At least {{min_on_time_rentals}} of the {{duration}} Rent payments must be On-Time, as clause 6 requires.\nBayar lewat tidak mencukupi. Menjelaskan semua bayaran pada akhirnya tidak dengan sendirinya melayakkan Ganjaran Pemilikan. Sekurang-kurangnya {{min_on_time_rentals}} daripada {{duration}} bayaran Sewa mesti Tepat Pada Masa, seperti yang dikehendaki oleh klausa 6.\n${INITIALS}`,
-  `1.4 Losing the reward. Ending early, repossession for non-payment or another serious breach ends the right to the Ownership Reward. Ending early also carries the early-termination fee in clause 9.6.\nKehilangan ganjaran. Penamatan awal, penarikan balik Kenderaan kerana tidak membayar atau pelanggaran serius lain menamatkan hak kepada Ganjaran Pemilikan. Penamatan awal juga dikenakan fi penamatan awal dalam klausa 9.6.\n${INITIALS}`,
+  `1.4 Losing the reward. Ending early, repossession for non-payment or another serious breach ends the right to the Ownership Reward. Ending early without notice also carries the early-termination fee in clause 9.6.\nKehilangan ganjaran. Penamatan awal, penarikan balik Kenderaan kerana tidak membayar atau pelanggaran serius lain menamatkan hak kepada Ganjaran Pemilikan. Penamatan awal tanpa notis juga dikenakan fi penamatan awal dalam klausa 9.6.\n${INITIALS}`,
   '2. THE LEASE',
   '2.1 Fixed period. The Lessor leases the Vehicle in Section D to the Lessee from the Commencement Date for the Lease Period, both stated in Section A. The lease ends on the Scheduled Maturity Date in Section A unless it ends earlier under clause 9 or continues under clause 2.5.',
   '2.2 Ownership stays with the owner. The Vehicle belongs to its registered owner (Section D) or financier, which is the Lessor or has authorised the Lessor to lease it, unless and until it is sold to the Lessee under clause 7. The Lessee may not sell, pledge or claim it.',
@@ -122,8 +122,8 @@ const BELI_TERMS = para(
   '2.5 After the Scheduled Maturity Date. If the Lessee keeps the Vehicle after the Scheduled Maturity Date, this Agreement continues {{rental_cycle}} by {{rental_cycle}} on the same terms, and Rent stays payable, until the Vehicle is returned or the Lessee takes up the option under clause 7.2.',
   '3. RENT AND PAYMENT',
   ...rentClauses(3),
-  '3.6 Downpayment. Any downpayment in Section A is paid before handover. It is not rent, not a security deposit and not refundable.',
-  '3.7 Security deposit. Any security deposit in Section A is not Rent. The Lessor may use it for unpaid sums, loss or damage, and refunds any balance within 14 days after the Vehicle is returned and checked or the transfer under clause 7 is completed.',
+  '3.6 Downpayment. The downpayment in Section A is required and paid before handover. It is not Rent, not a security deposit and not refundable.',
+  '3.7 Security deposit. Any security deposit in Section A is not Rent. The Lessor may use it for unpaid sums, loss or damage. If the Lessee moves to another vehicle from the Lessor, the deposit is held for the new agreement; otherwise any balance is refunded within 14 days after the Vehicle is returned and checked or the transfer under clause 7 is completed.',
   useOfVehicle(4, 9),
   services(5),
   '6. PAYMENT PERFORMANCE AND OWNERSHIP REWARD',
@@ -149,8 +149,8 @@ const BELI_TERMS = para(
   '7.6 No cash value. The Ownership Reward has no cash value, cannot be exchanged for money and cannot be transferred to anyone else.',
   accidents(8),
   ...defaultAndRecovery(9, 'DEFAULT, RECOVERY AND ENDING THE LEASE'),
-  '9.5 Ending early. The Lessee may end the lease by giving one month\'s written notice, returning the Vehicle, paying all sums due (including the fee in clause 9.6) and completing the return inspection. Ending early ends the Ownership Reward; Rent already paid is not refunded.',
-  '9.6 Early-termination fee. If the Lessee ends the lease early, or the Lessor ends it for default, the Lessee pays an early-termination fee equal to four weeks\' Rent (for monthly Rent, one month\'s Rent), on top of arrears and the costs in clause 9.3. The fee is charged once. The parties agree it is a reasonable estimate of the Lessor\'s loss from the lease ending early (re-letting, the Vehicle standing idle and administration).',
+  '9.5 Ending early. The Lessee may end the lease by giving one month\'s written notice, returning the Vehicle, paying all sums due and completing the return inspection. Ending early ends the Ownership Reward; Rent already paid is not refunded.',
+  '9.6 Early-termination fee. If the Lessee ends the lease early without the notice in clause 9.5, or the Lessor ends it for default, the Lessee pays an early-termination fee of one month\'s Rent (four weeks\' Rent if Rent is weekly), charged once, on top of arrears and the costs in clause 9.3. The parties agree it is a reasonable estimate of the Lessor\'s loss from the lease ending early (re-letting, the Vehicle standing idle and administration).',
   '9.7 Return condition. The Vehicle, keys, documents and accessories must be returned in the condition recorded at handover, apart from fair wear and tear.',
   general(10),
 );
@@ -164,7 +164,7 @@ const BIASA_TERMS = para(
   '2.2 Late charge. Overdue Rent carries a late charge of 18% a year, added daily on the unpaid amount (including earlier late charges) from the second day after the due day until paid.',
   '2.3 Records and review. The Lessor\'s payment records are conclusive unless clearly wrong; the Rent may be reviewed once a year on 30 days\' written notice.',
   '3. DEPOSIT',
-  '3.1 Refund or deduction. The deposit is not Rent. Within 14 days after the Vehicle is returned and checked, the Lessor refunds it less anything owed (unpaid Rent and charges, summonses, damage, cleaning and recovery costs). If the Vehicle is returned without the notice in clause 5.1, abandoned or recovered for default, the Lessor also deducts one week\'s Rent (a quarter of a month\'s Rent if paid monthly).',
+  '3.1 Refund or forfeit. The deposit is not Rent. Within 14 days after the Vehicle is returned and checked, the Lessor refunds it less anything owed (unpaid Rent and charges, summonses, damage, cleaning and recovery costs). The whole deposit is forfeited if the Vehicle is returned without the notice in clause 5.1, abandoned, or recovered for non-payment or another default.',
   '4. USE AND CARE',
   '4.1 Lawful use. Use the Vehicle only for lawful e-hailing work and personal use, keep all licences and platform approvals valid, and let no one else drive it without the Lessor\'s written approval. No sub-letting ("sewa atas sewa"), modifying the Vehicle or tampering with the odometer or GPS tracker; the Lessee consents to GPS tracking, including for recovery.',
   '4.2 Costs. The Lessee pays tolls, fuel, parking, summonses and fines during the rental and brings the Vehicle in for servicing when asked; the Lessor renews road tax and insurance and arranges servicing.',
@@ -194,7 +194,7 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
     ...(kind === 'SEWABELI'
       ? ['Total scheduled rent | {{aggregate_rental}}', 'Downpayment | {{downpayment_amount}}', 'Security deposit | {{deposit_amount}}',
         'Ownership Reward | Option to buy the Vehicle for RM1 if at least {{min_on_time_rentals}} of the {{duration}} Rent payments are On-Time and the other conditions in Section B, clause 6 are met',
-        "Early-termination fee | Four weeks' Rent; one month's Rent for monthly Rent (Section B, clause 9.6)"]
+        "Early-termination fee | One month's Rent (four weeks' Rent if weekly) if ended early without notice or for default (Section B, clause 9.6)"]
       : ['Deposit (refundable) | {{deposit_amount}}']),
     'Permitted use | E-hailing and the Lessee\'s personal use',
     'Payment account | {{company_bank_account}}',
