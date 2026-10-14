@@ -89,7 +89,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const busy = useRef(false);
   // Which paper this page makes: the rental agreement, the Grab or other e-hailing operator's authorization letter, or a
-  // letter to the driver (cancellation, rent demand, CTOS letter of demand)
+  // letter to the driver (cancellation with the debt demand, CTOS letter of demand)
   const [paper, setPaper] = useState<'agreement' | 'grab' | 'other' | LetterKind>('agreement');
   const [letterDate, setLetterDate] = useState(today);
   // Typed for a letter to the driver; the reference starts as the driver's NRIC digits, as on the owner's own letters
@@ -301,7 +301,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
               <button key={key} type="button" aria-pressed={paper === key} onClick={() => {
                   setPaper(key);
                   setResult(null);
-                  // The cancellation and rent demand carry a discount table that runs to 14 days, so their deadline does too
+                  // The cancellation letter carries a discount table that runs to 14 days, so its deadline does too
                   if ((LETTER_KINDS as string[]).includes(key)) setPayWithin(key === 'CTOS_LOD' ? '7' : '14');
                   // Agreements and authorization letters are only for current drivers
                   else if (driver?.isDelisted) setDriverId('');

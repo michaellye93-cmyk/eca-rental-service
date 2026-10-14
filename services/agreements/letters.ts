@@ -3,15 +3,14 @@ import { calculateDriverMetrics, isSewaBiasa } from '../../utils.ts';
 import { longDate, ringgit, type CompanyDetails } from './template.ts';
 
 /**
- * The letters the Agreements page makes for a driver: cancelling a Sewa Beli agreement, demanding unpaid rent, and the
+ * The letters the Agreements page makes for a driver: cancelling a Sewa Beli agreement while demanding the debt, and the
  * final letter of demand warning of a CTOS listing. Each is one editable text (Agreements -> Edit templates), filled from
  * the driver, Fleet, the company details and the rent schedule. The PDF is made in the browser and never stored.
  */
-export type LetterKind = 'BATAL_SEWABELI' | 'TUNTUT_SEWA' | 'CTOS_LOD';
-export const LETTER_KINDS: LetterKind[] = ['BATAL_SEWABELI', 'TUNTUT_SEWA', 'CTOS_LOD'];
+export type LetterKind = 'BATAL_SEWABELI' | 'CTOS_LOD';
+export const LETTER_KINDS: LetterKind[] = ['BATAL_SEWABELI', 'CTOS_LOD'];
 export const LETTER_LABELS: Record<LetterKind, string> = {
   BATAL_SEWABELI: 'Surat Batal Sewa Beli',
-  TUNTUT_SEWA: 'Surat Tuntut Sewa',
   CTOS_LOD: 'CTOS LOD',
 };
 
@@ -206,24 +205,6 @@ const DEFAULT_LETTERS: Record<LetterKind, LetterTemplate> = {
       ),
       '5. Caj lewat bayar dan fi penamatan awal di bawah Perjanjian tidak akan dituntut jika jumlah di atas dijelaskan mengikut jadual. Pelan bayaran ansuran boleh dipohon dengan menghubungi Syarikat di {{company_phone}}.',
       '6. Sekiranya tiada bayaran atau maklum balas dalam tempoh {{pay_within_days}} hari dari tarikh surat ini (selewat-lewatnya {{pay_by_date}}), kes tuan/puan akan dirujuk kepada ejen kutipan hutang atau peguam untuk tindakan undang-undang, termasuk caj lewat bayar, fi penamatan awal dan kos, tanpa notis lanjut.',
-    ),
-  },
-  TUNTUT_SEWA: {
-    title: 'NOTIS TUNTUTAN BAYARAN HUTANG SEWA KERETA',
-    body: para(
-      recipient,
-      'Tuan/Puan,',
-      '1. Kami merujuk kepada Perjanjian {{agreement_type}} ("Perjanjian") yang bermula pada {{start_date}} di antara {{company_name}} ("Syarikat", iaitu Pemberi Sewa) dan tuan/puan bagi kenderaan {{vehicle_make_model}} bernombor pendaftaran {{vehicle_plate}} ("Kenderaan"), dengan sewa sebanyak {{rent_amount}} se{{rental_cycle}}.',
-      '2. Setakat {{arrears_as_of}}, tuan/puan masih berhutang {{debt_breakdown}}. Jumlah ini belum termasuk caj lewat bayar di bawah Perjanjian, yang Syarikat tidak akan menuntut jika jumlah di bawah dijelaskan mengikut jadual.',
-      '3. Dengan ini kami menuntut tuan/puan menjelaskan hutang tersebut dengan segera ke akaun {{company_bank_account}} dan menghantar bukti bayaran kepada kami. Sebagai galakan, kami menawarkan diskaun sekiranya bayaran penuh dibuat mengikut jadual di bawah, dikira dari tarikh surat ini:',
-      rows(
-        'JUMLAH HUTANG: {{total_debt}}',
-        'Bayar dalam 7 hari | {{amount_7_days}} | Diskaun 10%',
-        'Bayar dalam 14 hari | {{amount_14_days}} | Diskaun 5%',
-        'Bayar selepas 14 hari | {{total_debt}} | Tiada diskaun',
-      ),
-      '4. Surat ini juga merupakan notis keingkaran bertulis di bawah Perjanjian. Sekiranya tiada bayaran atau maklum balas diterima dalam tempoh {{pay_within_days}} hari dari tarikh surat ini (iaitu selewat-lewatnya {{pay_by_date}}), Syarikat berhak menamatkan Perjanjian dan mengambil balik Kenderaan mengikut Perjanjian, dan akan melantik ejen kutipan hutang untuk menuntut keseluruhan hutang tertunggak berserta kos, tanpa notis lanjut.',
-      '5. Pelan bayaran ansuran boleh dipohon dengan menghubungi Syarikat di {{company_phone}}. Sekiranya bayaran telah dibuat, sila abaikan notis ini dan kemukakan bukti bayaran kepada kami. Sekian, harap maklum.',
     ),
   },
   CTOS_LOD: {

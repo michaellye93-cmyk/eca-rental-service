@@ -110,11 +110,10 @@ test('nothing owed prints RM 0.00, and a missing value stays empty (it prints as
 });
 
 test('the three built-in letters are in Malay, name their purpose, and use only placeholders the letter fills', () => {
-  assert.deepEqual(LETTER_KINDS, ['BATAL_SEWABELI', 'TUNTUT_SEWA', 'CTOS_LOD']);
+  assert.deepEqual(LETTER_KINDS, ['BATAL_SEWABELI', 'CTOS_LOD'], 'the cancellation letter also makes the demand, so there is no separate demand letter');
   const known = new Set(LETTER_PLACEHOLDERS.map(p => p.key));
   const words: Record<string, RegExp[]> = {
     BATAL_SEWABELI: [/PEMBATALAN/i, /Sewa Beli/, /\{\{total_debt\}\}/, /\{\{vehicle_plate\}\}/, /\{\{amount_7_days\}\}/, /\{\{pay_by_date\}\}/],
-    TUNTUT_SEWA: [/TUNTUTAN/i, /\{\{total_debt\}\}/, /\{\{pay_by_date\}\}/],
     CTOS_LOD: [/CTOS/, /\{\{total_debt\}\}/, /\{\{pay_by_date\}\}/],
   };
   for (const kind of LETTER_KINDS) {
@@ -130,13 +129,13 @@ test('the three built-in letters are in Malay, name their purpose, and use only 
 test('a saved letter is used when sound; anything else falls back to the built-in draft', () => {
   assert.deepEqual(letterFromStored('CTOS_LOD', { title: 'T', body: 'B' }), { title: 'T', body: 'B' });
   assert.deepEqual(letterFromStored('CTOS_LOD', { title: 'T' }), defaultLetter('CTOS_LOD'));
-  assert.deepEqual(letterFromStored('TUNTUT_SEWA', null), defaultLetter('TUNTUT_SEWA'));
+  assert.deepEqual(letterFromStored('BATAL_SEWABELI', null), defaultLetter('BATAL_SEWABELI'));
 });
 
 test('a letter prints on the agreement letterhead and footer, without the agreement initials line', () => {
   const values = { ...COMPANY, customer_name: 'Fixture Driver One', total_debt: 'RM 2,700.00', letter_ref: 'ECA/FIX/001', letter_date: '14 Oktober 2026' };
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  drawLetter(doc, defaultLetter('TUNTUT_SEWA'), values);
+  drawLetter(doc, defaultLetter('BATAL_SEWABELI'), values);
   const text = doc.output();
   for (const words of ['Fixture Rentals Sdn Bhd', 'Company No. 000000-X', 'Private & Confidential', 'Page 1 of', 'RM 2,700.00', 'Fixture Driver One', 'ECA/FIX/001', '14 Oktober 2026']) {
     assert.ok(text.includes(words), words);
@@ -182,12 +181,13 @@ test('letters are saved under their own key and reset by removing it; a letter n
   const api = agreementApi({ from: (table: string) => { calls.push({ method: 'from', args: [table] }); return builder; } });
   const settings = await api.load();
   assert.equal(settings.letters.CTOS_LOD.title, 'Fixture CTOS');
-  assert.deepEqual(settings.letters.TUNTUT_SEWA, defaultLetter('TUNTUT_SEWA'));
+  assert.deepEqual(settings.letters.BATAL_SEWABELI, defaultLetter('BATAL_SEWABELI'));
   assert.equal(settings.letterBuiltIn.CTOS_LOD, false);
   assert.equal(settings.letterBuiltIn.BATAL_SEWABELI, true);
+  assert.equal(Object.keys(settings.letters).length, 2);
   calls.length = 0;
-  await api.saveLetter('TUNTUT_SEWA', { title: 'T', body: 'B' });
-  assert.equal((calls.find(c => c.method === 'upsert')!.args[0] as { key: string }).key, 'letter:TUNTUT_SEWA');
+  await api.saveLetter('BATAL_SEWABELI', { title: 'T', body: 'B' });
+  assert.equal((calls.find(c => c.method === 'upsert')!.args[0] as { key: string }).key, 'letter:BATAL_SEWABELI');
   calls.length = 0;
   await api.resetLetter('BATAL_SEWABELI');
   assert.deepEqual(calls.map(c => c.method), ['from', 'delete', 'eq']);
