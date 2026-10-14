@@ -82,3 +82,15 @@ test('the company logo image heads every page when given; without it the drawn m
   drawAgreement(without, defaultTemplate('SEWA_BIASA'), {});
   assert.ok(!without.output().includes('/Subtype /Image'));
 });
+
+test('the title, opening paragraphs and whole Schedule fit on the first page, even with a long address', () => {
+  for (const kind of ['SEWA_BIASA', 'SEWABELI'] as const) {
+    const template = defaultTemplate(kind);
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    drawAgreement(doc, { ...template, sections: [template.sections[0]] }, {
+      customer_address: 'No. 12, Jalan Fixture Panjang 3/45, Taman Fixture Indah, 43200 Fixture Town, Selangor Darul Ehsan',
+      company_bank_account: 'Fixture Bank 0000000000 (Fixture Rentals Sdn Bhd)',
+    });
+    assert.equal(doc.getNumberOfPages(), 1, `${kind} Schedule spills onto a second page`);
+  }
+});

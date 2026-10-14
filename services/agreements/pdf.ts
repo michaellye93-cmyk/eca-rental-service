@@ -217,11 +217,11 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
           // A one-cell line is a sub-heading across the table
           font('bold', 9, NAVY);
           const lines = wrap(fill(cells[0]).toUpperCase(), WIDTH - 6);
-          const height = lines.length * LINE + 3;
+          const height = lines.length * LINE + 2;
           room(height + 7);
           doc.setFillColor(...BAND);
           doc.rect(MARGIN, y, WIDTH, height, 'FD');
-          doc.text(lines, MARGIN + 3, y + 4.6, { lineHeightFactor: 1.3 });
+          doc.text(lines, MARGIN + 3, y + 4.1, { lineHeightFactor: 1.3 });
           y += height;
           continue;
         }
@@ -229,15 +229,15 @@ export function drawAgreement(doc: jsPDF, template: AgreementTemplate, values: R
         const label = wrap(fill(cells[0]), labelW - 6);
         font('normal', 9.3);
         const value = wrap(fill(cells.slice(1).join(' | ')), WIDTH - labelW - 6);
-        const height = Math.max(label.length, value.length) * LINE + 3;
+        const height = Math.max(label.length, value.length) * LINE + 2;
         room(height);
         doc.setFillColor(...SHADE);
         doc.rect(MARGIN, y, labelW, height, 'FD');
         doc.rect(MARGIN + labelW, y, WIDTH - labelW, height);
         font('bold', 9.3, [55, 65, 81]);
-        doc.text(label, MARGIN + 3, y + 4.6, { lineHeightFactor: 1.3 });
+        doc.text(label, MARGIN + 3, y + 4.1, { lineHeightFactor: 1.3 });
         font('normal', 9.3);
-        doc.text(value, MARGIN + labelW + 3, y + 4.6, { lineHeightFactor: 1.3 });
+        doc.text(value, MARGIN + labelW + 3, y + 4.1, { lineHeightFactor: 1.3 });
         y += height;
       }
       y += 4;

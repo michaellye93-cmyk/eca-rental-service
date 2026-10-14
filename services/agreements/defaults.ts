@@ -193,8 +193,8 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
     `${kind === 'SEWABELI' ? 'Scheduled maturity date' : 'End date'} | {{end_date}}`,
     ...(kind === 'SEWABELI'
       ? ['Total scheduled rent | {{aggregate_rental}}', 'Downpayment | {{downpayment_amount}}', 'Security deposit | {{deposit_amount}}',
-        'Ownership Reward | Option to buy the Vehicle for RM1 if at least {{min_on_time_rentals}} of the {{duration}} Rent payments are On-Time and the other conditions in Section B, clause 6 are met',
-        "Early-termination fee | One month's Rent (four weeks' Rent if weekly) if ended early without notice or for default (Section B, clause 9.6)"]
+        'Ownership Reward | Option to buy the Vehicle for RM1 if {{min_on_time_rentals}} of the {{duration}} Rent payments are On-Time (Section B, clause 6)',
+        "Early-termination fee | One month's Rent, four weeks' if weekly (Section B, clause 9.6)"]
       : ['Deposit (refundable) | {{deposit_amount}}']),
     'Permitted use | E-hailing and the Lessee\'s personal use',
     'Payment account | {{company_bank_account}}',
@@ -203,7 +203,7 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
 
 const preamble = (verb: string) => para(
   'THIS AGREEMENT is made on {{agreement_date}} BETWEEN {{company_name}} (Company No. {{company_reg_no}}) (the "Lessor" / "Pemberi Sewa") AND {{customer_name}} (NRIC / Passport No. {{customer_nric}}) of {{customer_address}} (the "Lessee" / "Penyewa").',
-  `The Lessor agrees to ${verb} the vehicle described in Section D (the "Vehicle" / "Kenderaan") to the Lessee, and the Lessee agrees to take it, on the terms in Sections A to D of this Agreement. "Rent" ("Sewa") means the rent per {{rental_cycle}} stated in Section A. Other capitalised terms have the meaning given in Section A or where they first appear.`,
+  `The Lessor agrees to ${verb} the vehicle in Section D (the "Vehicle" / "Kenderaan") to the Lessee on the terms in Sections A to D. "Rent" ("Sewa") is the rent in Section A; other capitalised terms are defined in Section A or where they first appear.`,
 );
 
 export const DEFAULT_SECTIONS: Record<AgreementKind, { title: string; preamble: string; sections: AgreementSection[] }> = {
