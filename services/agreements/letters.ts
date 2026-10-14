@@ -190,22 +190,22 @@ const recipient = rows(
  */
 const DEFAULT_LETTERS: Record<LetterKind, LetterTemplate> = {
   BATAL_SEWABELI: {
-    title: 'NOTIS PEMBATALAN PERJANJIAN SEWA BELI',
+    title: 'NOTIS PEMBATALAN SEWA BELI DAN TUNTUTAN HUTANG',
     body: para(
       recipient,
       'Tuan/Puan,',
-      '1. Kami merujuk kepada Perjanjian Pajakan Kenderaan (Sewa Beli) ("Perjanjian") yang bermula pada {{start_date}} di antara {{company_name}} ("Syarikat") dan tuan/puan bagi kenderaan {{vehicle_make_model}} bernombor pendaftaran {{vehicle_plate}} ("Kenderaan"), dengan sewa sebanyak {{rent_amount}} se{{rental_cycle}}.',
-      '2. Sewa tidak dibayar melebihi empat belas (14) hari selepas tarikh ia sepatutnya dibayar dan tidak dijelaskan dalam tempoh notis keingkaran bertulis kami. Ini merupakan keingkaran yang memberi hak kepada Syarikat untuk menamatkan Perjanjian dan mengambil balik Kenderaan.',
-      '3. Oleh itu, Perjanjian Sewa Beli bagi Kenderaan {{vehicle_plate}} adalah DIBATALKAN mulai tarikh surat ini. Kenderaan hendaklah diserahkan kepada Syarikat dengan segera jika belum ditarik balik. Semua hak tuan/puan di bawah Perjanjian, termasuk hak kepada Ganjaran Pemilikan (opsyen membeli Kenderaan dengan harga RM1), turut tamat.',
-      '4. Pembatalan ini tidak menghapuskan hutang tuan/puan, iaitu {{debt_breakdown}} (sewa tertunggak sehingga {{arrears_as_of}}). Caj lewat bayar dan fi penamatan awal tidak dituntut jika jumlah ini dijelaskan mengikut jadual di bawah; jika tidak, Syarikat berhak menuntutnya.',
-      '5. Kami menuntut tuan/puan menjelaskan jumlah {{total_debt}} ke akaun {{company_bank_account}} dan menghantar bukti bayaran kepada kami. Diskaun diberi sekiranya bayaran penuh dibuat mengikut jadual di bawah, dikira dari tarikh surat ini:',
+      '1. Kami merujuk kepada Perjanjian Sewa Beli ("Perjanjian") yang bermula pada {{start_date}} di antara {{company_name}} ("Syarikat") dan tuan/puan bagi kenderaan {{vehicle_make_model}} bernombor pendaftaran {{vehicle_plate}} ("Kenderaan").',
+      '2. Sewa tidak dibayar melebihi empat belas (14) hari selepas tarikh matang walaupun peringatan bertulis (termasuk melalui WhatsApp) telah diberi. Ini keingkaran yang memberi hak kepada Syarikat untuk menamatkan Perjanjian dan mengambil balik Kenderaan.',
+      '3. PEMBATALAN. Perjanjian ini DIBATALKAN mulai tarikh surat ini. Kenderaan hendaklah diserahkan kepada Syarikat dengan segera jika belum ditarik balik. Semua hak tuan/puan di bawah Perjanjian, termasuk Ganjaran Pemilikan (opsyen membeli Kenderaan dengan harga RM1), turut tamat. Barang peribadi yang tertinggal dalam Kenderaan boleh dituntut dalam tempoh 14 hari.',
+      '4. TUNTUTAN HUTANG. Pembatalan ini tidak menghapuskan hutang tuan/puan. Jumlah yang dituntut ialah {{debt_breakdown}} (sewa tertunggak sehingga {{arrears_as_of}}). Sila jelaskan jumlah ini ke akaun {{company_bank_account}} dan hantar bukti bayaran kepada kami. Diskaun diberi jika bayaran penuh dibuat mengikut jadual di bawah, dikira dari tarikh surat ini:',
       rows(
         'JUMLAH HUTANG: {{total_debt}}',
         'Bayar dalam 7 hari | {{amount_7_days}} | Diskaun 10%',
         'Bayar dalam 14 hari | {{amount_14_days}} | Diskaun 5%',
         'Bayar selepas 14 hari | {{total_debt}} | Tiada diskaun',
       ),
-      '6. Sekiranya tiada bayaran atau maklum balas dalam tempoh {{pay_within_days}} hari dari tarikh surat ini (selewat-lewatnya {{pay_by_date}}), kes tuan/puan akan dirujuk kepada ejen kutipan hutang atau peguam untuk tindakan undang-undang, termasuk kos, tanpa notis lanjut. Pelan bayaran ansuran boleh dipohon dengan menghubungi Syarikat di {{company_phone}}.',
+      '5. Caj lewat bayar dan fi penamatan awal di bawah Perjanjian tidak akan dituntut jika jumlah di atas dijelaskan mengikut jadual. Pelan bayaran ansuran boleh dipohon dengan menghubungi Syarikat di {{company_phone}}.',
+      '6. Sekiranya tiada bayaran atau maklum balas dalam tempoh {{pay_within_days}} hari dari tarikh surat ini (selewat-lewatnya {{pay_by_date}}), kes tuan/puan akan dirujuk kepada ejen kutipan hutang atau peguam untuk tindakan undang-undang, termasuk caj lewat bayar, fi penamatan awal dan kos, tanpa notis lanjut.',
     ),
   },
   TUNTUT_SEWA: {
