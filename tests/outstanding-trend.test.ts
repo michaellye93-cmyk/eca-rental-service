@@ -49,24 +49,39 @@ test('a contract starting in the future, or with no readable start, has no point
   assert.deepEqual(monthlyOutstanding(weekly('blank', ''), today), []);
 });
 
-test('one more weekly rent owed over the last 3 months reads as Rising', () => {
-  // Pays every week except one in the last three months
+test('two more weekly rents owed between month-ends 3 months apart read as Rising; one is usual lateness', () => {
+  // Pays every week except two in September
   const payments: Array<[string, number]> = [];
   for (let day = new Date(2026, 0, 5); day <= today; day.setDate(day.getDate() + 7)) {
-    if (day.getMonth() === 8 && day.getDate() === 7) continue;
+    if (day.getMonth() === 8 && (day.getDate() === 7 || day.getDate() === 14)) continue;
     payments.push([`${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`, 100]);
   }
   const driver = weekly('slipping', '2026-01-05', payments);
   const trend = outstandingDirection(driver, monthlyOutstanding(driver, today));
   assert.equal(trend.direction, 'RISING');
-  assert.equal(trend.change, 100);
+  assert.equal(trend.change, 200);
   assert.equal(trend.months, 3);
+  assert.equal(trend.from, '2026-06');
+  assert.equal(trend.to, '2026-09');
+  // Only one week behind at the end of September: within a driver's usual few days' lateness
+  const oneBehind = weekly('oneBehind', '2026-01-05', payments.concat([['2026-09-14', 100]]));
+  assert.equal(outstandingDirection(oneBehind, monthlyOutstanding(oneBehind, today)).direction, 'FLAT');
+});
+
+test('this month (as of today) is left out of the label, so rent just fallen due and paid a few days late does not flip it', () => {
+  // Monthly rent due on the 12th, always paid on the 15th: today (14 Oct) owes October's rent
+  const payments: Array<[string, number]> = [];
+  for (let month = 0; month <= 8; month++) payments.push([`2026-${String(month + 1).padStart(2, '0')}-15`, 1000]);
+  const lateHabit = monthly('lateHabit', '2026-01-12', payments);
+  const points = monthlyOutstanding(lateHabit, today);
+  assert.equal(points.at(-1)!.outstanding, 1000);
+  assert.equal(outstandingDirection(lateHabit, points).direction, 'FLAT');
 });
 
 test('one more monthly rent owed over the last 3 months reads as Rising too', () => {
   const driver = monthly('monthlySlip', '2026-01-01', [
     ['2026-01-01', 1000], ['2026-02-01', 1000], ['2026-03-01', 1000], ['2026-04-01', 1000],
-    ['2026-05-01', 1000], ['2026-06-01', 1000], ['2026-07-01', 1000], ['2026-08-01', 1000], ['2026-09-01', 1000],
+    ['2026-05-01', 1000], ['2026-06-01', 1000], ['2026-07-01', 1000], ['2026-08-01', 1000],
   ]);
   assert.equal(outstandingDirection(driver, monthlyOutstanding(driver, today)).direction, 'RISING');
 });
@@ -96,11 +111,14 @@ test('small moves under a week of rent, and a clear account, read as Flat', () =
   assert.equal(outstandingDirection(steady, monthlyOutstanding(steady, today)).direction, 'FLAT');
 });
 
-test('a contract younger than the window compares with its first month-end; a single month is too new to tell', () => {
-  const young = weekly('young', '2026-09-07');
+test('a contract younger than the window compares with its first month-end; one finished month-end is too new to tell', () => {
+  const young = weekly('young', '2026-08-03');
   const trend = outstandingDirection(young, monthlyOutstanding(young, today));
   assert.equal(trend.months, 1);
+  assert.equal(trend.change, 400);
   assert.equal(trend.direction, 'RISING');
-  const brandNew = weekly('brandNew', '2026-10-05');
-  assert.equal(outstandingDirection(brandNew, monthlyOutstanding(brandNew, today)).direction, 'NEW');
+  for (const start of ['2026-09-07', '2026-10-05']) {
+    const brandNew = weekly('brandNew', start);
+    assert.equal(outstandingDirection(brandNew, monthlyOutstanding(brandNew, today)).direction, 'NEW');
+  }
 });

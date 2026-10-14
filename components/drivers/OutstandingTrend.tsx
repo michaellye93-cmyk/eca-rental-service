@@ -2,11 +2,11 @@ import { useMemo } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Driver } from '../../types';
 import { kualaLumpurNow } from '../../utils';
-import { money, MONTH_SHORT } from '../../services/fmt';
+import { money, monthShort } from '../../services/fmt';
 import { monthlyOutstanding, outstandingDirection, TREND_MONTHS, type OutstandingDirection } from '../../services/outstandingTrend';
 
-// Month-ends are named "Sep 26"; this month reads "Oct 26 (today)".
-const label = (month: string) => `${MONTH_SHORT[Number(month.slice(5, 7)) - 1]} ${month.slice(2, 4)}`;
+// Month-ends are named "Sep 2026"; this month reads "Oct 2026 (today)".
+const label = monthShort;
 
 const LOOK: Record<OutstandingDirection, { text: string; badge: string }> = {
   RISING: { text: 'Rising', badge: 'bg-rose-50 text-rose-700 border-rose-200' },
@@ -23,13 +23,15 @@ export default function OutstandingTrend({ driver }: { driver: Driver }) {
   const latest = data[data.length - 1];
   if (!latest) return null;
   const look = LOOK[trend.direction];
-  const since = `the end of ${label(points[points.length - 1 - trend.months]?.month ?? latest.month)}`;
-  const detail = trend.direction === 'NEW' ? 'Needs a second month to compare.'
-    : trend.change === 0 ? `Same as ${since}.`
-    : `${trend.change > 0 ? 'Up' : 'Down'} ${money(Math.abs(trend.change))} since ${since}.`;
+  const period = trend.from && trend.to ? `end of ${label(trend.from)} to end of ${label(trend.to)}` : '';
+  const move = `${trend.change > 0 ? 'up' : 'down'} ${money(Math.abs(trend.change))}`;
+  const detail = trend.direction === 'NEW' ? 'Needs two finished months to compare.'
+    : trend.change === 0 ? `No change, ${period}.`
+    : trend.direction === 'FLAT' ? `Within a week's rent (${move}), ${period}.`
+    : `${move[0].toUpperCase()}${move.slice(1)}, ${period}.`;
 
   return (
-    <section aria-labelledby={`outstanding-trend-${driver.id}`} className="space-y-2">
+    <section aria-labelledby={`outstanding-trend-${driver.id}`} className="space-y-2 border-t border-gray-200/60 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h5 id={`outstanding-trend-${driver.id}`} className="text-sm font-bold text-gray-900">Outstanding trend</h5>
         <span className="flex items-center gap-2 text-xs">
@@ -37,7 +39,7 @@ export default function OutstandingTrend({ driver }: { driver: Driver }) {
           <span className="text-gray-600">{detail}</span>
         </span>
       </div>
-      <p className="text-xs text-gray-500">Rent owed at the end of each month (last {TREND_MONTHS} months; this month as of today), without the late-payment penalty.</p>
+      <p className="text-xs text-gray-500">Rent owed at the end of each month (last {TREND_MONTHS} months; this month as of today), without the late-payment penalty. The label compares finished month-ends up to 3 months apart.</p>
       <figure className="m-0">
         <div className="h-48" role="img" aria-label={`Rent outstanding at each month-end. Today ${money(latest.outstanding)}. ${look.text}: ${detail}`}>
           <ResponsiveContainer width="100%" height="100%">

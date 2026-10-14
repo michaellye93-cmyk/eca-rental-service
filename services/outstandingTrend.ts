@@ -43,19 +43,23 @@ export const monthlyOutstanding = (driver: Driver, now: Date = kualaLumpurNow())
 export type OutstandingDirection = 'RISING' | 'FLAT' | 'FALLING' | 'NEW';
 
 /**
- * Rising or falling once the balance has moved by at least a week's rent (weekly rent, or monthly rent × 12 / 52) since
- * the month-end 3 months back, so falling one more rent behind reads as Rising on either cycle. NEW: one month only.
+ * Compares the last finished month-end with the month-end 3 months before it (or the first one, if later); this month's
+ * point (as of today) is left out, since a few days' lateness on rent just fallen due would swing it. Rising or falling
+ * once the balance has moved by more than a week's rent: more than one weekly rent (month-ends land on different
+ * weekdays, so one weekly rent either way is a driver's usual few days' lateness), or at least monthly rent × 12 / 52.
+ * NEW: fewer than two finished month-ends.
  */
 export const outstandingDirection = (driver: Pick<Driver, 'rentalCycle' | 'rentalRate'>, points: MonthEndOutstanding[]): {
-  direction: OutstandingDirection; change: number; months: number;
+  direction: OutstandingDirection; change: number; months: number; from: string | null; to: string | null;
 } => {
-  if (points.length < 2) return { direction: 'NEW', change: 0, months: 0 };
-  const latest = points[points.length - 1];
-  const earlier = points[Math.max(0, points.length - 1 - DIRECTION_MONTHS)];
-  const months = points.length - 1 - points.indexOf(earlier);
+  const finished = points.filter(point => !point.soFar);
+  if (finished.length < 2) return { direction: 'NEW', change: 0, months: 0, from: null, to: null };
+  const latest = finished[finished.length - 1];
+  const earlierIndex = Math.max(0, finished.length - 1 - DIRECTION_MONTHS);
+  const earlier = finished[earlierIndex];
   const change = round2(latest.outstanding - earlier.outstanding);
-  const weekOfRent = driver.rentalCycle === 'MONTHLY' ? (driver.rentalRate * 12) / 52 : driver.rentalRate;
-  const threshold = Math.max(weekOfRent, 1);
-  const direction: OutstandingDirection = change >= threshold ? 'RISING' : change <= -threshold ? 'FALLING' : 'FLAT';
-  return { direction, change, months };
+  const rising = driver.rentalCycle === 'MONTHLY' ? change >= (driver.rentalRate * 12) / 52 : change > driver.rentalRate;
+  const falling = driver.rentalCycle === 'MONTHLY' ? change <= -(driver.rentalRate * 12) / 52 : change < -driver.rentalRate;
+  const direction: OutstandingDirection = change !== 0 && rising ? 'RISING' : change !== 0 && falling ? 'FALLING' : 'FLAT';
+  return { direction, change, months: finished.length - 1 - earlierIndex, from: earlier.month, to: latest.month };
 };

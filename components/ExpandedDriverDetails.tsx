@@ -165,11 +165,9 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
           <div className="space-y-1.5">
             {billingSchedule.map(inv => <InvoiceRow key={inv.id} invoice={inv} />)}
           </div>
-          <div className="border-t border-gray-200/60 pt-4">
-            <Suspense fallback={<p className="text-xs text-gray-500">Loading the outstanding trend…</p>}>
-              <OutstandingTrend driver={driver} />
-            </Suspense>
-          </div>
+          <Suspense fallback={<p className="text-xs text-gray-500">Loading the outstanding trend…</p>}>
+            <OutstandingTrend driver={driver} />
+          </Suspense>
         </div>
       </div>
 
