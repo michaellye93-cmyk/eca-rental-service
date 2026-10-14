@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Driver } from '../types';
 import { categoryLabel, formatDate, formatPhone, latestInvoices, whatsappLink } from '../utils';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from './RentDisplay';
@@ -8,6 +8,9 @@ import { loadDriverChanges } from '../services/collectionsApi';
 import { driverChangeLines, type DriverChange } from '../services/driverChanges';
 import { collectionSummary } from '../services/collections';
 import { Phone, User, FileText, Clock, DollarSign, History } from 'lucide-react';
+
+// The chart library loads only when a driver row is opened, not with the driver list
+const OutstandingTrend = React.lazy(() => import('./drivers/OutstandingTrend'));
 
 interface ExpandedDriverDetailsProps {
   driver: Driver;
@@ -161,6 +164,11 @@ export const ExpandedDriverDetails: React.FC<ExpandedDriverDetailsProps> = ({ dr
           </div>
           <div className="space-y-1.5">
             {billingSchedule.map(inv => <InvoiceRow key={inv.id} invoice={inv} />)}
+          </div>
+          <div className="border-t border-gray-200/60 pt-4">
+            <Suspense fallback={<p className="text-xs text-gray-500">Loading the outstanding trend…</p>}>
+              <OutstandingTrend driver={driver} />
+            </Suspense>
           </div>
         </div>
       </div>
