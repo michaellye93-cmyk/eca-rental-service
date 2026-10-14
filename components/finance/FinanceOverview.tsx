@@ -65,7 +65,7 @@ export default function Overview({
         </div>
         <p className="finance-strip-note">
           <button className="finance-link" onClick={() => onGo("collections")}>Who owes rent <ChevronRightIcon /></button>{" "}
-          <button className="finance-link" onClick={() => onGo("vehicles")}>Idle and low-margin cars <ChevronRightIcon /></button>
+          <button className="finance-link" onClick={() => onGo("vehicles")}>Gross profit by business, idle and low-margin cars <ChevronRightIcon /></button>
         </p>
       </section>
       <div className="finance-two-col">

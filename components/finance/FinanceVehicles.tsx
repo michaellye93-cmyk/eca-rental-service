@@ -3,7 +3,7 @@ import { money, monthLong, percent1 } from "../../services/fmt";
 import StatTile from "../StatTile";
 import Dialog from "./FinanceDialog";
 import type { FinanceReport } from "../../types/finance";
-import { directCostBreakdown } from "../../services/finance/directCost";
+import { businessStatement, type BusinessStatementColumn } from "../../services/finance/directCost";
 import { nextVehicleSort, sortVehicles, type VehicleSort, type VehicleSortKey } from "../../services/finance/vehicleSort";
 import { DataTable, SectionHeading, Skeleton } from "./FinancePrimitives";
 
@@ -22,8 +22,16 @@ export default function Vehicles({
         <Skeleton lines={8} />
       </section>
     );
-  const businesses = Object.entries(report.businesses).filter(
-    ([name, row]) => name !== "UNMATCHED" || row.revenue || row.contribution,
+  const statement = businessStatement(report.businesses, report.totals);
+  const columns = [...statement.columns, statement.total];
+  const statementLine = (label: string, value: (column: BusinessStatementColumn) => number, className: string) => (
+    <tr className={className}>
+      <td>{label}</td>
+      {columns.map((column) => {
+        const amount = value(column);
+        return <td key={column.business} className={className === "is-total" && amount < 0 ? "finance-negative" : undefined}>{money(amount)}</td>;
+      })}
+    </tr>
   );
   const sortHeader = (key: VehicleSortKey, label: string, nextLabel: (direction: "asc" | "desc") => string) => {
     const direction = vehicleSort?.key === key ? vehicleSort.direction : null;
@@ -38,37 +46,37 @@ export default function Vehicles({
   return (
     <div className="finance-content">
       <section className="finance-panel">
-        <SectionHeading title="By business" detail="Revenue and direct costs for each operating business." />
-        <DataTable
-          headers={[
-            "Business",
-            "Revenue",
-            "Monthly vehicle cost",
-            "Service & maintenance",
-            "Insurance",
-            "Other",
-            "Direct cost",
-            "Contribution",
-            "Margin",
-          ]}
-        >
-          {businesses.map(([business, value]) => {
-            const direct = directCostBreakdown(value);
-            return (
-              <tr key={business}>
-                <td className="finance-strong">{business}</td>
-                <td>{money(value.revenue)}</td>
-                <td>{money(-direct.monthly_vehicle)}</td>
-                <td>{money(-direct.service_maintenance)}</td>
-                <td>{money(-direct.insurance)}</td>
-                <td>{money(-direct.other)}</td>
-                <td className="finance-negative">{money(-direct.total)}</td>
-                <td className="finance-strong">{money(value.contribution)}</td>
-                <td>{value.margin === null ? "—" : percent1(value.margin)}</td>
+        <SectionHeading
+          title="Gross profit by business"
+          detail="Each business's own result before Operation Fix Cost. Gross profit is the Contribution on the Overview P&L."
+        />
+        {statement.unmatched && (
+          <p role="alert" className="finance-message is-warning">
+            Some money is on cars that are not in Vehicle Master, so it has no business yet. Add or correct those plates in Records → Vehicle Master.
+          </p>
+        )}
+        <div className="finance-table-wrap">
+          <table className="finance-table finance-statement finance-business-statement">
+            <thead>
+              <tr>
+                <th scope="col">RM</th>
+                {columns.map((column) => <th scope="col" key={column.business}>{column.label}</th>)}
               </tr>
-            );
-          })}
-        </DataTable>
+            </thead>
+            <tbody>
+              {statementLine("Revenue", (column) => column.revenue, "is-subtotal")}
+              {statementLine("Owner payout / bank loan", (column) => -column.owner_payout_loan, "is-indent")}
+              {statementLine("Service & maintenance", (column) => -column.service, "is-indent")}
+              {statementLine("Insurance", (column) => -column.insurance, "is-indent")}
+              {statementLine("Other car costs and commission", (column) => -column.other, "is-indent")}
+              {statementLine("Gross profit", (column) => column.gross_profit, "is-total")}
+              <tr>
+                <td>Gross margin</td>
+                {columns.map((column) => <td key={column.business}>{column.margin === null ? "—" : percent1(column.margin)}</td>)}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
       <section className="finance-panel">
         <SectionHeading title="By vehicle" detail="Click a car for its breakdown. Idle: no revenue this month but still costing money." />
