@@ -203,7 +203,7 @@ function LoanForm({ loan, cars, carsError, notInFinance, busy, onSave, onCancel 
             ))}
           </select>
         </label>
-        <label className="finance-field"><span>Bank</span><input required value={values.bank} disabled={busy} onChange={(event) => set("bank", event.target.value)} /></label>
+        <label className="finance-field"><span>Loan provider (bank or finance company)</span><input required value={values.bank} disabled={busy} onChange={(event) => set("bank", event.target.value)} /></label>
         <label className="finance-field"><span>Finance amount (RM)</span><input required type="number" min="0.01" step="0.01" inputMode="decimal" value={values.finance_amount} disabled={busy} onChange={(event) => set("finance_amount", event.target.value)} /></label>
         <label className="finance-field"><span>Flat rate, % a year</span><input required type="number" min="0" step="0.001" inputMode="decimal" value={values.flat_rate_percent} disabled={busy} onChange={(event) => set("flat_rate_percent", event.target.value)} /></label>
         <label className="finance-field"><span>Tenure (months)</span><input required type="number" min="1" step="1" inputMode="numeric" value={values.tenure_months} disabled={busy} onChange={(event) => set("tenure_months", event.target.value)} /></label>

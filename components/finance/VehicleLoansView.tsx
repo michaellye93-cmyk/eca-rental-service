@@ -102,7 +102,7 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
           action={onAdd && <button type="button" className="finance-primary" disabled={busy} onClick={onAdd}>Add loan</button>}
         />
         {sorted.length === 0 ? (
-          <Empty text="No loans yet. Add each own-fleet car's hire-purchase loan from its bank letter." />
+          <Empty text="No loans yet. Add each own-fleet car's hire-purchase loan from its loan provider's letter." />
         ) : (
           <ul className="loans-list">
             {sorted.map((loan) => (
