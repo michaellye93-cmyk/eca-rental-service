@@ -165,7 +165,8 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
                 <td>{money(x.monthly_amount)}</td>
                 <td>{x.start_month.slice(0, 7)}</td>
                 <td>{x.end_month?.slice(0, 7) ?? "Ongoing"}</td>
-                <td><button className="finance-secondary" disabled={disabled} onClick={() => setEditor(x.id ?? null)}>Edit</button></td>
+                {/* A cost a loan owns is changed in Finance → Vehicle loans, not here. */}
+                <td>{x.loan_id ? <span className="finance-status">From Vehicle loans</span> : <button className="finance-secondary" disabled={disabled} onClick={() => setEditor(x.id ?? null)}>Edit</button>}</td>
               </tr>
             ))}
           </DataTable>

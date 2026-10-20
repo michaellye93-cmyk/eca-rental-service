@@ -708,7 +708,7 @@ export function RecurringForm({ input, month, disabled, onSave, initialId, onCan
           onChange={(event) => choose(event.target.value)}
         >
           <option value="">New monthly cost…</option>
-          {input.recurring_costs.filter((cost) => !cost.cancelled_at).map((cost, index) => (
+          {input.recurring_costs.filter((cost) => !cost.cancelled_at && !cost.loan_id).map((cost, index) => (
             <option
               key={recordKey(cost, `cost-${index}`)}
               value={recordKey(cost, `cost-${index}`)}
