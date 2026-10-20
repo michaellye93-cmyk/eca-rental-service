@@ -30,5 +30,5 @@ export const paymentsRefreshNeeded = (month: { finance_month: string; status: st
  */
 export const MONEY_PAGE_GROUPS: ReadonlyArray<{ label: 'Reports' | 'Work'; pages: ReadonlyArray<readonly [Page, string]> }> = [
   { label: 'Reports', pages: [['overview', 'Overview'], ['cash', 'Cash'], ['collections', 'Collections'], ['vehicles', 'Vehicles']] },
-  { label: 'Work', pages: [['expenses', 'Records'], ['reconcile', 'Reconcile'], ['close', 'Month close']] },
+  { label: 'Work', pages: [['expenses', 'Records'], ['loans', 'Vehicle loans'], ['reconcile', 'Reconcile'], ['close', 'Month close']] },
 ];

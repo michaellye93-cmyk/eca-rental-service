@@ -1358,3 +1358,158 @@
   background: #f0faf7;
   text-align: left;
 }
+/* Finance → Vehicle loans: three tiles, the commitment chart and each loan's progress bar. */
+.finance-summary-grid.is-three {
+  grid-template-columns: 1.6fr 1fr 1fr;
+}
+.loans-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.loans-chart-grid {
+  stroke: var(--f-line);
+  stroke-width: 1;
+}
+.loans-chart-axis {
+  fill: var(--f-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.loans-chart-area {
+  fill: var(--f-accent);
+  fill-opacity: 0.16;
+}
+.loans-chart-line {
+  fill: none;
+  stroke: var(--f-accent);
+  stroke-width: 2.5;
+}
+.loans-chart-what-if {
+  fill: none;
+  stroke: var(--f-danger);
+  stroke-width: 2;
+}
+.loans-chart-tick {
+  stroke: var(--f-muted);
+  stroke-width: 1;
+}
+.loans-chart-label {
+  fill: var(--f-ink);
+  font-size: 11px;
+}
+.loans-chart-now {
+  fill: var(--f-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.loans-what-if {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--f-line);
+}
+.loans-what-if legend {
+  padding: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.loans-override {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #506372;
+  font-size: 12px;
+}
+.loans-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.loan-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) 2fr minmax(120px, 0.8fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid var(--f-line);
+}
+.loan-row:first-child {
+  border-top: 0;
+}
+.loan-car small,
+.loan-amounts small {
+  display: block;
+  margin-top: 3px;
+  color: var(--f-muted);
+  font-size: 12px;
+}
+.loan-amounts {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.loan-actions {
+  display: flex;
+  gap: 6px;
+}
+.loan-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fff4e0;
+  color: var(--f-danger);
+}
+.loan-pill.is-closed {
+  background: var(--f-ground);
+  color: var(--f-muted);
+}
+.loan-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--f-ground);
+  border: 1px solid var(--f-line);
+  overflow: hidden;
+}
+.loan-bar-fill {
+  height: 100%;
+  background: var(--f-accent);
+}
+.loan-bar-fill.is-near {
+  background: #d98a1c;
+}
+.loan-bar-fill.is-closed {
+  background: #b8c4cc;
+}
+.loan-bar-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--f-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  .loan-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .loan-amounts {
+    text-align: left;
+  }
+  .loans-what-if {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .finance-summary-grid.is-three {
+    grid-template-columns: 1fr;
+  }
+}

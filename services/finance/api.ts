@@ -3,6 +3,7 @@ import type { FinanceInput, FixedCostTreatment, SmartDriveRow } from '../../type
 import type { CashBalanceEntry, CashOutlookData } from '../cashOutlook';
 import type { DraftStatement, ServerReconcileDraft } from './reconcileDraft';
 import type { StoredMonthTotals } from './dashboard';
+import type { VehicleLoan } from './loans';
 
 async function rpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.rpc(name, args);
@@ -43,6 +44,10 @@ export const clearServerReconcileDraft = (month: string, savedAt: string) =>
 export const loadMonthTotals = () => rpc<StoredMonthTotals[]>('finance_month_totals');
 export const saveMonthTotals = (month: string, revision: number, totals: StoredMonthTotals['totals']) =>
   rpc<null>('finance_save_month_totals', { p_month: financeMonth(month), p_revision: revision, p_totals: totals });
+// Vehicle loans (Admin only): see supabase/migrations/20261021090000_vehicle_loans.sql; each call rejects until it is run.
+export const loadVehicleLoans = () => rpc<VehicleLoan[]>('finance_vehicle_loans');
+export const saveVehicleLoan = (action: 'ADD' | 'UPDATE' | 'DELETE', record: Partial<VehicleLoan>, reason = '') =>
+  rpc<VehicleLoan[]>('finance_save_vehicle_loan', { p_action: action, p_record: record, p_reason: reason });
 export const loadMonth = (month: string) => rpc<FinanceInput>('finance_read_month', { p_month: financeMonth(month) });
 export const generateFixedCosts = (month: string, revision: number) => rpc<FinanceInput>('finance_generate_fixed_costs', { p_month: financeMonth(month), p_revision: revision });
 export const refreshPayments = (month: string) => rpc<FinanceInput>('finance_refresh_payments', { p_month: financeMonth(month) });

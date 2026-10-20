@@ -70,11 +70,12 @@ import "./finance.css";
 import "./finance-mobile.css";
 
 const CollectionsPage = React.lazy(() => import("../money/CollectionsPage"));
+const VehicleLoansPage = React.lazy(() => import("./VehicleLoans"));
 import { MONEY_PAGE_GROUPS, monthLoadNeeded, paymentsRefreshNeeded, type Page } from "../../services/finance/pages";
 export type { Page } from "../../services/finance/pages";
 // The tabs come in two labelled groups (services/finance/pages.ts): Reports (Overview, Cash, Collections, Vehicles)
 // for reading the month, and Work (Records, Reconcile, Month close) for entering and closing it.
-const monthBased = (page: Page) => page !== "cash" && page !== "collections";
+const monthBased = (page: Page) => page !== "cash" && page !== "collections" && page !== "loans";
 const PAGE_HEADINGS: Record<Page, [string, string]> = {
   overview: ["Overview", "How the month did, and how far it is from a 20% operating margin."],
   cash: ["Cash", "Cash in bank, the next three months, and bills coming up."],
@@ -83,6 +84,7 @@ const PAGE_HEADINGS: Record<Page, [string, string]> = {
   expenses: ["Records", "Every cost and income entry for the month, in one place."],
   close: ["Month close", "Check each source, then mark the month ready and close it."],
   reconcile: ["Reconcile", "Match the bank statement to the payments recorded in the system."],
+  loans: ["Vehicle loans", "Each car's hire-purchase loan, how far it has run, and what all of them cost per month."],
 };
 interface MoneyProps {
   /** The page to show; with onPageChange the parent controls it (the cash line opens Cash). */
@@ -669,6 +671,12 @@ export default function FinanceView(props: MoneyProps = {}) {
       {page === "collections" && (
         <React.Suspense fallback={<Skeleton lines={8} />}>
           <CollectionsPage drivers={props.drivers ?? []} />
+        </React.Suspense>
+      )}
+      {page === "loans" && (
+        <React.Suspense fallback={<Skeleton lines={8} />}>
+          {/* A saved loan changes its monthly cost: the next month-based page reads the month again. */}
+          <VehicleLoansPage today={props.today ?? kualaLumpurToday()} onChanged={() => { requestedMonth.current = null; }} />
         </React.Suspense>
       )}
       {monthBased(page) && error && <Message type="error">{error}</Message>}
