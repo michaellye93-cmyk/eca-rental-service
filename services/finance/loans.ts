@@ -186,3 +186,90 @@ export function loanSummary(loans: VehicleLoan[], today: string): LoanSummary {
     nearPayoffCount: running.filter((loan) => nearPayoff(loan, today)).length,
   };
 }
+
+/** A financial year's figures, on the row that closes it (each 31 March, and the last instalment). */
+export interface HpYearEnd {
+  /** 31.03.YYYY, or the last instalment's own date (DD.MM.YYYY) when it is not in March. */
+  label: string;
+  /** Instalments, interest and principal of the financial year, since the previous year-end row. */
+  instalments: number;
+  interest: number;
+  principal: number;
+  /** Finance amount less every instalment's principal so far; 0 on the last row. */
+  balance: number;
+}
+
+export interface HpScheduleRow {
+  /** YYYY-MM-DD */
+  date: string;
+  /** Instalment number, 1 to the tenure. */
+  number: number;
+  /** Rule of 78 digit: tenure − number + 1. */
+  digit: number;
+  amount: number;
+  interest: number;
+  principal: number;
+  yearEnd: HpYearEnd | null;
+}
+
+export interface HpSchedule {
+  rows: HpScheduleRow[];
+  totalInterest: number;
+  totalPayable: number;
+  sumOfDigits: number;
+}
+
+const toSen = (value: unknown) => Math.round(Number(value || 0) * 100);
+const fromSen = (value: number) => value / 100;
+const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+/**
+ * The hire-purchase schedule the bank issues: total interest = finance × flat rate × years; each instalment is the
+ * stored monthly instalment, and the last one is the total payable less the others (how the bank absorbs rounding).
+ * Interest is split by the Rule of 78 (sum of digits), the last instalment taking the rounding residual, so interest
+ * sums to the total and principal to the finance amount, to the sen. The financial year ends on 31 March.
+ * Worked in whole sen, and dates from the text alone.
+ */
+export function hpSchedule(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate_percent' | 'tenure_months' | 'first_payment_date' | 'monthly_instalment'>): HpSchedule {
+  const n = Math.max(0, Math.floor(Number(loan.tenure_months) || 0));
+  const finance = toSen(loan.finance_amount);
+  const totalInterest = Math.round((finance * Number(loan.flat_rate_percent || 0) * n) / 1200);
+  const totalPayable = finance + totalInterest;
+  const monthly = toSen(loan.monthly_instalment);
+  const sumOfDigits = (n * (n + 1)) / 2;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(loan.first_payment_date ?? '');
+  const rows: HpScheduleRow[] = [];
+  if (!match || n === 0) return { rows, totalInterest: fromSen(totalInterest), totalPayable: fromSen(totalPayable), sumOfDigits };
+  const [year0, month0, day0] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  let interestSoFar = 0, principalSoFar = 0;
+  let yearAmount = 0, yearInterest = 0, yearPrincipal = 0;
+  for (let i = 1; i <= n; i++) {
+    const index = year0 * 12 + month0 - 1 + i - 1;
+    const year = Math.floor(index / 12), month = (index % 12) + 1;
+    const day = Math.min(day0, lastDay(year, month));
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const digit = n - i + 1;
+    const last = i === n;
+    const amount = last ? totalPayable - (n - 1) * monthly : monthly;
+    const interest = last ? totalInterest - interestSoFar : Math.round((totalInterest * digit) / sumOfDigits);
+    const principal = amount - interest;
+    interestSoFar += interest;
+    principalSoFar += principal;
+    yearAmount += amount;
+    yearInterest += interest;
+    yearPrincipal += principal;
+    let yearEnd: HpYearEnd | null = null;
+    if (month === 3 || last) {
+      yearEnd = {
+        label: month === 3 ? `31.03.${year}` : `${pad(day)}.${pad(month)}.${year}`,
+        instalments: fromSen(yearAmount),
+        interest: fromSen(yearInterest),
+        principal: fromSen(yearPrincipal),
+        balance: last ? 0 : fromSen(finance - principalSoFar),
+      };
+      yearAmount = yearInterest = yearPrincipal = 0;
+    }
+    rows.push({ date: `${year}-${pad(month)}-${pad(day)}`, number: i, digit, amount: fromSen(amount), interest: fromSen(interest), principal: fromSen(principal), yearEnd });
+  }
+  return { rows, totalInterest: fromSen(totalInterest), totalPayable: fromSen(totalPayable), sumOfDigits };
+}
