@@ -54,8 +54,8 @@ export default function CashPage({ today, drivers, outlook, outlookState, summar
   );
 }
 
+// Four tiles: overdue rent belongs to Collections, and the status sentence already says how many days of bills are left.
 function StatusBlock({ summary }: { summary: CashLineSummary }) {
-  const change = summary.overdueChange;
   return (
     <>
       <section className="finance-panel cash-status" aria-labelledby="cash-status-heading">
@@ -66,14 +66,12 @@ function StatusBlock({ summary }: { summary: CashLineSummary }) {
         </div>
         {summary.notes.length > 0 && <ul className="cash-notes">{summary.notes.map(note => <li key={note}>{note}</li>)}</ul>}
       </section>
-      <section className="finance-summary-grid" aria-label={`Cash figures for the next ${WINDOW_DAYS} days`}>
+      <section className="finance-summary-grid is-four" aria-label={`Cash figures for the next ${WINDOW_DAYS} days`}>
         <StatTile label="Cash in bank" value={summary.cash ? money(summary.cash.total) : 'Not entered'}
           hint={summary.cash && summary.depositsHeld ? `Of which ${money(summary.depositsHeld)} is drivers' deposits held (owed back to them)` : undefined} />
         <StatTile label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} (cash collection rate, last ${COLLECTION_WEEKS} weeks) of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
         <StatTile label={`Bills, next ${WINDOW_DAYS} days`} value={out(summary.bills.total)} negative />
         <StatTile label="Left after those bills" value={summary.left === null ? '—' : money(summary.left)} negative={summary.left !== null && summary.left < 0} emphasis />
-        <StatTile label="Full days of bills left" value={summary.daysLeft === null ? '—' : summary.daysLeft < 0 ? 'None' : String(Math.floor(summary.daysLeft))} />
-        <StatTile label="Overdue rent" value={money(summary.overdue)} hint={change > 0.005 ? `Up ${money(change)} this week` : change < -0.005 ? `Down ${money(-change)} this week` : 'No change this week'} />
       </section>
     </>
   );
@@ -145,7 +143,7 @@ function BalanceTable({ today, outlook, onBalancesChange }: { today: string; out
             Type each account's balance from your banking app at least once a week (the cash line says Watch after {STALE_BALANCE_DAYS} days).
             The latest entry per account counts. Nothing is deleted; a mistake is removed with a reason.
           </p>
-          <strong>{cash ? `Total now: ${money(cash.total)}` : 'No balance entered yet'}</strong>
+          <p>Month-end balances are filled in from the posted bank statement; type a balance here to keep the cash line current between statements.</p>
         </div>
         {outlook.balances.length > (cash?.accounts.length ?? 0) && (
           <button className="finance-link" onClick={() => setShowAll(!showAll)}>{showAll ? 'Show latest only' : `Show all ${outlook.balances.length} entries`}</button>
