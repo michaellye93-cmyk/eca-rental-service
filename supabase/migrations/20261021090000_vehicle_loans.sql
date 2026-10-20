@@ -47,6 +47,25 @@ alter table finance_private.recurring_costs add column if not exists loan_id uui
 create unique index if not exists recurring_costs_one_per_loan on finance_private.recurring_costs (loan_id)
   where loan_id is not null and cancelled_at is null;
 
+-- 2b. Every door is shut on a loan-owned cost, not only Records: an Excel import, a later function or a hand-typed
+--     statement cannot change its figures, months, link or cancellation. Only save_vehicle_loan may, and it says so
+--     with a transaction-local setting. A plate correction, a note or a version bump still passes.
+create or replace function finance_private.guard_loan_owned_cost() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if old.loan_id is not null and coalesce(current_setting('finance.vehicle_loan_write', true), '') <> 'on'
+     and (new.loan_id is distinct from old.loan_id or new.monthly_amount is distinct from old.monthly_amount
+       or new.start_month is distinct from old.start_month or new.end_month is distinct from old.end_month
+       or new.cost_type is distinct from old.cost_type or new.payee is distinct from old.payee
+       or new.cancelled_at is distinct from old.cancelled_at) then
+    raise exception 'This cost is managed in Vehicle loans';
+  end if;
+  return new;
+end$$;
+drop trigger if exists recurring_costs_loan_owned on finance_private.recurring_costs;
+create trigger recurring_costs_loan_owned before update on finance_private.recurring_costs
+  for each row execute function finance_private.guard_loan_owned_cost();
+
 -- 3. Records cannot edit, stop or delete a cost a loan owns. finance_private.mutate_record is as in
 --    20260920070959_finance_editable_safe_imports.sql with one line added after the row is read (marked below).
 create or replace function finance_private.mutate_record(p_kind text,p_action text,p_record jsonb,p_effective_month date,p_revision integer,p_reason text) returns jsonb
@@ -131,7 +150,8 @@ declare rid uuid;old jsonb;row_old finance_private.recurring_costs%rowtype;new_i
    if exists(select 1 from finance_private.workshop_allocations wa join finance_private.expenses e on e.id=wa.expense_id join finance_private.workshop_summaries s on s.id=wa.summary_id where e.plate_key=old_plate and e.cancelled_at is null and s.cancelled_at is null and s.business_unit is not null and s.business_unit is distinct from new_business) then raise exception 'Vehicle business conflicts with an allocated workshop summary';end if;
    update finance_private.vehicle_plate_history set valid_until=now(),correction_reason=nullif(btrim(p_reason),'') where vehicle_id=vid and plate_key=old_plate and valid_until is null;
    update finance_private.vehicles set plate_key=new_plate,display_plate=btrim(p_record->>'display_plate'),model=case when p_record ? 'model' then nullif(btrim(p_record->>'model'),'') else model end,business_unit=new_business,ownership_type=coalesce(nullif(btrim(p_record->>'ownership_type'),''),ownership_type),status=coalesce(nullif(btrim(p_record->>'status'),''),status) where vehicle_id=vid;
-   update finance_private.recurring_costs set plate_key=new_plate where plate_key=old_plate;update finance_private.insurance set plate_key=new_plate where plate_key=old_plate;update finance_private.expenses set plate_key=new_plate where plate_key=old_plate;update finance_private.other_income set plate_key=new_plate,record_version=record_version+1 where plate_key=old_plate;update finance_private.ehailing set plate_key=new_plate where plate_key=old_plate;update finance_private.smart_rows set plate_key=new_plate,display_plate=btrim(p_record->>'display_plate') where plate_key=old_plate;
+   update finance_private.recurring_costs set plate_key=new_plate where plate_key=old_plate;update finance_private.vehicle_loans set plate_key=new_plate,display_plate=btrim(p_record->>'display_plate'),updated_at=now(),updated_by=auth.uid() where plate_key=old_plate and cancelled_at is null; -- Added by 20261021090000_vehicle_loans.sql
+   update finance_private.insurance set plate_key=new_plate where plate_key=old_plate;update finance_private.expenses set plate_key=new_plate where plate_key=old_plate;update finance_private.other_income set plate_key=new_plate,record_version=record_version+1 where plate_key=old_plate;update finance_private.ehailing set plate_key=new_plate where plate_key=old_plate;update finance_private.smart_rows set plate_key=new_plate,display_plate=btrim(p_record->>'display_plate') where plate_key=old_plate;
    insert into finance_private.vehicle_plate_history(vehicle_id,plate_key,display_plate,correction_reason) values(vid,new_plate,btrim(p_record->>'display_plate'),nullif(btrim(p_reason),''));
   end;perform finance_private.mark_month_changed(p_effective_month,true);
  else raise exception 'Unsupported Finance record mutation';end if;
@@ -182,6 +202,7 @@ declare
   candidates integer;
 begin
   perform finance_private.lock_finance();
+  perform set_config('finance.vehicle_loan_write', 'on', true);
   if p_action is null or p_action not in ('ADD', 'UPDATE', 'DELETE') or jsonb_typeof(p_record) is distinct from 'object' then
     raise exception 'Invalid vehicle loan change';
   end if;

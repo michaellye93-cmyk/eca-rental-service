@@ -61,6 +61,10 @@ Notes:
 - **Agreements.** The PDF is made in the browser (jsPDF, A4) and never stored. It reads the driver, Fleet's
   `car_details` and `driver_deposits`; only signing-day details are typed. A text copy goes to `driver_agreements`
   so the driver can see and download it on their phone. The Grab and "other EHO" authorization letters live here too.
+- **Vehicle loans (Finance → Work).** Each own-fleet car's hire-purchase loan (`finance_private.vehicle_loans`, through
+  `finance_vehicle_loans` / `finance_save_vehicle_loan`). The loan is the master of the car's "Hire Purchase / Loan" monthly
+  cost (`recurring_costs.loan_id`): saving it writes that row, Records shows it read-only, and a trigger refuses any other
+  change to it. Rules in `services/finance/loans.ts`; the page assumes every instalment is paid on time.
 - **Finance.** Monthly P&L, cash, collections, vehicles, records, month close and Reconcile (matching bank statements
   to payments). Bank statement files are read by the Edge Function `finance-extract-bank-statement` (Gemini); only
   the extracted lines are kept.

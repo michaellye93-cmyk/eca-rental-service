@@ -244,3 +244,36 @@ test('the file can safely run twice and keeps the loans', async () => {
     await assert.rejects(mutate(db, 'UPDATE', cost), MANAGED, 'still guarded after the second run');
   } finally { await db.close(); }
 });
+
+test('every other door is shut too: a direct change to a loan-owned cost (an Excel import, say) is refused, a plate-only change passes', async () => {
+  const db = await setup();
+  try {
+    const [loan] = await save(db, 'ADD', loanRecord());
+    await db.exec('reset role');
+    await assert.rejects(db.query(`update finance_private.recurring_costs set monthly_amount = 1 where id = $1`, [loan.recurring_cost_id]), MANAGED, 'amount');
+    await assert.rejects(db.query(`update finance_private.recurring_costs set end_month = '2024-01-01' where id = $1`, [loan.recurring_cost_id]), MANAGED, 'end month');
+    await assert.rejects(db.query(`update finance_private.recurring_costs set cancelled_at = now() where id = $1`, [loan.recurring_cost_id]), MANAGED, 'cancel');
+    await assert.rejects(db.query(`update finance_private.recurring_costs set loan_id = null where id = $1`, [loan.recurring_cost_id]), MANAGED, 'unlink');
+    await db.query(`update finance_private.recurring_costs set plate_key = 'XAA1009', notes = 'moved' where id = $1`, [loan.recurring_cost_id]);
+    await asUser(db);
+    const [cost] = await costs(db, 'XAA1009');
+    assert.equal(cost.amount, 575, 'a plate correction or a note leaves the loan-owned figures alone');
+  } finally { await db.close(); }
+});
+
+test('correcting a plate in Vehicle Master moves the loan with its cost, so the loan can still be edited', async () => {
+  const db = await setup();
+  try {
+    const [loan] = await save(db, 'ADD', loanRecord());
+    const revision = (await value<any>(db, `select public.finance_read_month('2026-10-01') value`)).month.revision;
+    await value<any>(db, `select public.finance_mutate_record('vehicle', 'CORRECT_PLATE', $1::jsonb, '2026-10-01', $2, 'Corrected registration typo') value`,
+      [JSON.stringify({ old_plate: 'XAA1001', plate_key: 'XAA1009', display_plate: 'XAA 1009' }), revision]);
+    const [moved] = await list(db);
+    assert.equal(moved.plate_key, 'XAA1009');
+    assert.equal(moved.display_plate, 'XAA 1009');
+    const [cost] = await costs(db, 'XAA1009');
+    assert.equal(cost.loan_id, loan.id, 'the cost moved with it and stays linked');
+    const [edited] = await save(db, 'UPDATE', { ...loanRecord({ plate_key: 'XAA1009', bank: 'Fixture Bank Two' }), id: moved.id, record_version: moved.record_version });
+    assert.equal(edited.bank, 'Fixture Bank Two', 'the loan is still editable under its corrected plate');
+  } finally { await db.close(); }
+});
