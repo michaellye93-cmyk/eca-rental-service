@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import type { FinanceInput } from '../types/finance.ts';
 import { calculateFinance } from '../services/finance/calculations.ts';
-import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedRevisionMap, storedTotals, TREND_RULES_VERSION, trendMonths, trendRow } from '../services/finance/dashboard.ts';
+import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedRevisionMap, storedTotals, TREND_RULES_VERSION, trendChartData, trendMonths, trendRow } from '../services/finance/dashboard.ts';
 import { arrearsAgeing, driverMonthlyLedger, monthCollection } from '../services/driverLedger.ts';
 
 const month = { finance_month: '2026-08', status: 'DRAFT' as const, revision: 1, refreshed_at: '2026-09-01', frozen_at: null,
@@ -169,4 +169,19 @@ test('stored trend figures worked out by other P&L or trend rules (another rules
   const revisions = storedRevisionMap([unversioned, current, older]);
   assert.deepEqual([...revisions], [['2026-08', 3]]);
   assert.equal(needsStoredTotals({ ...month, finance_month: '2026-09-01', status: 'CLOSED', revision: 5 }, revisions), true, 'same revision, older rules: stored again');
+});
+
+test('the Month by month chart: revenue and operating profit as bars, operating margin in percent against 20%, Draft months marked', () => {
+  const rows = [
+    { month: '2026-08', status: 'CLOSED', revenue: 10000, contribution: 4000, profit: 2500, margin: 0.25 },
+    { month: '2026-09', status: 'READY FOR REVIEW', revenue: 8000, contribution: 2000, profit: -400, margin: -0.05 },
+    { month: '2026-10', status: 'DRAFT', revenue: 0, contribution: -300, profit: -300, margin: null },
+  ];
+  assert.deepEqual(trendChartData(rows), [
+    { month: '2026-08', label: 'Aug 26', revenue: 10000, profit: 2500, margin: 25, target: 20, draft: false },
+    { month: '2026-09', label: 'Sep 26', revenue: 8000, profit: -400, margin: -5, target: 20, draft: false },
+    { month: '2026-10', label: 'Oct 26', revenue: 0, profit: -300, margin: null, target: 20, draft: true },
+  ]);
+  assert.equal(trendChartData([{ ...rows[0], margin: 0.12345 }])[0].margin, 12.3, 'margin to one decimal, as the table shows it');
+  assert.deepEqual(trendChartData([]), []);
 });

@@ -2,12 +2,14 @@ import React from 'react';
 
 /**
  * One figure with its label, as on the Cash page and the Finance totals: `negative` shows the figure in red, `emphasis`
- * makes the tile stand out and `hint` adds a short line under the figure.
+ * makes the tile stand out, `hint` adds a short line under the figure and `action` a link under that (Overview's
+ * tiles link to their page).
  */
-export default function StatTile({ label, value, hint, negative = false, emphasis = false }: {
+export default function StatTile({ label, value, hint, action, negative = false, emphasis = false }: {
   label: React.ReactNode;
   value: React.ReactNode;
   hint?: React.ReactNode;
+  action?: React.ReactNode;
   negative?: boolean;
   emphasis?: boolean;
 }) {
@@ -16,6 +18,7 @@ export default function StatTile({ label, value, hint, negative = false, emphasi
       <span>{label}</span>
       <strong className={negative ? 'finance-negative' : undefined}>{value}</strong>
       {hint && <small className="cash-hint">{hint}</small>}
+      {action}
     </div>
   );
 }

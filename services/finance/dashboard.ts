@@ -1,7 +1,7 @@
 import type { FinanceInput, FinanceReport } from '../../types/finance.ts';
 import { insuranceCashOutflow } from './insurance.ts';
 import { isCashMethod } from '../moneyDefinitions.ts';
-import { round2 } from '../fmt.ts';
+import { MONTH_SHORT, round2 } from '../fmt.ts';
 
 const monthKey = (value: string) => value.slice(0, 7);
 
@@ -115,6 +115,32 @@ export const trendRow = (month: string, status: string, report: FinanceReport): 
   profit: report.management_profit,
   margin: report.totals.revenue ? report.management_profit / report.totals.revenue : null,
 });
+
+/** One month on the Overview's Month by month chart. */
+export interface TrendChartPoint {
+  month: string;
+  /** "Aug 26". */
+  label: string;
+  revenue: number;
+  profit: number;
+  /** Operating margin in percent, one decimal (25 for 25%), or null with no revenue. */
+  margin: number | null;
+  /** The target in percent, for the dashed line. */
+  target: number;
+  /** A Draft month: its figures can still change, so its bars are drawn lighter. */
+  draft: boolean;
+}
+
+/** The trend rows (oldest first) shaped for the chart: bars in RM, the margin line and target in percent. */
+export const trendChartData = (rows: TrendRow[], target = 0.2): TrendChartPoint[] => rows.map((row) => ({
+  month: row.month,
+  label: `${MONTH_SHORT[Number(row.month.slice(5, 7)) - 1]} ${row.month.slice(2, 4)}`,
+  revenue: row.revenue,
+  profit: row.profit,
+  margin: row.margin === null ? null : Math.round(row.margin * 1000) / 10,
+  target: Math.round(target * 1000) / 10,
+  draft: row.status === 'DRAFT',
+}));
 
 /** A closed month's trend figures as stored by finance_save_month_totals (supabase/migrations/20261012200000_money_review.sql). */
 export interface StoredMonthTotals {

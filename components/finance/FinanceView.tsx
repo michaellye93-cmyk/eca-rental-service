@@ -699,6 +699,7 @@ export default function FinanceView(props: MoneyProps = {}) {
               drivers={props.drivers ?? []}
               month={month}
               trend={trend}
+              overdueChange={props.cashSummary?.overdueChange ?? null}
               onGo={setPage}
             />
           )}

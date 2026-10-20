@@ -242,6 +242,10 @@
   font-weight: 500;
   letter-spacing: -0.035em;
 }
+/* A tile's link to its page (Overview). */
+.finance-total > .finance-link {
+  justify-self: start;
+}
 .finance-total.is-emphasis {
   background: var(--f-accent-soft);
 }
