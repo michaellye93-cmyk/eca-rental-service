@@ -1,11 +1,12 @@
 /** The Money tab's pages: Cash and Collections, then the month-based Finance pages. */
-export type Page = 'cash' | 'collections' | 'overview' | 'vehicles' | 'close' | 'expenses' | 'reconcile';
+export type Page = 'cash' | 'collections' | 'overview' | 'vehicles' | 'close' | 'expenses' | 'reconcile' | 'loans';
 
 /**
  * Pages that read the chosen Finance month (finance_read_month, which may also create the month's fixed-cost lines):
- * every month-based page, and Cash for its bank check. Collections works from the driver ledger only.
+ * every month-based page, and Cash for its bank check. Collections works from the driver ledger only, and Vehicle loans
+ * from the loan records only.
  */
-export const usesFinanceMonth = (page: Page) => page !== 'collections';
+export const usesFinanceMonth = (page: Page) => page !== 'collections' && page !== 'loans';
 
 /**
  * Whether opening `page` should read `month`: only when the page uses the month and it has not already been read (or

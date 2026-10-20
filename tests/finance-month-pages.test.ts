@@ -19,10 +19,10 @@ test('the tab bar has Reports then Work, Month close last, and every page exactl
   assert.deepEqual(MONEY_PAGE_GROUPS.map((group) => group.label), ['Reports', 'Work']);
   assert.deepEqual(MONEY_PAGE_GROUPS.map((group) => group.pages.map(([id]) => id)), [
     ['overview', 'cash', 'collections', 'vehicles'],
-    ['expenses', 'reconcile', 'close'],
+    ['expenses', 'loans', 'reconcile', 'close'],
   ]);
   assert.deepEqual(MONEY_PAGE_GROUPS.flatMap((group) => group.pages.map(([, label]) => label)),
-    ['Overview', 'Cash', 'Collections', 'Vehicles', 'Records', 'Reconcile', 'Month close']);
+    ['Overview', 'Cash', 'Collections', 'Vehicles', 'Records', 'Vehicle loans', 'Reconcile', 'Month close']);
 });
 
 test('a Draft month refreshes its E-Hailing figures once when opened; Ready and Closed months never do', () => {
@@ -32,4 +32,10 @@ test('a Draft month refreshes its E-Hailing figures once when opened; Ready and 
   assert.equal(paymentsRefreshNeeded(month('DRAFT'), '2026-08'), true, 'another month was refreshed before');
   assert.equal(paymentsRefreshNeeded(month('READY FOR REVIEW'), null), false);
   assert.equal(paymentsRefreshNeeded(month('CLOSED'), null), false);
+});
+
+test('Vehicle loans does not read the Finance month: it works from the loan records only', () => {
+  assert.equal(usesFinanceMonth('loans'), false);
+  assert.equal(monthLoadNeeded('loans', '2026-09', null), false, 'opening Vehicle loans reads nothing month-based');
+  assert.equal(monthLoadNeeded('loans', '2026-10', '2026-09'), false);
 });

@@ -78,3 +78,10 @@ test('Back from /drivers/<PLATE>/pay or /statement closes the window the address
   assert.equal(linkedWindowLeft(statement, at('/drivers/XAB2001/statement')), true, 'another driver');
   assert.equal(linkedWindowLeft(null, at('/drivers/XAA1001')), false, 'a window opened by a button is left alone');
 });
+
+test('Vehicle loans has its own Finance address', () => {
+  assert.deepEqual(parseAdminPath('/finance/loans'), { kind: 'finance', page: 'loans' });
+  assert.equal(buildAdminPath({ kind: 'finance', page: 'loans' }), '/finance/loans');
+  assert.deepEqual(routeFromStored({ section: 'MONEY', moneyPage: 'loans', legacyView: null }), { kind: 'finance', page: 'loans' }, 'the last page used reopens');
+  assert.deepEqual(resolveAdminRoute({ kind: 'finance', page: 'loans' }, false, { section: null, moneyPage: null, legacyView: null }), { kind: 'drivers' }, 'staff never see it');
+});

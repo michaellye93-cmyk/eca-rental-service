@@ -6,8 +6,8 @@ import { normalizePlate } from '../utils.ts';
  */
 
 /** Finance pages, as FinanceView names them. */
-export type FinancePage = 'cash' | 'collections' | 'overview' | 'vehicles' | 'close' | 'expenses' | 'reconcile';
-export const FINANCE_PAGES: FinancePage[] = ['cash', 'collections', 'overview', 'vehicles', 'close', 'expenses', 'reconcile'];
+export type FinancePage = 'cash' | 'collections' | 'overview' | 'vehicles' | 'close' | 'expenses' | 'reconcile' | 'loans';
+export const FINANCE_PAGES: FinancePage[] = ['cash', 'collections', 'overview', 'vehicles', 'close', 'expenses', 'reconcile', 'loans'];
 
 export type DriverAction = 'pay' | 'statement';
 
@@ -27,7 +27,7 @@ export type AdminRoute =
 
 /** The Finance page's name in the address, where it differs ("Records" is the expenses page). */
 const FINANCE_SLUG: Record<FinancePage, string> = {
-  cash: 'cash', collections: 'collections', overview: 'overview', vehicles: 'vehicles', close: 'close', expenses: 'records', reconcile: 'reconcile',
+  cash: 'cash', collections: 'collections', overview: 'overview', vehicles: 'vehicles', close: 'close', expenses: 'records', reconcile: 'reconcile', loans: 'loans',
 };
 const FINANCE_FROM_SLUG: Record<string, FinancePage> = {
   ...Object.fromEntries(FINANCE_PAGES.map(page => [FINANCE_SLUG[page], page])),
