@@ -81,8 +81,10 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
         notImproving: active.filter((row) => row.trend === 'NOT_IMPROVING').length,
       },
       // Rent owed at each month end, every driver (delisted too, while they still owed).
+      // The last bar is today, not a month end.
       arrears: months.map((month, index) => ({
-        month: label(month),
+        month: index === months.length - 1 ? `${label(month)} (today)` : label(month),
+        name: index === months.length - 1 ? 'Owed today, all drivers' : 'Owed at month end, all drivers',
         owed: Math.round(all.reduce((sum, row) => sum + Math.max(0, row.months[index]?.balance ?? 0), 0)),
       })),
     };
@@ -101,7 +103,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
       <section className="finance-panel">
         <div className="finance-summary-grid is-four">
           <div className="finance-total is-emphasis">
-            <span>Collected this month</span>
+            <span>Collected this month (collection rate)</span>
             <strong>{percent(strip.rate)}</strong>
             <small>{money(strip.collected)} of {money(strip.billed)} billed so far ({COLLECTED_INCLUDES})</small>
             {thisMonthSplit && <small>{money(thisMonthSplit.current)} for this month's rent · {money(thisMonthSplit.arrears)} for old arrears</small>}
@@ -251,7 +253,7 @@ export default function CollectionsPage({ drivers }: { drivers: DriverWithMetric
               <CartesianGrid vertical={false} stroke="#e5e7eb" />
               <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#4b5563' }} tickLine={false} axisLine={{ stroke: '#d1d5db' }} />
               <YAxis tick={{ fontSize: 12, fill: '#4b5563' }} tickLine={false} axisLine={false} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
-              <Tooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} formatter={(value) => [money(Number(value)), 'Owed']} />
+              <Tooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} formatter={(value, _name, item) => [money(Number(value)), (item?.payload as { name?: string } | undefined)?.name ?? 'Owed']} />
               <Bar dataKey="owed" name="Owed" fill="#b45309" radius={[4, 4, 0, 0]} maxBarSize={48} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>

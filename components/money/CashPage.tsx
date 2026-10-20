@@ -69,7 +69,7 @@ function StatusBlock({ summary }: { summary: CashLineSummary }) {
       <section className="finance-summary-grid" aria-label={`Cash figures for the next ${WINDOW_DAYS} days`}>
         <StatTile label="Cash in bank" value={summary.cash ? money(summary.cash.total) : 'Not entered'}
           hint={summary.cash && summary.depositsHeld ? `Of which ${money(summary.depositsHeld)} is drivers' deposits held (owed back to them)` : undefined} />
-        <StatTile label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
+        <StatTile label={`Money in, next ${WINDOW_DAYS} days`} value={money(summary.expectedIn)} hint={`Rent at ${percent(summary.rate)} (cash collection rate, last ${COLLECTION_WEEKS} weeks) of ${money(summary.rent.full)} still to come, plus ${money(summary.otherIncome)} other income`} />
         <StatTile label={`Bills, next ${WINDOW_DAYS} days`} value={out(summary.bills.total)} negative />
         <StatTile label="Left after those bills" value={summary.left === null ? '—' : money(summary.left)} negative={summary.left !== null && summary.left < 0} emphasis />
         <StatTile label="Full days of bills left" value={summary.daysLeft === null ? '—' : summary.daysLeft < 0 ? 'None' : String(Math.floor(summary.daysLeft))} />
@@ -296,7 +296,7 @@ function OutlookTable({ today, outlook, drivers, rate }: { today: string; outloo
         <div>
           <h3 id="cash-outlook-heading">The next three months</h3>
           <p>
-            Rent is counted at your recent collection rate ({percent(rate)} of rent due over the last {COLLECTION_WEEKS} weeks). Monthly bills are
+            Rent is counted at your cash collection rate (last {COLLECTION_WEEKS} weeks): {percent(rate)} of rent due. Monthly bills are
             spread over the month because Finance does not record their due days yet. Bills are shown in brackets.
           </p>
           {!hasBalance && <p className="cash-warning">No bank balance entered, so each month starts from RM 0.00. Enter a balance above.</p>}

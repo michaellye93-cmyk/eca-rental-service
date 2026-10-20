@@ -84,7 +84,7 @@ const MONEY_PAGES: [Page, string][] = [
 ];
 const monthBased = (page: Page) => page !== "cash" && page !== "collections";
 const PAGE_HEADINGS: Record<Page, [string, string]> = {
-  overview: ["Overview", "How the month did, and how far it is from a 20% net margin."],
+  overview: ["Overview", "How the month did, and how far it is from a 20% operating margin."],
   cash: ["Cash", "Cash in bank, the next three months, and bills coming up."],
   collections: ["Collections", "Who owes rent, and whether it is getting better."],
   vehicles: ["Vehicles", "Which businesses and cars make or lose money this month."],

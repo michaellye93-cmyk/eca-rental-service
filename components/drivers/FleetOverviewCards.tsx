@@ -44,7 +44,7 @@ function TargetCard({ title, period, icon, look, totals }: { title: string; peri
   const { glow, amount, bar } = TARGET_LOOK[look];
   const share = totals.due > 0 ? Math.min(100, (totals.paid / totals.due) * 100) : 0;
   return (
-    <div title="Rent settled (cash and repair credits) of the rent due in this period" className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg px-4 py-2.5">
+    <div title="Collection rate: rent settled (cash and repair credits) of the rent due in this period" className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/75 backdrop-blur-md shadow-lg px-4 py-2.5">
       <div aria-hidden="true" className={`absolute top-0 right-0 w-36 h-36 rounded-full blur-2xl pointer-events-none ${glow}`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 className="flex items-center gap-2 text-sm font-bold tracking-tight text-gray-950">{icon}{title}</h2>

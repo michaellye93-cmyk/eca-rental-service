@@ -97,7 +97,7 @@ test('Tight: the line says how few days of bills would be left and what better c
   assert.equal(line.status, 'TIGHT');
   assert.equal(plain(line.sentence), 'Tight: after the next 30 days of bills you would have RM 1,200.00 left, under 6 days of bills.');
   assert.equal(line.leverPerTenPoints, 500);
-  assert.ok(line.notes.map(plain).includes('Collecting 90% of rent due instead of 80% would add RM 500.00.'));
+  assert.ok(line.notes.map(plain).includes('Collecting 90% of rent due instead of 80% (cash collection rate, last 8 weeks) would add RM 500.00.'));
 });
 
 test('Short, Watch and Covered follow the same figures', () => {
@@ -133,7 +133,7 @@ test('without a bank balance the line asks for one and never shows RM0 as cash',
 
 test('duplicate-looking monthly costs are called out, because they overstate the bills', () => {
   const line = cashLine({ today: TODAY, outlook: outlook({ duplicate_recurring: { vehicles: 3, monthly_amount: 2400 } }), drivers: [weekly], overdue: 0, overdueChange: 0 });
-  assert.ok(line.notes.map(plain).includes('3 vehicles carry the same monthly cost twice (RM 2,400.00 a month), so bills may be overstated. Check Finance → Expenses → Monthly Vehicle Costs.'));
+  assert.ok(line.notes.map(plain).includes('3 vehicles carry the same monthly cost twice (RM 2,400.00 a month), so bills may be overstated. Check Finance → Records → Monthly Vehicle Costs.'));
 });
 
 test('the Cash page outlook runs from today to the end of the third month ahead, carrying cash forward', () => {

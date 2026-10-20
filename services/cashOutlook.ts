@@ -309,12 +309,12 @@ export function cashLine(input: CashLineInput): CashLineSummary {
   if (stale && sentenceFact !== 'stale') notes.push(staleText);
   if (grew && sentenceFact !== 'grew') notes.push(grewText);
   if (leverPerTenPoints > 0) {
-    notes.push(`Collecting ${percent(Math.min(1, rate + 0.1))} of rent due instead of ${percent(rate)} would add ${formatCurrency(leverPerTenPoints)}.`);
+    notes.push(`Collecting ${percent(Math.min(1, rate + 0.1))} of rent due instead of ${percent(rate)} (cash collection rate, last ${COLLECTION_WEEKS} weeks) would add ${formatCurrency(leverPerTenPoints)}.`);
   }
   const duplicates = input.outlook.duplicate_recurring;
   if (num(duplicates?.vehicles) > 0) {
     const n = num(duplicates.vehicles);
-    notes.push(`${n} ${n === 1 ? 'vehicle carries' : 'vehicles carry'} the same monthly cost twice (${formatCurrency(num(duplicates.monthly_amount))} a month), so bills may be overstated. Check Finance → Expenses → Monthly Vehicle Costs.`);
+    notes.push(`${n} ${n === 1 ? 'vehicle carries' : 'vehicles carry'} the same monthly cost twice (${formatCurrency(num(duplicates.monthly_amount))} a month), so bills may be overstated. Check Finance → Records → Monthly Vehicle Costs.`);
   }
   if (bills.total === 0 && !cash) notes.push('No bills are recorded in Finance for the next 30 days.');
 

@@ -160,7 +160,7 @@ export function VehicleDialog({
             <td>{money(-vehicle.service_claim)}</td>
           </tr>
           <tr>
-            <td>Workshop billing</td>
+            <td>Workshop</td>
             <td>{money(-vehicle.workshop)}</td>
           </tr>
           <tr>
