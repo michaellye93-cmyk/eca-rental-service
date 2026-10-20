@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useConfirm } from "../Dialog";
 import Dialog from "./FinanceDialog";
 import { Skeleton } from "./FinancePrimitives";
-import VehicleLoansView, { BLANK_WHAT_IF, type WhatIfForm } from "./VehicleLoansView";
+import VehicleLoansView, { BLANK_WHAT_IF, scheduleKey, type WhatIfForm } from "./VehicleLoansView";
 import { loadVehicleLoans, saveVehicleLoan } from "../../services/finance/api";
+import { exportHpScheduleWorkbook, hpScheduleFileName } from "../../services/finance/hpScheduleExport";
 import { instalment, LOAN_STATUS_LABELS, type LoanStatus, type VehicleLoan } from "../../services/finance/loans";
 import { money } from "../../services/fmt";
 import { fleet } from "../../services/fleet/client";
@@ -31,6 +32,8 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<VehicleLoan | "new" | null>(null);
   const [whatIf, setWhatIf] = useState<WhatIfForm>(BLANK_WHAT_IF);
+  // Loans whose HP schedule is open (browser state only).
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   // Plates the server refused because Finance's vehicle list does not have them yet: shown with that hint.
   const [notInFinance, setNotInFinance] = useState<Set<string>>(() => new Set());
   const mounted = useRef(true);
@@ -73,6 +76,22 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
     }
   };
 
+  // Download Excel on an open schedule: the workbook is written in the browser and saved, nothing is stored.
+  const downloadSchedule = async (loan: VehicleLoan) => {
+    setError(null);
+    try {
+      const bytes = await exportHpScheduleWorkbook(loan, carNames.get(loan.plate_key));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = hpScheduleFileName(loan.display_plate);
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not write the HP schedule.");
+    }
+  };
+
   const remove = async (loan: VehicleLoan) => {
     if (!(await ask(`Delete the loan for ${loan.display_plate}? Its Hire Purchase / Loan monthly cost is deleted with it. Closed months keep their figures.`))) return;
     const reason = await askText("Reason for deleting this loan");
@@ -106,6 +125,14 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
         onAdd={() => setEditing("new")}
         onEdit={(loan) => setEditing(loan)}
         onDelete={(loan) => void remove(loan)}
+        expanded={expanded}
+        onToggleSchedule={(loan) => setExpanded((current) => {
+          const next = new Set(current);
+          const key = scheduleKey(loan);
+          if (!next.delete(key)) next.add(key);
+          return next;
+        })}
+        onDownloadSchedule={(loan) => void downloadSchedule(loan)}
       />
       {editing && (
         <Dialog title={editing === "new" ? "Add loan" : `Edit loan · ${editing.display_plate}`} onClose={() => !busy && setEditing(null)}>

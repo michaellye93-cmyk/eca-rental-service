@@ -110,3 +110,40 @@ test('Records shows a cost that Vehicle loans owns read-only, and the other cost
   assert.match(ownRow, />Edit</);
   assert.doesNotMatch(ownRow, /From Vehicle loans/);
 });
+
+test('a loan row has a Schedule button; expanded, it shows the HP schedule with year-end rows and a Download Excel button', async () => {
+  const View = await loadView();
+  const scheduled = loan({ plate_key: 'XAA1004', display_plate: 'XAA 1004', first_payment_date: '2024-01-15', monthly_instalment: 575 });
+  const settled = loan({ plate_key: 'XAA1005', display_plate: 'XAA 1005', first_payment_date: '2024-01-15', monthly_instalment: 575, status: 'SOLD', closed_on: '2026-06-10' });
+  const props = {
+    loans: [scheduled, settled], today: '2026-10-21', cars: new Map(),
+    whatIf: { finance_amount: '', flat_rate_percent: '', tenure_months: '', first_payment_month: '' },
+    onToggleSchedule: () => {}, onDownloadSchedule: () => {},
+  };
+  const closed: string = renderToStaticMarkup(createElement(View, { ...props, expanded: new Set<string>() }));
+  assert.equal((closed.match(/aria-expanded="false"/g) ?? []).length, 2, 'each loan has a collapsed Schedule button');
+  assert.match(closed, /aria-controls="loan-schedule-XAA1004"[^>]*>Schedule</);
+  assert.doesNotMatch(closed, /<table/, 'collapsed: no table');
+  assert.doesNotMatch(closed, /Download Excel/);
+
+  const html: string = renderToStaticMarkup(createElement(View, { ...props, expanded: new Set(['XAA1004', 'XAA1005']) }));
+  assert.equal((html.match(/aria-expanded="true"/g) ?? []).length, 2);
+  assert.match(html, /id="loan-schedule-XAA1004"/);
+  assert.match(html, /id="loan-schedule-XAA1005"/, 'a sold loan still shows its full schedule');
+  const page = text(html);
+  const headers = ['Year', 'Ins. No', 'Sum of Digit', 'Instalment', 'Interest', 'Principal', 'Total Instalment', 'Total Interest', 'Total Principal', 'Bal Due'];
+  const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+  assert.deepEqual([...head.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]), headers);
+  assert.ok(page.includes(text(`Total payable ${money(34500)} · interest ${money(4500)} at 3.00% flat · Rule of 78 split · first payment 15 Jan 2024 · last instalment 15 Dec 2028`)));
+  const table = html.slice(html.indexOf('id="loan-schedule-XAA1004"'), html.indexOf('id="loan-schedule-XAA1005"'));
+  const bodyRows = table.split('<tr').slice(2);
+  assert.equal(bodyRows.length, 60);
+  assert.equal(bodyRows.filter((row) => /class="[^"]*loan-schedule-year/.test(row)).length, 6, 'six year-end rows');
+  assert.match(bodyRows[2], /31\.03\.2024/);
+  assert.match(bodyRows[59], /15\.12\.2028/);
+  assert.match(text(bodyRows[59].slice(0, bodyRows[59].indexOf('</tr>'))), /0\.00 $/, 'the last balance is nil');
+  assert.doesNotMatch(bodyRows[33], /is-future/, '15 Oct 2026 is on or before today');
+  assert.match(bodyRows[34], /is-future/, '15 Nov 2026 is still to come');
+  assert.match(bodyRows[0], /<td class="num">575\.00<\/td>/, 'numbers right-aligned, plain figures');
+  assert.equal((html.match(/>Download Excel</g) ?? []).length, 2);
+});

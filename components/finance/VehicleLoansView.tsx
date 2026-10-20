@@ -1,10 +1,11 @@
 import React from "react";
 import StatTile from "../StatTile";
 import { Empty, SectionHeading } from "./FinancePrimitives";
-import { money, monthShort } from "../../services/fmt";
+import { money, monthShort, MONTH_SHORT } from "../../services/fmt";
 import {
   balanceLeft,
   commitmentSeries,
+  hpSchedule,
   LOAN_STATUS_LABELS,
   loanSummary,
   nearPayoff,
@@ -53,9 +54,17 @@ export interface VehicleLoansViewProps {
   onAdd?: () => void;
   onEdit?: (loan: VehicleLoan) => void;
   onDelete?: (loan: VehicleLoan) => void;
+  /** Loans whose HP schedule is open, by scheduleKey (the parent keeps the set). */
+  expanded?: ReadonlySet<string>;
+  onToggleSchedule?: (loan: VehicleLoan) => void;
+  /** Download Excel on an open schedule (the parent writes the workbook and saves the file). */
+  onDownloadSchedule?: (loan: VehicleLoan) => void;
 }
 
-export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfChange, busy, onAdd, onEdit, onDelete }: VehicleLoansViewProps) {
+/** The key a loan's open schedule is kept under. */
+export const scheduleKey = (loan: VehicleLoan) => loan.id ?? loan.plate_key;
+
+export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfChange, busy, onAdd, onEdit, onDelete, expanded, onToggleSchedule, onDownloadSchedule }: VehicleLoansViewProps) {
   const summary = loanSummary(loans, today);
   const typed = whatIfLoan(whatIf);
   const series = commitmentSeries(loans, today, CHART_MONTHS, typed);
@@ -106,7 +115,10 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
         ) : (
           <ul className="loans-list">
             {sorted.map((loan) => (
-              <LoanRow key={loan.id ?? loan.plate_key} loan={loan} today={today} car={cars.get(loan.plate_key)} busy={busy} onEdit={onEdit} onDelete={onDelete} />
+              <LoanRow
+                key={scheduleKey(loan)} loan={loan} today={today} car={cars.get(loan.plate_key)} busy={busy} onEdit={onEdit} onDelete={onDelete}
+                open={expanded?.has(scheduleKey(loan)) ?? false} onToggleSchedule={onToggleSchedule} onDownloadSchedule={onDownloadSchedule}
+              />
             ))}
           </ul>
         )}
@@ -115,7 +127,11 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
   );
 }
 
-function LoanRow({ loan, today, car, busy, onEdit, onDelete }: { loan: VehicleLoan; today: string; car?: string; busy?: boolean; onEdit?: (loan: VehicleLoan) => void; onDelete?: (loan: VehicleLoan) => void }) {
+function LoanRow({ loan, today, car, busy, onEdit, onDelete, open, onToggleSchedule, onDownloadSchedule }: {
+  loan: VehicleLoan; today: string; car?: string; busy?: boolean; onEdit?: (loan: VehicleLoan) => void; onDelete?: (loan: VehicleLoan) => void;
+  open: boolean; onToggleSchedule?: (loan: VehicleLoan) => void; onDownloadSchedule?: (loan: VehicleLoan) => void;
+}) {
+  const scheduleId = `loan-schedule-${loan.plate_key}`;
   const run = progress(loan, today);
   const active = loan.status === "ACTIVE";
   const near = nearPayoff(loan, today);
@@ -143,13 +159,60 @@ function LoanRow({ loan, today, car, busy, onEdit, onDelete }: { loan: VehicleLo
         <strong>{active ? `${money(loan.monthly_instalment)} /mo` : "—"}</strong>
         <small>{active ? `balance ${money(balanceLeft(loan, today))}` : "not counted"}</small>
       </div>
-      {(onEdit || onDelete) && (
-        <div className="loan-actions">
-          {onEdit && <button type="button" className="finance-secondary" disabled={busy} onClick={() => onEdit(loan)}>Edit</button>}
-          {onDelete && <button type="button" className="finance-destructive" disabled={busy} onClick={() => onDelete(loan)}>Delete</button>}
-        </div>
-      )}
+      <div className="loan-actions">
+        <button type="button" className="finance-secondary" disabled={!onToggleSchedule} aria-expanded={open} aria-controls={scheduleId} onClick={() => onToggleSchedule?.(loan)}>Schedule</button>
+        {onEdit && <button type="button" className="finance-secondary" disabled={busy} onClick={() => onEdit(loan)}>Edit</button>}
+        {onDelete && <button type="button" className="finance-destructive" disabled={busy} onClick={() => onDelete(loan)}>Delete</button>}
+      </div>
+      {open && <LoanSchedule id={scheduleId} loan={loan} today={today} onDownload={onDownloadSchedule} />}
     </li>
+  );
+}
+
+/** "15 Jan 2024" from YYYY-MM-DD. */
+const dayLong = (date: string) => (date ? `${Number(date.slice(8, 10))} ${MONTH_SHORT[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : "");
+/** A schedule figure as the bank prints it: 1,234.56, no currency. */
+const figure = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export const SCHEDULE_HEADERS = ["Year", "Ins. No", "Sum of Digit", "Instalment", "Interest", "Principal", "Total Instalment", "Total Interest", "Total Principal", "Bal Due"] as const;
+
+/** The loan's HP schedule as the bank issues it, under its row; instalments after today are muted. */
+function LoanSchedule({ id, loan, today, onDownload }: { id: string; loan: VehicleLoan; today: string; onDownload?: (loan: VehicleLoan) => void }) {
+  const schedule = hpSchedule(loan);
+  const first = schedule.rows[0]?.date ?? "";
+  const last = schedule.rows[schedule.rows.length - 1]?.date ?? "";
+  return (
+    <div className="loan-schedule" id={id}>
+      <div className="loan-schedule-head">
+        <p>
+          Total payable {money(schedule.totalPayable)} · interest {money(schedule.totalInterest)} at {Number(loan.flat_rate_percent).toFixed(2)}% flat · Rule of 78 split · first payment {dayLong(first)} · last instalment {dayLong(last)}
+        </p>
+        <button type="button" className="finance-secondary" disabled={!onDownload} onClick={() => onDownload?.(loan)}>Download Excel</button>
+      </div>
+      <div className="finance-table-wrap">
+        <table className="finance-table">
+          <thead>
+            <tr>{SCHEDULE_HEADERS.map((header, i) => <th key={header} className={i === 0 ? undefined : "num"}>{header}</th>)}</tr>
+          </thead>
+          <tbody>
+            {schedule.rows.map((row) => (
+              <tr key={row.number} className={[row.yearEnd && "loan-schedule-year", row.date > today && "is-future"].filter(Boolean).join(" ") || undefined}>
+                <td>{row.yearEnd?.label ?? ""}</td>
+                <td className="num">{row.number}</td>
+                <td className="num">{row.digit}</td>
+                <td className="num">{figure(row.amount)}</td>
+                <td className="num">{figure(row.interest)}</td>
+                <td className="num">{figure(row.principal)}</td>
+                <td className="num">{row.yearEnd ? figure(row.yearEnd.instalments) : ""}</td>
+                <td className="num">{row.yearEnd ? figure(row.yearEnd.interest) : ""}</td>
+                <td className="num">{row.yearEnd ? figure(row.yearEnd.principal) : ""}</td>
+                <td className="num">{row.yearEnd ? figure(row.yearEnd.balance) : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

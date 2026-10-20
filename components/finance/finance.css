@@ -1406,11 +1406,17 @@
 .loans-what-if {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* A fieldset will not shrink below its content by default: on a phone it pushed the page sideways. */
+  min-width: 0;
   gap: 12px;
   margin: 16px 0 0;
   padding: 12px 0 0;
   border: 0;
   border-top: 1px solid var(--f-line);
+}
+.loans-what-if input {
+  width: 100%;
+  min-width: 0;
 }
 .loans-what-if legend {
   padding: 0 0 8px;
@@ -1426,6 +1432,7 @@
 }
 .loans-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1496,9 +1503,49 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+.loan-row {
+  min-width: 0;
+}
+.loan-actions {
+  flex-wrap: wrap;
+}
+.loan-schedule {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.loan-schedule-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+.loan-schedule-head p {
+  margin: 0;
+  color: #506372;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.loan-schedule .finance-table td {
+  padding: 6px 8px;
+}
+.loan-schedule .finance-table th.num,
+.loan-schedule .finance-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.loan-schedule .finance-table tr.loan-schedule-year td {
+  border-top: 2px solid var(--f-line);
+  font-weight: 600;
+}
+.loan-schedule .finance-table tr.is-future td {
+  color: var(--f-muted);
+}
 @media (max-width: 900px) {
   .loan-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
   }
   .loan-amounts {
