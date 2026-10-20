@@ -126,6 +126,15 @@
 .finance-secondary:active {
   transform: translateY(1px);
 }
+/* Month close: the month's five steps under its heading. */
+.finance-month-steps {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  list-style: decimal;
+  color: var(--f-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
 /* Small group labels in the tab bar: Reports, then Work. */
 .finance-nav-group {
   align-self: center;

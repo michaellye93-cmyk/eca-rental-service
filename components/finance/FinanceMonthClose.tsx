@@ -77,6 +77,14 @@ export function groupedIssues(issues: QualityIssue[]) {
         Number(a.issue.severity === "error"),
   );
 }
+/** The CFO's month, written once: where each figure is entered, then the close, then the CEO's read. */
+const MONTH_STEPS = [
+  "Through the month: record payments on the Drivers page; type bank balances on Cash to keep the cash line current between statements.",
+  "Records: upload the Smart Drive report, workshop bills, other vehicle costs, one-off company costs and other income (set each Confirmed); check Monthly Vehicle Costs and Insurance.",
+  "Reconcile: upload both companies' bank statements, match, post.",
+  "Month close: mark the four sections reviewed, tick the checks, Ready, Close.",
+  "The CEO reads Overview.",
+];
 type Props = {
   month: string;
   input: FinanceInput;
@@ -207,6 +215,9 @@ export default function FinanceMonthClose(p: Props) {
               ? `Closed ${updated(input.month.frozen_at)}. Figures stay frozen until reopened.`
               : "Each source below must be loaded and reviewed. Then check the Overview and close the month."}
           </p>
+          <ol className="finance-month-steps" aria-label="The month, step by step">
+            {MONTH_STEPS.map((step) => <li key={step}>{step}</li>)}
+          </ol>
         </div>
         <div className="finance-close-actions">
           {!closed && (
