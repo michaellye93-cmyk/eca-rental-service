@@ -76,7 +76,7 @@ export interface CommitmentSeries {
 export interface LoanSummary {
   /** Hire-purchase instalments due this month. */
   thisMonth: number;
-  /** Active loans with instalments still to pay. */
+  /** Active loans with instalments still to pay, or paying their last one this month. */
   activeCount: number;
   nextFinish: { plate: string; month: string } | null;
   /** Instalments still to pay on every active loan, no early settlement. */
@@ -171,7 +171,11 @@ export function sortLoans(loans: VehicleLoan[], today: string): VehicleLoan[] {
 
 /** The page's three tiles. */
 export function loanSummary(loans: VehicleLoan[], today: string): LoanSummary {
-  const running = loans.filter((loan) => isActive(loan) && progress(loan, today).left > 0);
+  // Active loans with instalments still to pay, or paying their last one this month.
+  const running = loans.filter((loan) => {
+    const run = progress(loan, today);
+    return isActive(loan) && (run.left > 0 || run.finishes.slice(0, 7) === today.slice(0, 7));
+  });
   const soonest = sortLoans(running, today)[0];
   return {
     thisMonth: commitmentSeries(loans, today, 1).committed[0],

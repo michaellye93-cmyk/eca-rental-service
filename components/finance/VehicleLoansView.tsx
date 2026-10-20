@@ -47,7 +47,8 @@ export interface VehicleLoansViewProps {
   /** Fleet's make and model by plate (capitals, no spaces). */
   cars: Map<string, string>;
   whatIf: WhatIfForm;
-  onWhatIfChange?: (form: WhatIfForm) => void;
+  /** One what-if figure typed (the parent keeps the form). */
+  onWhatIfChange?: (key: keyof WhatIfForm, value: string) => void;
   busy?: boolean;
   onAdd?: () => void;
   onEdit?: (loan: VehicleLoan) => void;
@@ -59,7 +60,7 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
   const typed = whatIfLoan(whatIf);
   const series = commitmentSeries(loans, today, CHART_MONTHS, typed);
   const sorted = sortLoans(loans, today);
-  const set = (key: keyof WhatIfForm) => (event: React.ChangeEvent<HTMLInputElement>) => onWhatIfChange?.({ ...whatIf, [key]: event.target.value });
+  const set = (key: keyof WhatIfForm) => (event: React.ChangeEvent<HTMLInputElement>) => onWhatIfChange?.(key, event.target.value);
   return (
     <div className="finance-content">
       <p className="finance-dialog-copy">{ASSUMPTION}</p>

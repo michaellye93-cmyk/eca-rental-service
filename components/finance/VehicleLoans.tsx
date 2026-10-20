@@ -101,7 +101,7 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
         today={today}
         cars={carNames}
         whatIf={whatIf}
-        onWhatIfChange={setWhatIf}
+        onWhatIfChange={(key, value) => setWhatIf((current) => ({ ...current, [key]: value }))}
         busy={busy}
         onAdd={() => setEditing("new")}
         onEdit={(loan) => setEditing(loan)}

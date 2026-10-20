@@ -113,6 +113,14 @@ test('the summary gives this month\'s instalments, the next loan to finish, the 
   assert.equal(summary.balanceLeft, 500 * 6 + 300 * 14 + 400 * 12);
   assert.equal(summary.nearPayoffCount, 1);
   assert.deepEqual(loanSummary([], '2026-10-21'), { thisMonth: 0, activeCount: 0, nextFinish: null, balanceLeft: 0, nearPayoffCount: 0 });
+  // A loan paying its last instalment this month is still one of this month's loans, and the next to finish.
+  const lastMonth = loanSummary([...loans, loan({ plate_key: 'XAA1005', display_plate: 'XAA 1005', monthly_instalment: 200, first_payment_date: '2025-11-05', tenure_months: 12 })], '2026-10-21');
+  assert.equal(lastMonth.thisMonth, 1000);
+  assert.equal(lastMonth.activeCount, 4);
+  assert.deepEqual(lastMonth.nextFinish, { plate: 'XAA 1005', month: '2026-10-01' });
+  assert.equal(lastMonth.balanceLeft, 500 * 6 + 300 * 14 + 400 * 12, 'nothing left to pay after this month');
+  // Once that month has passed it drops out.
+  assert.equal(loanSummary([loan({ first_payment_date: '2025-10-05', tenure_months: 12 })], '2026-10-21').activeCount, 0);
 });
 
 test('loans are listed soonest to finish first, with settled and sold loans last', () => {
