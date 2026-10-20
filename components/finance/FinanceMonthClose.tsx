@@ -7,7 +7,6 @@ import { kualaLumpurToday } from "../../utils";
 import React from "react";
 import { CheckIcon, CircleIcon, ReloadIcon } from "@radix-ui/react-icons";
 import type {
-  FinanceExpense,
   FinanceInput,
   FinanceReport,
   QualityIssue,
@@ -16,6 +15,7 @@ import type {
   WorkspaceMeta,
   WorkspaceSection,
 } from "../../services/finance/workspace";
+import type { ExpenseWorkspaceTab } from "./FinanceRecords";
 
 // Plain formatCurrency (not fmt's money): this screen has always shown a minus-zero total as "-RM 0.00".
 const money = formatCurrency;
@@ -91,15 +91,13 @@ type Props = {
   onReady: () => void;
   onClose: (workshopAcknowledged: boolean) => void;
   onReopen: () => void;
-  onFile: (kind: any, file?: File) => void;
   onReview: (section: WorkspaceSection, decision: "NONE" | "REVIEWED") => void;
   onShowAudit: () => void;
   onShowIssues: () => void;
   onOverview: () => void;
   onReconcile?: () => void;
-  onExpenses: (source: FinanceExpense["payment_source"] | "other_income") => void;
-  onViewImport: () => void;
-  onReviewSelected?: () => void;
+  /** Opens Records on a tab (the Smart Drive card opens its upload there). */
+  onExpenses: (source: ExpenseWorkspaceTab) => void;
 };
 export default function FinanceMonthClose(p: Props) {
   const [workshopAcknowledged, setWorkshopAcknowledged] = React.useState(false);
@@ -291,7 +289,7 @@ export default function FinanceMonthClose(p: Props) {
             </div>
             <p>
               {input.smart_import?.filename ??
-                "Upload the monthly Smart Drive Sales Report."}
+                "Upload the monthly Smart Drive Sales Report in Records → Smart Drive."}
             </p>
             {input.smart_import && (
               <>
@@ -325,27 +323,9 @@ export default function FinanceMonthClose(p: Props) {
             )}
           </div>
           <div className="finance-section-action">
-            {!closed && (
-              <Upload
-                disabled={busy || !draft}
-                label={input.smart_import ? "Replace file" : "Upload Excel"}
-                onFile={(file) => p.onFile("SMART_DRIVE", file)}
-              />
-            )}{" "}
-            {input.smart_import && (
-              <button className="finance-link" onClick={p.onViewImport}>
-                View import
-              </button>
-            )}
-            {p.onReviewSelected && !closed && (
-              <button
-                className="finance-link"
-                disabled={busy || !draft}
-                onClick={p.onReviewSelected}
-              >
-                Review selected file
-              </button>
-            )}
+            <button className="finance-link" onClick={() => p.onExpenses("smart_drive")}>
+              Open in Records
+            </button>
           </div>
         </section>
         {optional.map((section) => {
@@ -520,38 +500,5 @@ function Badge({ status }: { status: string }) {
     >
       {status}
     </span>
-  );
-}
-function Upload({
-  disabled,
-  label = "Upload Excel",
-  onFile,
-}: {
-  disabled: boolean;
-  label?: string;
-  onFile: (file?: File) => void;
-}) {
-  const ref = React.useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <input
-        ref={ref}
-        className="finance-file-input"
-        type="file"
-        accept=".xlsx"
-        disabled={disabled}
-        onChange={(e) => {
-          onFile(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
-      <button
-        className="finance-secondary"
-        disabled={disabled}
-        onClick={() => ref.current?.click()}
-      >
-        {label}
-      </button>
-    </>
   );
 }

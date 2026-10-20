@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, isoDay, money, monthEnd, monthLong, monthStart, monthShort, MONTH_SHORT, percent, percent1, previousMonth, round2 } from '../services/fmt.ts';
+import { addDays, isoDay, klDateTime, money, monthEnd, monthLong, monthStart, monthShort, MONTH_SHORT, percent, percent1, previousMonth, round2 } from '../services/fmt.ts';
 import { formatCurrency } from '../utils.ts';
 
 // Intl puts a no-break space between RM and the figure.
@@ -85,4 +85,12 @@ test('round2 rounds to two decimals exactly as the old local helpers did', () =>
   assert.equal(round2(-3.335), Math.round(-3.335 * 100) / 100);
   assert.equal(round2(0.1 + 0.2), 0.3);
   assert.equal(round2(1500), 1500);
+});
+
+test('klDateTime writes an instant as a short Kuala Lumpur date and time', () => {
+  // 07:05 UTC is 3:05 pm in Kuala Lumpur (UTC+8), whatever the computer's own time zone.
+  assert.equal(klDateTime('2026-10-21T07:05:00Z'), '21 Oct 2026, 3:05 pm');
+  assert.equal(klDateTime('2026-10-20T16:30:00Z'), '21 Oct 2026, 12:30 am', 'past midnight in Kuala Lumpur is the next day');
+  assert.equal(klDateTime(null), null);
+  assert.equal(klDateTime('not a date'), null);
 });

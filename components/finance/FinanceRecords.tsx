@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { money } from "../../services/fmt";
+import { klDateTime, money } from "../../services/fmt";
 import { useConfirm } from "../Dialog";
 import type { FinanceExpense, FinanceInput, FinanceVehicle, FixedCostTreatment } from "../../types/finance";
 import type { DriverWithMetrics } from "../../types";
@@ -14,7 +14,7 @@ import { DataTable, Empty, FileButton, SectionHeading, Skeleton } from "./Financ
 const ServiceClaims = React.lazy(() => import("../money/ServiceClaims"));
 
 /** The Records page's tabs. */
-export type ExpenseWorkspaceTab = FinanceExpense["payment_source"] | "monthly_vehicle_costs" | "insurance" | "other_income" | "service_claims" | "vehicle_master";
+export type ExpenseWorkspaceTab = FinanceExpense["payment_source"] | "monthly_vehicle_costs" | "insurance" | "smart_drive" | "other_income" | "service_claims" | "vehicle_master";
 /** An Excel file's kind when chosen for import: Smart Drive, the workshop bills, or a Records section. */
 export type UploadKind = "SMART_DRIVE" | "WORKSHOP" | SectionKind;
 
@@ -41,6 +41,8 @@ export interface FinanceRecordsProps {
   onTreatment: React.ComponentProps<typeof FixedOperatingCostsPanel>["onTreatment"];
   onSaveOtherIncome: React.ComponentProps<typeof OtherIncomePanel>["onSave"];
   onExportOtherIncome: () => void;
+  /** Reviews the Smart Drive file chosen earlier again (shown while one is waiting). */
+  onReviewSelected?: () => void;
 }
 
 /** Finance → Records: every cost and income entry for the month, by tab, with import, export and the add/edit forms. */
@@ -64,6 +66,7 @@ export default function Expenses({
   drivers,
   onSaveOtherIncome,
   onExportOtherIncome,
+  onReviewSelected,
 }: FinanceRecordsProps) {
   const { ask, askText, dialog } = useConfirm();
   const [tab, setTab] = useState<ExpenseWorkspaceTab>(initialSource);
@@ -78,6 +81,7 @@ export default function Expenses({
     ["Corporate Opex", "Operation Fix Cost", "Excel: Frequency, Start Month, End Month, Expense Date, Category, Description, Amount (RM), Payee, Source, Notes. Monthly recurring costs require Start Month; Expense Date is optional."],
     ["monthly_vehicle_costs", "Monthly Vehicle Costs", "Ongoing vehicle payout, rental and financing obligations."],
     ["insurance", "Insurance", "Insurance responsibility, coverage and premiums."],
+    ["smart_drive", "Smart Drive", "The month's Smart Drive Sales Report."],
     ["other_income", "Other Income", "Income outside rent and Smart Drive. It counts in the P&L once Confirmed."],
     ["service_claims", "Service Claims", "Repairs drivers paid and deducted from rent (read only)."],
     ["vehicle_master", "Vehicle Master", "Vehicle identity and Finance classification."],
@@ -180,6 +184,9 @@ export default function Expenses({
       {tab === "Workshop Billing" && (
         <WorkshopSummaryPanel summaries={input.workshop_summaries ?? []} expenses={input.expenses} vehicles={input.vehicles} allocations={input.workshop_allocations ?? []} month={month} disabled={disabled} onSave={onSaveSummary} onLink={onLink} />
       )}
+      {tab === "smart_drive" && (
+        <SmartDrivePanel input={input} disabled={disabled} onFile={(file) => onFile("SMART_DRIVE", file)} onReviewSelected={onReviewSelected} />
+      )}
       {tab === "other_income" && <>
         <OtherIncomePanel
           records={input.other_income ?? []}
@@ -199,5 +206,54 @@ export default function Expenses({
       {editor !== undefined && isExpenseTab && <Dialog title={editor ? "Edit expense" : "Add expense"} onClose={() => setEditor(undefined)}><ExpenseForm input={input} month={month} source={tab} disabled={disabled} onSave={async (record) => { const saved = await onSaveExpense(record); if (saved) setEditor(undefined); return saved; }} onCancel={async (record, reason) => { const saved = await onDeleteExpense(record, reason); if (saved) setEditor(undefined); return saved; }} initialId={editor ?? undefined} /></Dialog>}
       {dialog}
     </div>
+  );
+}
+
+/** Records → Smart Drive: the approved Smart Drive Sales Report for the month, its rows, and its upload (Draft only). */
+function SmartDrivePanel({ input, disabled, onFile, onReviewSelected }: {
+  input: FinanceInput;
+  disabled: boolean;
+  onFile: (file?: File) => void;
+  onReviewSelected?: () => void;
+}) {
+  const approved = input.smart_import;
+  const rows = input.smart_rows;
+  // A new report is reviewed against the month's current figures, so it can only be posted while the month is Draft.
+  const locked = disabled || input.month.status !== "DRAFT";
+  return (
+    <section className="finance-panel">
+      <SectionHeading
+        title="Smart Drive Sales Report"
+        detail={approved
+          ? `${approved.filename} · uploaded ${klDateTime(approved.imported_at) ?? "—"}`
+          : "Upload the month's Smart Drive Sales Report (Excel)."}
+        summary={approved ? (
+          <p>
+            {rows.length} rows · {new Set(rows.map((row) => row.plate_key)).size} vehicles · Gross revenue{" "}
+            <strong>{money(rows.reduce((sum, row) => sum + row.gross_revenue, 0))}</strong> · Commission{" "}
+            <strong>{money(rows.reduce((sum, row) => sum + row.commission, 0))}</strong>
+          </p>
+        ) : undefined}
+        action={<div className="finance-dialog-actions">
+          {onReviewSelected && <button className="finance-link" disabled={locked} onClick={onReviewSelected}>Review selected file</button>}
+          <FileButton disabled={locked} label={approved ? "Replace file" : "Upload Excel"} onFile={onFile} />
+        </div>}
+      />
+      {input.month.status !== "DRAFT" && <p className="finance-strip-note">The report can be uploaded or replaced while the month is Draft.</p>}
+      <DataTable headers={["Vehicle", "Pickup", "Return", "Gross revenue", "Commission", "Status"]}>
+        {rows.length ? rows.map((row, index) => (
+          <tr key={index}>
+            <td>{row.display_plate}</td>
+            <td>{row.pickup_date}</td>
+            <td>{row.return_date}</td>
+            <td>{money(row.gross_revenue)}</td>
+            <td>{money(row.commission)}</td>
+            <td>{row.status}</td>
+          </tr>
+        )) : (
+          <tr><td colSpan={6}><Empty text="No Smart Drive report is approved for this month." /></td></tr>
+        )}
+      </DataTable>
+    </section>
   );
 }

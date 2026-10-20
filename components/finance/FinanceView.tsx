@@ -53,7 +53,7 @@ import {
   type WorkspaceMeta,
 } from "../../services/finance/workspace";
 import BankStatementPanel from "./BankStatementPanel";
-import { DataTable, Skeleton } from "./FinancePrimitives";
+import { Skeleton } from "./FinancePrimitives";
 import Overview from "./FinanceOverview";
 import Vehicles, { VehicleDialog } from "./FinanceVehicles";
 import Expenses, { type ExpenseWorkspaceTab, type UploadKind } from "./FinanceRecords";
@@ -143,7 +143,6 @@ export default function FinanceView(props: MoneyProps = {}) {
     null,
   );
   const [issuesOpen, setIssuesOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [expenseSource, setExpenseSource] =
     useState<ExpenseWorkspaceTab>("Workshop Billing");
   const previewGeneration = useRef(0);
@@ -170,7 +169,6 @@ export default function FinanceView(props: MoneyProps = {}) {
     setWorkspaceMeta(null);
     setSelectedVehicle(null);
     setIssuesOpen(false);
-    setImportOpen(false);
     setAuditOpen(false);
     setAcknowledged(false);
     setNotice(null);
@@ -732,7 +730,6 @@ export default function FinanceView(props: MoneyProps = {}) {
                   "Month reopened as Draft.",
                 )
               }
-              onFile={selectFile}
               onReview={(section, decision) =>
                 invoke(async () => {
                   await reviewSection(month, section, decision, revise);
@@ -746,17 +743,6 @@ export default function FinanceView(props: MoneyProps = {}) {
                 setExpenseSource(source);
                 setPage("expenses");
               }}
-              onViewImport={() => setImportOpen(true)}
-              onReviewSelected={
-                smartFile
-                  ? () =>
-                      selectFile(
-                        "SMART_DRIVE",
-                        smartFile.file,
-                        smartFile.mapping,
-                      )
-                  : undefined
-              }
             /></>
           )}
           {page === "vehicles" && (
@@ -803,6 +789,7 @@ export default function FinanceView(props: MoneyProps = {}) {
               onSaveSummary={(action: "ADD" | "UPDATE" | "CANCEL", record: object) => invoke(() => saveWorkshopSummary(action, record, revise), "Workshop monthly total saved.")}
               onLink={(summaryId: string, expenseId: string) => invoke(() => linkWorkshopAllocation(summaryId, expenseId, revise), "Workshop expense allocated.")}
               onFile={selectFile}
+              onReviewSelected={smartFile ? () => selectFile("SMART_DRIVE", smartFile.file, smartFile.mapping) : undefined}
               onExport={(kind: FinanceEditableExportKind, rows: readonly object[]) => exportRecords(kind, rows as readonly Record<string, unknown>[])}
               onSaveSetting={async (kind: "vehicle" | "recurring_cost" | "insurance", record: any) => {
                 const action = kind === "vehicle" && record.old_plate ? "CORRECT_PLATE" : (record.id || record.vehicle_id) ? "UPDATE" : "ADD";
@@ -873,32 +860,6 @@ export default function FinanceView(props: MoneyProps = {}) {
               </li>
             ))}
           </ul>
-        </Dialog>
-      )}
-      {importOpen && input && (
-        <Dialog title="Smart Drive import" onClose={() => setImportOpen(false)}>
-          <p>{input.smart_import?.filename}</p>
-          <DataTable
-            headers={[
-              "Vehicle",
-              "Pickup",
-              "Return",
-              "Gross revenue",
-              "Commission",
-              "Status",
-            ]}
-          >
-            {input.smart_rows.map((row, index) => (
-              <tr key={index}>
-                <td>{row.display_plate}</td>
-                <td>{row.pickup_date}</td>
-                <td>{row.return_date}</td>
-                <td>{money(row.gross_revenue)}</td>
-                <td>{money(row.commission)}</td>
-                <td>{row.status}</td>
-              </tr>
-            ))}
-          </DataTable>
         </Dialog>
       )}
       {selectedVehicle && report && (

@@ -54,3 +54,14 @@ export const monthEnd = (month: string) => {
   const [year, number] = month.slice(0, 7).split('-').map(Number);
   return `${month.slice(0, 7)}-${String(new Date(year, number, 0).getDate()).padStart(2, '0')}`;
 };
+
+const klParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', day: 'numeric', month: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hourCycle: 'h23' });
+
+/** An instant as a short Kuala Lumpur date and time, "21 Oct 2026, 3:05 pm"; null for a blank or unreadable value. */
+export const klDateTime = (value: string | null | undefined): string | null => {
+  const at = value ? new Date(value) : null;
+  if (!at || Number.isNaN(at.getTime())) return null;
+  const part = Object.fromEntries(klParts.formatToParts(at).map((p) => [p.type, p.value]));
+  const hour = Number(part.hour) % 24;
+  return `${Number(part.day)} ${MONTH_SHORT[Number(part.month) - 1]} ${part.year}, ${hour % 12 || 12}:${part.minute} ${hour < 12 ? 'am' : 'pm'}`;
+};
