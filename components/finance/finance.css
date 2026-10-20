@@ -126,6 +126,21 @@
 .finance-secondary:active {
   transform: translateY(1px);
 }
+/* Small group labels in the tab bar: Reports, then Work. */
+.finance-nav-group {
+  align-self: center;
+  color: var(--f-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 2px 0 6px;
+}
+.finance-nav-group:not(:first-child) {
+  margin-left: 12px;
+  padding-left: 14px;
+  border-left: 1px solid var(--f-line);
+}
 .finance-nav > .is-active,
 .finance-tabs .is-active {
   color: var(--f-accent);

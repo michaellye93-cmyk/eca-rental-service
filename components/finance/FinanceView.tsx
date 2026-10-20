@@ -70,18 +70,10 @@ import "./finance.css";
 import "./finance-mobile.css";
 
 const CollectionsPage = React.lazy(() => import("../money/CollectionsPage"));
-import { monthLoadNeeded, type Page } from "../../services/finance/pages";
+import { MONEY_PAGE_GROUPS, monthLoadNeeded, type Page } from "../../services/finance/pages";
 export type { Page } from "../../services/finance/pages";
-// Report → act → record → close: what happened, who owes, which cars earn, then the entries and the month close.
-const MONEY_PAGES: [Page, string][] = [
-  ["overview", "Overview"],
-  ["cash", "Cash"],
-  ["collections", "Collections"],
-  ["vehicles", "Vehicles"],
-  ["expenses", "Records"],
-  ["close", "Month close"],
-  ["reconcile", "Reconcile"],
-];
+// The tabs come in two labelled groups (services/finance/pages.ts): Reports (Overview, Cash, Collections, Vehicles)
+// for reading the month, and Work (Records, Reconcile, Month close) for entering and closing it.
 const monthBased = (page: Page) => page !== "cash" && page !== "collections";
 const PAGE_HEADINGS: Record<Page, [string, string]> = {
   overview: ["Overview", "How the month did, and how far it is from a 20% operating margin."],
@@ -630,15 +622,20 @@ export default function FinanceView(props: MoneyProps = {}) {
         </div>}
       </header>
       <nav aria-label="Finance sections" className="finance-nav">
-        {MONEY_PAGES.map(([id, label]) => (
-          <button
-            key={id}
-            className={page === id ? "is-active" : ""}
-            aria-current={page === id ? "page" : undefined}
-            onClick={() => setPage(id)}
-          >
-            {label}
-          </button>
+        {MONEY_PAGE_GROUPS.map((group) => (
+          <React.Fragment key={group.label}>
+            <span className="finance-nav-group">{group.label}</span>
+            {group.pages.map(([id, label]) => (
+              <button
+                key={id}
+                className={page === id ? "is-active" : ""}
+                aria-current={page === id ? "page" : undefined}
+                onClick={() => setPage(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </React.Fragment>
         ))}
         {monthBased(page) && (
           <div className="finance-more">
