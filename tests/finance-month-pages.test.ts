@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MONEY_PAGE_GROUPS, monthLoadNeeded, usesFinanceMonth } from '../services/finance/pages.ts';
+import { MONEY_PAGE_GROUPS, monthLoadNeeded, paymentsRefreshNeeded, usesFinanceMonth } from '../services/finance/pages.ts';
 
 test('only the pages that show the Finance month read it: Collections does not', () => {
   for (const page of ['overview', 'vehicles', 'close', 'expenses', 'reconcile'] as const) assert.equal(usesFinanceMonth(page), true, page);
@@ -23,4 +23,13 @@ test('the tab bar has Reports then Work, Month close last, and every page exactl
   ]);
   assert.deepEqual(MONEY_PAGE_GROUPS.flatMap((group) => group.pages.map(([, label]) => label)),
     ['Overview', 'Cash', 'Collections', 'Vehicles', 'Records', 'Reconcile', 'Month close']);
+});
+
+test('a Draft month refreshes its E-Hailing figures once when opened; Ready and Closed months never do', () => {
+  const month = (status: string) => ({ finance_month: '2026-09-01', status });
+  assert.equal(paymentsRefreshNeeded(month('DRAFT'), null), true, 'first open of a Draft month');
+  assert.equal(paymentsRefreshNeeded(month('DRAFT'), '2026-09'), false, 'already refreshed on this open: no loop on later reloads');
+  assert.equal(paymentsRefreshNeeded(month('DRAFT'), '2026-08'), true, 'another month was refreshed before');
+  assert.equal(paymentsRefreshNeeded(month('READY FOR REVIEW'), null), false);
+  assert.equal(paymentsRefreshNeeded(month('CLOSED'), null), false);
 });

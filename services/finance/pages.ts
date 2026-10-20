@@ -15,6 +15,14 @@ export const monthLoadNeeded = (page: Page, month: string, requestedMonth: strin
   usesFinanceMonth(page) && requestedMonth !== month;
 
 /**
+ * Whether a month just read should have its E-Hailing payments refreshed (finance_refresh_payments) before it is shown:
+ * only a Draft month, and only once per opening (`refreshedFor`: the YYYY-MM already refreshed since the month was
+ * chosen, or null), so the reloads after each save do not refresh again. Ready and Closed months keep their figures.
+ */
+export const paymentsRefreshNeeded = (month: { finance_month: string; status: string }, refreshedFor: string | null) =>
+  month.status === 'DRAFT' && refreshedFor !== month.finance_month.slice(0, 7);
+
+/**
  * The tab bar in two groups: Reports (what happened: Overview for the CEO, then cash, rent and cars) and Work (where
  * the month is entered and checked: Records, then Reconcile, and Month close last because the bank is reconciled before
  * closing). Page ids stay the same so saved pages and links keep working.

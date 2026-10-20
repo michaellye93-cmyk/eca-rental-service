@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ChevronRightIcon } from "@radix-ui/react-icons";
 import { kualaLumpurNow } from "../../utils";
-import { money, monthLong, percent1 } from "../../services/fmt";
+import { klDateTime, money, monthLong, percent1 } from "../../services/fmt";
 import StatTile from "../StatTile";
 import type { FinanceInput, FinanceReport } from "../../types/finance";
 import type { DriverWithMetrics } from "../../types";
@@ -10,6 +10,12 @@ import { marginTarget, monthCashFlow, type TrendRow } from "../../services/finan
 import { directCostBreakdown } from "../../services/finance/directCost";
 import { monthCollection } from "../../services/driverLedger";
 import { DataTable, SectionHeading, Skeleton } from "./FinancePrimitives";
+
+/** The line under the P&L: when the month's E-Hailing payments were last read (a Draft month refreshes on opening). */
+const eHailingAsOf = (refreshedAt: string | null) => {
+  const at = klDateTime(refreshedAt);
+  return at ? `E-Hailing figures as of ${at}.` : "E-Hailing figures have not been read for this month yet.";
+};
 
 /** Finance → Overview: the 20% net margin target, the P&L, the month as cash, and the month-by-month trend. */
 export default function Overview({
@@ -90,6 +96,7 @@ export default function Overview({
               </tbody>
             </table>
           </div>
+          <p className="finance-strip-note">{eHailingAsOf(input.month.refreshed_at)}</p>
         </section>
         <section className="finance-panel">
           <SectionHeading title="Cash flow" detail="The month as cash. Claims are not cash; tax instalments are. Built from Finance records, so it will not match the bank to the ringgit." />

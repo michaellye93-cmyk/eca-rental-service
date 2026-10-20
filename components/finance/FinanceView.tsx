@@ -70,7 +70,7 @@ import "./finance.css";
 import "./finance-mobile.css";
 
 const CollectionsPage = React.lazy(() => import("../money/CollectionsPage"));
-import { MONEY_PAGE_GROUPS, monthLoadNeeded, type Page } from "../../services/finance/pages";
+import { MONEY_PAGE_GROUPS, monthLoadNeeded, paymentsRefreshNeeded, type Page } from "../../services/finance/pages";
 export type { Page } from "../../services/finance/pages";
 // The tabs come in two labelled groups (services/finance/pages.ts): Reports (Overview, Cash, Collections, Vehicles)
 // for reading the month, and Work (Records, Reconcile, Month close) for entering and closing it.
@@ -152,6 +152,8 @@ export default function FinanceView(props: MoneyProps = {}) {
   const authenticatedUserId = useRef<string | null>(null);
   // The month already read (or being read) for the pages that use it; cleared with the private data.
   const requestedMonth = useRef<string | null>(null);
+  // The Draft month whose E-Hailing payments were refreshed since it was chosen (once per opening); cleared with the data.
+  const refreshedMonth = useRef<string | null>(null);
   // Stored trend figures of closed months: undefined until read, null when unavailable (database update not run).
   const [stored, setStored] = useState<StoredMonthTotals[] | null | undefined>(undefined);
   // Month (YYYY-MM) to the revision stored for it, kept current as figures are saved; null while unavailable.
@@ -159,6 +161,7 @@ export default function FinanceView(props: MoneyProps = {}) {
   const clearPrivate = useCallback(() => {
     previewGeneration.current++;
     requestedMonth.current = null;
+    refreshedMonth.current = null;
     storedRevisions.current = null;
     setStored(undefined);
     setInput(null);
@@ -287,6 +290,16 @@ export default function FinanceView(props: MoneyProps = {}) {
             meta = await loadWorkspaceMeta(selectedMonth);
           } catch {
             // Another tab changed the month first: show what was read; the next reload creates the lines.
+          }
+        }
+        // A Draft month shows today's E-Hailing payments: they are refreshed once each time the month is opened.
+        if (current === generation.current && paymentsRefreshNeeded(loaded.month, refreshedMonth.current)) {
+          refreshedMonth.current = selectedMonth.slice(0, 7);
+          try {
+            loaded = await refreshPayments(selectedMonth);
+            meta = await loadWorkspaceMeta(selectedMonth);
+          } catch {
+            // The refresh failed (or another tab changed the month): show what was read, with its "as of" time.
           }
         }
         if (current === generation.current && selectedMonth === month) {

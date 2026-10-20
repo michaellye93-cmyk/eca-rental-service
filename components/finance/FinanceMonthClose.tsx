@@ -267,15 +267,6 @@ export default function FinanceMonthClose(p: Props) {
             <p>Last updated: {updated(input.month.refreshed_at)}</p>
           </div>
           <div className="finance-section-action">
-            {!closed && (
-              <button
-                className="finance-secondary"
-                disabled={busy || !draft}
-                onClick={p.onRefresh}
-              >
-                Refresh E-Hailing Data
-              </button>
-            )}
             <button className="finance-link" onClick={p.onShowAudit}>
               View audit details
             </button>
