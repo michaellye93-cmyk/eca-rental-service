@@ -210,7 +210,7 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
                 </div>
               </div>
 
-              {activeAccounts.length > 0 && needsReceivedInto(parseFloat(paymentAmount) || 0, paymentMethod) && (
+              {activeAccounts.length > 0 && paymentMethod !== null && needsReceivedInto(parseFloat(paymentAmount) || 0, paymentMethod) && (
                 <div>
                   <label htmlFor="payment-received-into" className="text-xs font-bold text-gray-500 uppercase">Received into</label>
                   <select id="payment-received-into" required value={receivedInto} onChange={(e) => setReceivedInto(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1 bg-white">
