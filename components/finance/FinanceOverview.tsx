@@ -22,6 +22,7 @@ const statusLabel = (status: string) => (status === "READY FOR REVIEW" ? "Ready"
 
 // Revenue in neutral grey, operating profit in the Finance accent, the margin line in amber, the 20% target dashed.
 const COLORS = { revenue: "#94a3b8", profit: "#167c70", margin: "#d97706", target: "#4b5563" } as const;
+const LEGEND_ORDER = ["Revenue", "Operating profit", "Operating margin"];
 
 function MonthTooltip({ active, payload, rows }: { active?: boolean; payload?: Array<{ payload: TrendChartPoint }>; rows: TrendRow[] }) {
   const point = active ? payload?.[0]?.payload : undefined;
@@ -199,7 +200,7 @@ export default function Overview({
                     domain={[(min: number) => Math.min(0, Math.floor(min / 10) * 10), (max: number) => Math.max(30, Math.ceil(max / 10) * 10)]}
                     tickFormatter={(value: number) => `${value}%`} />
                   <Tooltip content={<MonthTooltip rows={trend} />} />
-                  <Legend verticalAlign="top" formatter={(value) => <span className="text-xs text-gray-700">{value}</span>} />
+                  <Legend verticalAlign="top" itemSorter={(item) => LEGEND_ORDER.indexOf(String(item.value))} formatter={(value) => <span className="text-xs text-gray-700">{value}</span>} />
                   <ReferenceLine yAxisId="pct" y={20} stroke={COLORS.target} strokeDasharray="6 4"
                     label={{ value: "20% target", position: "insideTopLeft", fontSize: 11, fill: COLORS.target }} />
                   <Bar yAxisId="rm" dataKey="revenue" name="Revenue" fill={COLORS.revenue} maxBarSize={28} isAnimationActive={false}>

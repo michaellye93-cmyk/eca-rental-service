@@ -218,6 +218,7 @@ function SmartDrivePanel({ input, disabled, onFile, onReviewSelected }: {
 }) {
   const approved = input.smart_import;
   const rows = input.smart_rows;
+  const vehicles = new Set(rows.map((row) => row.plate_key)).size;
   // A new report is reviewed against the month's current figures, so it can only be posted while the month is Draft.
   const locked = disabled || input.month.status !== "DRAFT";
   return (
@@ -229,7 +230,7 @@ function SmartDrivePanel({ input, disabled, onFile, onReviewSelected }: {
           : "Upload the month's Smart Drive Sales Report (Excel)."}
         summary={approved ? (
           <p>
-            {rows.length} rows · {new Set(rows.map((row) => row.plate_key)).size} vehicles · Gross revenue{" "}
+            {rows.length} {rows.length === 1 ? "row" : "rows"} · {vehicles} {vehicles === 1 ? "vehicle" : "vehicles"} · Gross revenue{" "}
             <strong>{money(rows.reduce((sum, row) => sum + row.gross_revenue, 0))}</strong> · Commission{" "}
             <strong>{money(rows.reduce((sum, row) => sum + row.commission, 0))}</strong>
           </p>
