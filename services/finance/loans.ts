@@ -128,10 +128,15 @@ export function progress(loan: VehicleLoan, today: string): LoanProgress {
   return { paid, left: tenure - paid, percent: Math.round((paid / tenure) * 100), finishes };
 }
 
-/** Six or fewer instalments left on a loan still running (its bar shows amber). */
+/** An active loan with instalments still to pay, or paying its last one this month. */
+const isRunning = (loan: VehicleLoan, today: string) => {
+  const run = progress(loan, today);
+  return isActive(loan) && (run.left > 0 || run.finishes.slice(0, 7) === today.slice(0, 7));
+};
+
+/** Six or fewer instalments left on a loan still running, its last month included (its bar shows amber). */
 export function nearPayoff(loan: VehicleLoan, today: string): boolean {
-  const { left } = progress(loan, today);
-  return isActive(loan) && left > 0 && left <= 6;
+  return isRunning(loan, today) && progress(loan, today).left <= 6;
 }
 
 /** Instalments still to pay (instalment × months left); 0 once settled or sold. */
@@ -171,11 +176,7 @@ export function sortLoans(loans: VehicleLoan[], today: string): VehicleLoan[] {
 
 /** The page's three tiles. */
 export function loanSummary(loans: VehicleLoan[], today: string): LoanSummary {
-  // Active loans with instalments still to pay, or paying their last one this month.
-  const running = loans.filter((loan) => {
-    const run = progress(loan, today);
-    return isActive(loan) && (run.left > 0 || run.finishes.slice(0, 7) === today.slice(0, 7));
-  });
+  const running = loans.filter((loan) => isRunning(loan, today));
   const soonest = sortLoans(running, today)[0];
   return {
     thisMonth: commitmentSeries(loans, today, 1).committed[0],

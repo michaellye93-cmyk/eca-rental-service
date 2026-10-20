@@ -71,6 +71,7 @@ test('a loan is near payoff with six or fewer instalments left, and only while i
   assert.equal(nearPayoff(loan({ first_payment_date: '2022-05-05' }), '2026-10-21'), true, '6 left');
   assert.equal(nearPayoff(loan({ first_payment_date: '2022-04-05' }), '2026-10-21'), true, '5 left');
   assert.equal(nearPayoff(loan({ first_payment_date: '2022-06-05' }), '2026-10-21'), false, '7 left');
+  assert.equal(nearPayoff(loan({ first_payment_date: '2021-11-05' }), '2026-10-21'), true, 'last instalment due this month');
   assert.equal(nearPayoff(loan({ first_payment_date: '2020-01-05' }), '2026-10-21'), false, 'finished: nothing left');
   assert.equal(nearPayoff(loan({ first_payment_date: '2022-05-05', status: 'SETTLED', closed_on: '2026-06-01' }), '2026-10-21'), false, 'settled');
 });
