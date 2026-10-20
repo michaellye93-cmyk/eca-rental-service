@@ -43,8 +43,8 @@ const FIELDS: { key: string; label: string; show: (value: unknown) => string }[]
   { key: 'reference', label: 'reference', show: value => (value ? String(value) : 'none') },
 ];
 
-/** One change as a line of the payment's history. */
-function noteFor(change: PaymentChange): string {
+/** One change as a line of the payment's history; `accountName` reads the received-into account id. */
+function noteFor(change: PaymentChange, accountName: (id: string) => string): string {
   const who = `${actorLabel(change)} · ${changeTime(change.changed_at)}`;
   if (change.action === 'INSERT') return `Recorded by ${who}`;
   const before = change.before ?? {};
@@ -53,7 +53,8 @@ function noteFor(change: PaymentChange): string {
     return `Deleted by ${who}: ${money(before.amount)}${claim > 0 ? ` + ${money(claim)} claim` : ''} on ${formatDate(String(before.date ?? ''))}`;
   }
   const after = change.after ?? {};
-  const edits = FIELDS
+  const fields = [...FIELDS, { key: 'received_into', label: 'account', show: (value: unknown) => (value ? accountName(String(value)) : 'Untagged') }];
+  const edits = fields
     .filter(field => field.show(before[field.key]) !== field.show(after[field.key]))
     .map(field => `${field.label} ${field.show(before[field.key])} → ${field.show(after[field.key])}`);
   return `Edited by ${who}${edits.length ? `: ${edits.join('; ')}` : ''}`;
@@ -63,11 +64,11 @@ function noteFor(change: PaymentChange): string {
  * Each payment's history lines, oldest first: "Recorded by Staff · …", then every edit and a deletion. Payments recorded
  * before the log started have no lines at all (their recorder is not known).
  */
-export function paymentNotes(changes: PaymentChange[]): Map<string, string[]> {
+export function paymentNotes(changes: PaymentChange[], accountName: (id: string) => string = () => 'an account'): Map<string, string[]> {
   const notes = new Map<string, string[]>();
   for (const change of [...changes].sort((a, b) => a.id - b.id)) {
     const lines = notes.get(change.payment_id) ?? [];
-    lines.push(noteFor(change));
+    lines.push(noteFor(change, accountName));
     notes.set(change.payment_id, lines);
   }
   return notes;

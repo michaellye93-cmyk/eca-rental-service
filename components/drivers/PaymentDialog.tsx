@@ -4,8 +4,9 @@ import type { Driver, PaymentTransaction } from '../../types';
 import { formatCurrency, formatDate, generateDriverInvoices, kualaLumpurNow, kualaLumpurToday } from '../../utils';
 import Dialog from '../Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from '../RentDisplay';
-import { BankBadge, PaymentNoteLines, useBankStatus, usePaymentLog } from '../PaymentNotes';
+import { BankBadge, PaymentNoteLines, ReceivedIntoBadge, useBankStatus, usePaymentAccounts, usePaymentLog } from '../PaymentNotes';
 import { findPossibleDuplicates, isBankReceipt, type PossibleDuplicate } from '../../services/paymentLog';
+import { ENTITY_NAMES, needsReceivedInto, type PaymentAccount, type PaymentEntity } from '../../services/paymentAccounts';
 
 type PaymentMethod = NonNullable<PaymentTransaction['paymentMethod']>;
 
@@ -17,8 +18,8 @@ interface PaymentDialogProps {
   /** The Claim box. The dashboard keeps it, so a typed claim is still there when the window opens again, until a payment is recorded. */
   serviceClaim: string;
   onServiceClaimChange: (value: string) => void;
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: PaymentMethod, reference?: string) => void;
-  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: PaymentMethod, reference?: string) => void | Promise<void>;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: PaymentMethod, reference?: string, receivedInto?: string) => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: PaymentMethod, reference?: string, receivedInto?: string | null) => void | Promise<void>;
   /** Called on Cancel, the close button, Escape and after a payment is recorded. */
   onClose: () => void;
 }
@@ -34,12 +35,16 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
   const [paymentDate, setPaymentDate] = useState(() => kualaLumpurToday());
   const [paymentMethod, setPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM' | null>(null);
   const [paymentReference, setPaymentReference] = useState('');
+  // The account a bank transfer or cash deposit went into (required for those once the account list exists)
+  const [receivedInto, setReceivedInto] = useState('');
+  const accounts = usePaymentAccounts();
+  const activeAccounts = accounts.filter(account => account.active);
   // Messages shown inside the forms when an entry needs fixing
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [editTxError, setEditTxError] = useState<string | null>(null);
   // Payments that look like the one being recorded; saving then needs a second confirmation
   const [duplicateWarning, setDuplicateWarning] = useState<PossibleDuplicate[] | null>(null);
-  useEffect(() => { setDuplicateWarning(null); }, [paymentAmount, serviceClaimAmount, paymentDate, paymentMethod, paymentReference, driver.id]);
+  useEffect(() => { setDuplicateWarning(null); }, [paymentAmount, serviceClaimAmount, paymentDate, paymentMethod, paymentReference, receivedInto, driver.id]);
   // Who recorded and edited each payment listed in the payment window
   const { notes: paymentWindowNotes, recorders: paymentWindowRecorders } = usePaymentLog(liveDriverForPayment);
   const paymentWindowBank = useBankStatus(liveDriverForPayment);
@@ -51,6 +56,7 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
   const [editDate, setEditDate] = useState<string>('');
   const [editPaymentMethod, setEditPaymentMethod] = useState<'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | null>(null);
   const [editReference, setEditReference] = useState<string>('');
+  const [editReceivedInto, setEditReceivedInto] = useState<string>('');
 
   useEffect(() => {
     setTimeout(() => {
@@ -87,13 +93,16 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
         }
     }
 
+    const askAccount = activeAccounts.length > 0 && needsReceivedInto(amount, finalMethod);
+    if (askAccount && !receivedInto) { setPaymentError('Choose which account the money went into.'); return; }
+
     setPaymentError(null);
     const reference = paymentReference.trim();
     const duplicates = findPossibleDuplicates(drivers, driver.id, { amount, serviceClaim, date: paymentDate, reference });
     // The same bank reference on a cash payment is never saved twice (the database refuses it too)
     const referenceTaken = isBankReceipt(amount, finalMethod) && duplicates.some(found => found.reason === 'SAME_REFERENCE' && found.driver.id === driver.id && isBankReceipt(found.payment.amount, found.payment.paymentMethod));
     if (duplicates.length > 0 && (!confirmDuplicates || referenceTaken)) { setDuplicateWarning(duplicates); return; }
-    onUpdatePayment(driver.id, amount, paymentDate, serviceClaim, finalMethod, reference || undefined);
+    onUpdatePayment(driver.id, amount, paymentDate, serviceClaim, finalMethod, reference || undefined, askAccount ? receivedInto : undefined);
     setServiceClaimAmount('0');
     onClose();
   };
@@ -106,6 +115,7 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
     setEditDate(tx.date);
     setEditPaymentMethod(tx.paymentMethod || 'BANK TRANSFER');
     setEditReference(tx.reference || '');
+    setEditReceivedInto(tx.receivedInto || '');
   };
 
   const handleCancelEditTx = () => {
@@ -115,6 +125,7 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
     setEditDate('');
     setEditPaymentMethod(null);
     setEditReference('');
+    setEditReceivedInto('');
   };
 
   const handleSaveEditTx = async (txId: string) => {
@@ -130,7 +141,10 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
     }
     setEditTxError(null);
     if (onEditPayment) {
-      onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER', editReference.trim());
+      // Only bank money keeps an account; switching to cash or a claim clears it. Untouched while the list is unavailable.
+      const method = amountNum === 0 && serviceClaimNum > 0 ? 'CLAIM' : editPaymentMethod || 'BANK TRANSFER';
+      const account = accounts.length ? (needsReceivedInto(amountNum, method) ? editReceivedInto || null : null) : undefined;
+      onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER', editReference.trim(), account);
     }
     setEditingTxId(null);
     setEditPaymentMethod(null);
@@ -195,6 +209,16 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
                   )}
                 </div>
               </div>
+
+              {activeAccounts.length > 0 && needsReceivedInto(parseFloat(paymentAmount) || 0, paymentMethod) && (
+                <div>
+                  <label htmlFor="payment-received-into" className="text-xs font-bold text-gray-500 uppercase">Received into</label>
+                  <select id="payment-received-into" required value={receivedInto} onChange={(e) => setReceivedInto(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm mt-1 bg-white">
+                    <option value="" disabled>Choose the account</option>
+                    <AccountOptions accounts={activeAccounts} />
+                  </select>
+                </div>
+              )}
 
               {paymentError && <p role="alert" className="text-sm font-medium text-rose-600">{paymentError}</p>}
 
@@ -277,6 +301,15 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
                           )}
                         </div>
                       </div>
+                      {accounts.length > 0 && needsReceivedInto(parseFloat(editAmount) || 0, parseFloat(editAmount || '0') === 0 && parseFloat(editServiceClaim || '0') > 0 ? 'CLAIM' : editPaymentMethod) && (
+                        <div>
+                          <label htmlFor={`edit-received-into-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase">Received into</label>
+                          <select id={`edit-received-into-${tx.id}`} value={editReceivedInto} onChange={e => setEditReceivedInto(e.target.value)} className="w-full p-1 border border-gray-300 rounded text-xs bg-white">
+                            <option value="">Untagged</option>
+                            <AccountOptions accounts={accounts.filter(account => account.active || account.id === editReceivedInto)} />
+                          </select>
+                        </div>
+                      )}
                       <div>
                         <label htmlFor={`edit-reference-${tx.id}`} className="text-xs font-bold text-gray-500 uppercase">Reference</label>
                         <input id={`edit-reference-${tx.id}`} type="text" maxLength={100} autoComplete="off" value={editReference} onChange={e => setEditReference(e.target.value)} placeholder="Optional" className="w-full p-1 border border-gray-300 rounded text-xs font-mono" />
@@ -294,6 +327,7 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
                         <div className="text-xs font-bold text-gray-900 mt-0.5 mb-1">Paid: <PaymentAmount payment={tx} /></div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <PaymentMethodBadge method={tx.paymentMethod} />
+                          <ReceivedIntoBadge payment={tx} accounts={accounts} />
                           {tx.reference && <span className="text-xs font-mono text-gray-700 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Ref: {tx.reference}</span>}
                           <BankBadge payment={tx} status={paymentWindowBank} />
                         </div>
@@ -309,5 +343,21 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/** The accounts as options, grouped under SDN BHD and Enterprise. */
+function AccountOptions({ accounts }: { accounts: PaymentAccount[] }) {
+  return (
+    <>
+      {(Object.keys(ENTITY_NAMES) as PaymentEntity[]).map(entity => {
+        const list = accounts.filter(account => account.entity === entity);
+        return list.length > 0 && (
+          <optgroup key={entity} label={ENTITY_NAMES[entity]}>
+            {list.map(account => <option key={account.id} value={account.id}>{account.label}</option>)}
+          </optgroup>
+        );
+      })}
+    </>
   );
 }

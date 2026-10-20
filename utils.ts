@@ -519,9 +519,10 @@ export interface PaymentRow {
   service_claim?: number | string | null;
   payment_method?: string | null;
   reference?: string | null;
+  received_into?: string | null;
 }
 
-/** A payments row as the app's payment: no claim and bank transfer when those columns are empty; a reference only when typed. */
+/** A payments row as the app's payment: no claim and bank transfer when those columns are empty; a reference and account only when set. */
 export const paymentFromRow = (row: PaymentRow): PaymentTransaction => ({
   id: String(row.id),
   date: row.date,
@@ -529,6 +530,7 @@ export const paymentFromRow = (row: PaymentRow): PaymentTransaction => ({
   serviceClaim: Number(row.service_claim ?? 0) || 0,
   paymentMethod: (row.payment_method || 'BANK TRANSFER') as PaymentTransaction['paymentMethod'],
   ...(row.reference ? { reference: row.reference } : {}),
+  ...(row.received_into ? { receivedInto: String(row.received_into) } : {}),
 });
 
 /**

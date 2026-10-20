@@ -46,8 +46,8 @@ import type { UpfrontReceived } from '../services/depositTotals';
 interface AdminDashboardProps {
   drivers: Driver[];
   userRole: 'admin' | 'staff'; // Role passed from parent
-  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void;
-  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string) => void | Promise<void>;
+  onUpdatePayment: (driverId: string, amount: number, date: string, serviceClaim?: number, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string, receivedInto?: string) => void;
+  onEditPayment?: (paymentId: string, amount: number, serviceClaim: number, date: string, paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM', reference?: string, receivedInto?: string | null) => void | Promise<void>;
   /** Creates the driver; with `upfront`, also records the money received at signing once the driver exists. */
   onCreateDriver: (driver: Driver, upfront?: UpfrontReceived) => Promise<void>;
   /** Saves the driver; with `upfront`, also records extra deposit/downpayment received (Deposits panel). */
@@ -725,7 +725,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     // Reconcile's "Paid in cash": same edit as the payment window, method changed to Cash (in hand).
                     const tx = driverData.flatMap((d) => d.paymentHistory).find((p) => p.id === paymentId);
                     if (!tx || !onEditPayment) throw new Error('That payment was not found. Reload the page and try again.');
-                    await onEditPayment(paymentId, tx.amount, tx.serviceClaim || 0, tx.date, 'CASH', tx.reference ?? '');
+                    await onEditPayment(paymentId, tx.amount, tx.serviceClaim || 0, tx.date, 'CASH', tx.reference ?? '', null);
                   }}
                 />
               </React.Suspense>

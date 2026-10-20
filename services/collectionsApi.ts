@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { readAllRows } from './pagedRead';
 import type { PaymentChange } from './paymentLog';
+import type { PaymentAccount } from './paymentAccounts';
 import { CONTACT_SUMMARY_COLUMNS, type CatchUpPlan, type CollectionContact, type ContactKind, type ContactSummary, type PaymentPromise } from './collections';
 import type { DailyStatusRow } from './dailyStatus';
 import type { CollectionRun, NewCollectionRun } from './collectionRuns';
@@ -16,6 +17,20 @@ export async function loadPaymentBankStatus(driverId: string): Promise<{ matched
   const { data, error } = await supabase.rpc('finance_payment_bank_status', { p_driver_id: driverId });
   if (error) throw error;
   return { matched: data?.matched ?? [], months: data?.months ?? [] };
+}
+
+/** The accounts payments are received into, in the order the form lists them (inactive ones are left off the form). */
+export async function loadPaymentAccounts(): Promise<(PaymentAccount & { active: boolean })[]> {
+  const { data, error } = await supabase.from('payment_accounts').select('id,label,entity,active').order('sort_order').order('label');
+  if (error) throw error;
+  return (data ?? []) as (PaymentAccount & { active: boolean })[];
+}
+
+/** The account each payment dated from `from` up to (not including) `to` was received into, by payment id; untagged payments are absent. */
+export async function loadReceivedInto(from: string, to: string): Promise<Map<string, string>> {
+  const rows = await readAllRows<{ id: string; received_into: string }>(
+    () => supabase.from('payments').select('id,received_into').gte('date', from).lt('date', to).not('received_into', 'is', null), 'date', true);
+  return new Map(rows.map(row => [String(row.id), String(row.received_into)]));
 }
 
 export async function loadPaymentChanges(driverId: string): Promise<PaymentChange[]> {

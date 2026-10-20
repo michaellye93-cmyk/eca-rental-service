@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Driver } from '../types';
-import { loadPaymentBankStatus, loadPaymentChanges } from '../services/collectionsApi';
+import { loadPaymentAccounts, loadPaymentBankStatus, loadPaymentChanges } from '../services/collectionsApi';
 import { paymentNotes, paymentRecorders, type PaymentChange } from '../services/paymentLog';
+import { needsReceivedInto, receivedIntoLabel, type PaymentAccount } from '../services/paymentAccounts';
 
 /**
  * The driver's payment change log: each payment's history lines (see paymentNotes) and who recorded it (see
@@ -20,7 +21,8 @@ export function usePaymentLog(driver: Pick<Driver, 'id' | 'paymentHistory'> | nu
       .catch(() => { if (live) setChanges([]); });
     return () => { live = false; };
   }, [driverId, payments]);
-  return useMemo(() => ({ notes: paymentNotes(changes), recorders: paymentRecorders(changes) }), [changes]);
+  const accounts = usePaymentAccounts();
+  return useMemo(() => ({ notes: paymentNotes(changes, id => receivedIntoLabel(accounts, id)), recorders: paymentRecorders(changes) }), [changes, accounts]);
 }
 
 /** Who recorded and changed each of the driver's payments, by payment id (see usePaymentLog). */
@@ -46,6 +48,34 @@ export function DeletedPayments({ notes, payments }: { notes: Map<string, string
       <ul className="space-y-0.5">{deleted.map(([id, lines]) => <li key={id}>{lines.at(-1)}</li>)}</ul>
     </div>
   );
+}
+
+let accountsLoad: ReturnType<typeof loadPaymentAccounts> | null = null;
+
+/**
+ * Every account payments are received into (inactive ones too, so old tags still read), loaded once per page visit.
+ * Empty until loaded, and empty when the list is not available yet (the database file has not been run); the payment
+ * form then saves as before, without asking for an account.
+ */
+export function usePaymentAccounts(): (PaymentAccount & { active: boolean })[] {
+  const [accounts, setAccounts] = useState<(PaymentAccount & { active: boolean })[]>([]);
+  useEffect(() => {
+    let live = true;
+    accountsLoad ??= loadPaymentAccounts();
+    accountsLoad
+      .then(loaded => { if (live) setAccounts(loaded); })
+      .catch(() => { accountsLoad = null; });
+    return () => { live = false; };
+  }, []);
+  return accounts;
+}
+
+/** The account a bank payment went into ("Into Account · Company"), or "Untagged"; nothing for cash in hand and claims. */
+export function ReceivedIntoBadge({ payment, accounts }: { payment: Pick<Driver['paymentHistory'][number], 'amount' | 'paymentMethod' | 'receivedInto'>; accounts: PaymentAccount[] }) {
+  if (!accounts.length || !needsReceivedInto(payment.amount, payment.paymentMethod)) return null;
+  return payment.receivedInto
+    ? <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800" title="The account this payment was received into">Into {receivedIntoLabel(accounts, payment.receivedInto)}</span>
+    : <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title="Which account this payment went into is not recorded yet. Edit the payment to set it.">Untagged</span>;
 }
 
 export interface BankStatus { matched: Set<string>; months: Set<string> }

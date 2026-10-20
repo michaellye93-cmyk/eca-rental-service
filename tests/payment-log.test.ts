@@ -69,6 +69,17 @@ test('each payment carries who recorded it and every later edit, in Kuala Lumpur
   assert.equal(notes.has('an-older-payment'), false);
 });
 
+test('setting or changing the account a payment went into reads in its history by the account name', () => {
+  const name = (id: string) => ({ a1: 'Fixture Bank 1001 · SDN BHD', a2: 'Fixture QR · Enterprise' }[id] ?? 'Untagged');
+  const notes = paymentNotes([
+    change({ id: 2, action: 'UPDATE', before: { id: 'p1', amount: 450, received_into: null }, after: { id: 'p1', amount: 450, received_into: 'a1' } }),
+    change({ id: 3, action: 'UPDATE', before: { id: 'p1', amount: 450, received_into: 'a1' }, after: { id: 'p1', amount: 450, received_into: 'a2' } }),
+  ], name);
+  const lines = notes.get('p1') ?? [];
+  assert.match(lines[0], /: account Untagged → Fixture Bank 1001 · SDN BHD$/);
+  assert.match(lines[1], /: account Fixture Bank 1001 · SDN BHD → Fixture QR · Enterprise$/);
+});
+
 test('deleted payments are listed with who deleted them and what they were', () => {
   const notes = paymentNotes([change({}), change({ id: 2, action: 'DELETE', changed_at: '2026-09-29T09:30:00Z', changed_by_role: 'admin', changed_by_name: 'Admin',
     before: { id: 'p1', amount: 450, service_claim: 0, date: '2026-09-28', payment_method: 'BANK TRANSFER', reference: null }, after: null })]);

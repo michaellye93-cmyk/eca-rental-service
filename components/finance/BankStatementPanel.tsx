@@ -1,6 +1,9 @@
 import { kualaLumpurToday } from "../../utils";
 import { money, monthLong } from "../../services/fmt";
 import { useConfirm } from "../Dialog";
+import { usePaymentAccounts } from "../PaymentNotes";
+import { loadReceivedInto } from "../../services/collectionsApi";
+import { ENTITY_NAMES, matchesAccountFilter, receivedIntoLabel, type AccountFilter } from "../../services/paymentAccounts";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { EhailingPayment, FinanceInput } from "../../types/finance";
 import type {
@@ -1087,10 +1090,26 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
   const { ask, dialog } = useConfirm();
   const [filter, setFilter] = useState<PairFilter>("all");
   const [cashDepositsOnly, setCashDepositsOnly] = useState(false);
+  // Which account each payment was received into, so the check can be done for SDN BHD and Enterprise separately
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>("all");
+  const accounts = usePaymentAccounts();
+  const [receivedInto, setReceivedInto] = useState<Map<string, string>>(new Map());
+  const monthStart = input?.month.finance_month.slice(0, 10);
+  const paymentsKey = input?.ehailing.length;
+  useEffect(() => {
+    if (!monthStart || !accounts.length) return;
+    let live = true;
+    const [y, m] = monthStart.split("-").map(Number);
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`;
+    loadReceivedInto(monthStart, next).then((found) => { if (live) setReceivedInto(found); }).catch(() => { if (live) setReceivedInto(new Map()); });
+    return () => { live = false; };
+  }, [monthStart, paymentsKey, accounts.length]);
   if (!input) return null;
   const accountOf = new Map((input.bank_imports ?? []).map((item) => [item.id, item.account_label || item.filename]));
   const posted = (input.bank_rows ?? []).filter((row) => row.match_valid !== false).map((row) => ({ row, account: accountOf.get(row.import_id) ?? "Posted statement" }));
-  const pairs = reconcilePairs(input.ehailing, posted, statements.map((s) => ({ rows: s.rows, account: s.account_label || s.filename })), suggestions, senderLooksLike);
+  const allPairs = reconcilePairs(input.ehailing, posted, statements.map((s) => ({ rows: s.rows, account: s.account_label || s.filename })), suggestions, senderLooksLike);
+  // Cash in hand and deposit forfeits reach no account, so they show only under "All"
+  const pairs = allPairs.filter((pair) => accountFilter === "all" || (!isCashInHand(pair.payment) && matchesAccountFilter(accountFilter, receivedInto.get(pair.payment.source_payment_id), accounts)));
   const isCashDeposit = (p: EhailingPayment) => String(p.payment_method ?? "").toUpperCase() === "CASH DEPOSIT";
   const groups: Record<PairFilter, (pair: (typeof pairs)[number]) => boolean> = {
     all: () => true,
@@ -1113,6 +1132,17 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
           System vs bank: <span className="text-emerald-700">✓ {ticked.length} matched</span>{cash.length > 0 && <>, <span className="text-slate-600">{cash.length} cash in hand ({money(cash.reduce((sum, pair) => sum + pair.payment.cash_amount, 0))})</span></>}, <span className={open.length ? "text-red-700" : "text-emerald-700"}>{open.length} not yet</span>
           {open.length > 0 && ` (${money(open.reduce((sum, pair) => sum + pair.payment.cash_amount, 0))})`}
         </h3>
+        {accounts.length > 0 && (
+          <label className="text-sm">
+            Received into{" "}
+            <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value as AccountFilter)} className="rounded border px-1 py-0.5">
+              <option value="all">All accounts</option>
+              <option value="SDN_BHD">{ENTITY_NAMES.SDN_BHD}</option>
+              <option value="ENTERPRISE">{ENTITY_NAMES.ENTERPRISE}</option>
+              <option value="UNTAGGED">Untagged</option>
+            </select>
+          </label>
+        )}
         <label className="text-sm">
           <input type="checkbox" checked={cashDepositsOnly} onChange={(e) => setCashDepositsOnly(e.target.checked)} className="mr-1" />
           Cash deposits only
@@ -1122,7 +1152,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
         <span style={{ width: `${percent}%` }} />
       </div>
       <p className="mt-1 text-sm text-slate-600">
-        {pairs.length} cash payments recorded in the app this month, each beside the bank line that proves it.
+        {pairs.length} cash payments recorded in the app this month{accountFilter === "all" ? "" : accountFilter === "UNTAGGED" ? " with no account recorded" : ` received into the ${ENTITY_NAMES[accountFilter]} account${accountFilter === "ENTERPRISE" ? "s" : ""}`}, each beside the bank line that proves it.
         {waiting > 0 && <> <b>{waiting}</b> of the matches are in a statement still to post.</>}
       </p>
       <div className="reconcile-filters mt-2" role="tablist" aria-label="Show payments">
@@ -1147,7 +1177,7 @@ function SideBySide({ input, statements, suggestions, disabled, onMatch, onUndo,
               return (
                 <tr key={p.source_payment_id} className={`is-${pair.state}`}>
                   <td className="nowrap">{shortDate(p.payment_date)}</td>
-                  <td><b>{p.driver_name_snapshot ?? "—"}</b>{isCashDeposit(p) && <span className="reconcile-tag">Cash deposit</span>}</td>
+                  <td><b>{p.driver_name_snapshot ?? "—"}</b>{isCashDeposit(p) && <span className="reconcile-tag">Cash deposit</span>}{accounts.length > 0 && !isCashInHand(p) && <span className="reconcile-tag" title="The account this payment was received into">{receivedIntoLabel(accounts, receivedInto.get(p.source_payment_id))}</span>}</td>
                   <td className="nowrap">{p.car_plate_snapshot ?? p.plate_key ?? "—"}</td>
                   <td className="num"><b>{money(p.cash_amount)}</b></td>
                   <td className={`reconcile-mark is-${pair.state}`} aria-label={pair.state}>{mark}</td>

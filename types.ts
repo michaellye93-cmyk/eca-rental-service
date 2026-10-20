@@ -18,6 +18,8 @@ export interface PaymentTransaction {
   paymentMethod?: 'BANK TRANSFER' | 'CASH DEPOSIT' | 'CASH' | 'DEPOSIT CONTRA' | 'CLAIM';
   /** The receipt or DuitNow reference, when one was typed. */
   reference?: string;
+  /** The payment_accounts id of the account the money went into; absent for untagged payments. */
+  receivedInto?: string;
 }
 
 export interface Driver {
