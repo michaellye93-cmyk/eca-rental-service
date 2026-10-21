@@ -216,6 +216,46 @@ export function activeMonthlyCostTotal(costs: ReadonlyArray<Pick<RecurringCost, 
   return round2(costs.filter((cost) => !cost.cancelled_at && monthOverlaps(cost, key)).reduce((sum, cost) => sum + Number(cost.monthly_amount), 0));
 }
 
+export interface CostShare { amount: number; share: number }
+
+/**
+ * The month's active monthly vehicle costs split by Vehicle Master ownership: Car Owner cars against every company type
+ * (Company HP, Company, ...), each with its share of the total in percent. A cost whose plate is not in Vehicle Master
+ * (or only on a deleted car) is kept apart so the parts still add up to the total.
+ */
+export function monthlyCostByOwnership(
+  costs: ReadonlyArray<Pick<RecurringCost, 'plate_key' | 'start_month' | 'end_month' | 'monthly_amount' | 'cancelled_at'>>,
+  vehicles: ReadonlyArray<{ plate_key: string; ownership_type: string; deleted_at?: string | null }>,
+  month: string,
+) {
+  const key = monthKey(month);
+  const ownership = new Map(vehicles.filter((vehicle) => !vehicle.deleted_at).map((vehicle) => [vehicle.plate_key, vehicle.ownership_type.trim()]));
+  let carOwner = 0; let notInMaster = 0;
+  const companyTypes = new Map<string, { label: string; amount: number }>();
+  for (const cost of costs) {
+    if (cost.cancelled_at || !monthOverlaps(cost, key)) continue;
+    const amount = Number(cost.monthly_amount);
+    const type = ownership.get(cost.plate_key);
+    if (type === undefined) notInMaster += amount;
+    else if (type.toLowerCase() === 'car owner') carOwner += amount;
+    else {
+      const group = companyTypes.get(type.toLowerCase()) ?? { label: type, amount: 0 };
+      group.amount += amount;
+      companyTypes.set(type.toLowerCase(), group);
+    }
+  }
+  const types = [...companyTypes.values()].sort((left, right) => right.amount - left.amount);
+  const total = round2(carOwner + notInMaster + types.reduce((sum, group) => sum + group.amount, 0));
+  const part = (amount: number): CostShare => ({ amount: round2(amount), share: total ? Math.round((amount / total) * 1000) / 10 : 0 });
+  return {
+    total,
+    carOwner: part(carOwner),
+    company: part(types.reduce((sum, group) => sum + group.amount, 0)),
+    companyTypes: types.map((group) => ({ label: group.label, ...part(group.amount) })),
+    notInMaster: part(notInMaster),
+  };
+}
+
 export const buildFinanceReport = calculateFinance;
 
 /** Other Income for a month split into what the P&L counts (Confirmed) and Draft lines that wait for confirming. */

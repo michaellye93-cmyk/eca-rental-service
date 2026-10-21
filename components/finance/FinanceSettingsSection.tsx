@@ -5,7 +5,7 @@ import type { DriverWithMetrics } from "../../types";
 import type { SectionKind } from "../../services/finance/workspace";
 import type { FinanceEditableExportKind } from "../../services/finance/exports";
 import { insuranceCashOutflow, insuranceHeaderTotals, insuranceProblems, overlappingInsurance } from "../../services/finance/insurance";
-import { activeMonthlyCostTotal } from "../../services/finance/calculations";
+import { activeMonthlyCostTotal, monthlyCostByOwnership, type CostShare } from "../../services/finance/calculations";
 import Dialog from "./FinanceDialog";
 import PlatesToCheck from "./PlatesToCheck";
 import { InsuranceForm, RecurringForm, VehicleForm } from "./FinanceRecordForms";
@@ -61,6 +61,8 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
   );
   // Only the costs running in the month viewed: a loan that has ended, or one not started yet, is listed but not added
   const monthlyCostTotal = activeMonthlyCostTotal(activeCosts, month);
+  const costSplit = monthlyCostByOwnership(activeCosts, input.vehicles, month);
+  const shareText = (part: CostShare) => `${money(part.amount)} (${part.share}%)`;
   const insuranceTotals = insuranceHeaderTotals(input.insurance, new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }));
   const insuranceOverlaps = overlappingInsurance(input.insurance);
   const displayedCosts = costSort
@@ -136,7 +138,13 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
           <SectionHeading
             title="Monthly Vehicle Costs"
             detail="Excel columns: Car Plate, Start Month, Cost Type, Monthly Amount. Active costs are applied automatically."
-            summary={<strong>Total this month: {money(monthlyCostTotal)}</strong>}
+            summary={<><strong>Total this month: {money(monthlyCostTotal)}</strong>{monthlyCostTotal > 0 && (
+              <p>
+                Car Owner {shareText(costSplit.carOwner)} · Company {shareText(costSplit.company)}
+                {costSplit.companyTypes.length > 0 && <> ({costSplit.companyTypes.map((part) => `${part.label} ${shareText(part)}`).join(", ")})</>}
+                {costSplit.notInMaster.amount > 0 && <> · Not in Vehicle Master {shareText(costSplit.notInMaster)}</>}
+              </p>
+            )}</>}
             action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("vehicle_monthly_costs", input.recurring_costs.filter((row: RecurringCost) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add monthly cost</button><FileButton
                 disabled={disabled}
                 label="Import Excel"
