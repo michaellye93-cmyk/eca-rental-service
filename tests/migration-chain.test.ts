@@ -41,6 +41,7 @@ const CHAIN = [
   '20261012240000_one_vehicle.sql',
   '20261021090000_vehicle_loans.sql',
   '20261021150000_vehicle_loan_letter_fields.sql',
+  '20261021180000_other_income_recurring.sql',
 ];
 
 test('the new files apply after the whole Finance chain, and the additive ones can safely run twice', async () => {
@@ -58,10 +59,10 @@ test('the new files apply after the whole Finance chain, and the additive ones c
     assert.equal((await db.query<{ open: boolean }>(`select has_table_privilege('anon', 'public.cars', 'SELECT') open`)).rows[0].open, false,
       'at the end of the chain signed-out visitors cannot read the car list');
     // Running the two additive files again (by mistake) changes nothing and does not fail.
-    for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql', '20260929090000_collections_support.sql', '20261006090000_finance_car_history_and_cash_flow.sql', '20261007120000_driver_portal_remember.sql', '20261009090000_vehicle_details_and_agreements.sql', '20261009150000_driver_master_and_agreement_copy.sql', '20261009170000_returning_drivers.sql', '20261010090000_drop_approved_driver.sql', '20261012180000_security_review.sql', '20261012200000_money_review.sql', '20261012210000_collections_tools.sql', '20261012220000_cleanup.sql', '20261012230000_collection_runs.sql', '20261012240000_one_vehicle.sql', '20261021090000_vehicle_loans.sql', '20261021150000_vehicle_loan_letter_fields.sql']) await migrate(db, file);
+    for (const file of ['20260927090000_cash_position_and_outlook.sql', '20260927090100_driver_portal_phone_screening.sql', '20260929090000_collections_support.sql', '20261006090000_finance_car_history_and_cash_flow.sql', '20261007120000_driver_portal_remember.sql', '20261009090000_vehicle_details_and_agreements.sql', '20261009150000_driver_master_and_agreement_copy.sql', '20261009170000_returning_drivers.sql', '20261010090000_drop_approved_driver.sql', '20261012180000_security_review.sql', '20261012200000_money_review.sql', '20261012210000_collections_tools.sql', '20261012220000_cleanup.sql', '20261012230000_collection_runs.sql', '20261012240000_one_vehicle.sql', '20261021090000_vehicle_loans.sql', '20261021150000_vehicle_loan_letter_fields.sql', '20261021180000_other_income_recurring.sql']) await migrate(db, file);
     await asUser(db);
     const outlook = (await db.query<{ value: any }>(`select public.finance_cash_outlook(current_date) value`)).rows[0].value;
-    assert.deepEqual(Object.keys(outlook).sort(), ['balances', 'duplicate_recurring', 'history', 'insurance', 'months', 'today']);
+    assert.deepEqual(Object.keys(outlook).sort(), ['balances', 'duplicate_recurring', 'history', 'insurance', 'months', 'recurring_ahead', 'today']);
     assert.equal((await db.query<{ n: number }>(`select count(*)::int n from pg_proc where proname = 'finance_portal_instructions'`)).rows[0].n, 0,
       'the old "How to pay" text is gone at the end of the chain');
     // Reconcile drafts: each save and clear carries the time the change was made (one version of each, no older overload).
