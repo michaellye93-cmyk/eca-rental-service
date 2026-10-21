@@ -80,27 +80,23 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
   return (
     <div className="finance-content">
       <p className="finance-dialog-copy">{ASSUMPTION}</p>
-      <section className="finance-summary-grid is-three" aria-label="Vehicle loan figures">
+      <section className="finance-summary-grid is-four loans-tiles" aria-label="Vehicle loan figures">
         <StatTile
           emphasis
           label="Hire-purchase instalments, this month"
           value={money(summary.thisMonth)}
-          hint={`${summary.activeCount} active ${summary.activeCount === 1 ? "loan" : "loans"}${summary.nextFinish ? ` · next finishes ${monthShort(summary.nextFinish.month)} (${summary.nextFinish.plate})` : ""}`}
+          hint={`${summary.activeCount} active ${summary.activeCount === 1 ? "loan" : "loans"}${summary.nextFinish ? ` · next finishes ${monthShort(summary.nextFinish.month)} (${summary.nextFinish.plate})` : ""} · ${summary.nearPayoffCount} within 6 months of payoff`}
         />
         <StatTile label="Balance left, all loans" value={money(summary.balanceLeft)} hint="instalments still to pay, no early settlement" />
-        <StatTile label="Within 6 months of payoff" value={String(summary.nearPayoffCount)} hint="bars shown in amber below" />
-      </section>
-      <section className="finance-summary-grid is-three" aria-label="Vehicle asset figures">
         <StatTile
           label="Cost of vehicles"
           value={money(assets.cost)}
-          hint={`cash price of ${assets.count} ${assets.count === 1 ? "car" : "cars"} still owned · financing + downpayment where no cash price is typed`}
+          hint={`${assets.count} ${assets.count === 1 ? "car" : "cars"} still owned · downpayment paid ${money(assets.downpayment)}`}
         />
-        <StatTile label="Downpayment paid" value={money(assets.downpayment)} hint="on the cars still owned" />
         <StatTile
           label="Projected disposal value at payoff"
           value={money(assets.disposalAtPayoff)}
-          hint={`worth about ${money(assets.valueToday)} today · ${assets.ratePercent}% of cost a year, straight line from commencement`}
+          hint={`worth about ${money(assets.valueToday)} today · ${assets.ratePercent}% of cost a year, straight line`}
         />
       </section>
       <label className="loans-depreciation">

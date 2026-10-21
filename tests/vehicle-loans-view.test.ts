@@ -50,17 +50,22 @@ test('the Vehicle loans page shows the headline, the chart and the loans most pa
   const page = text(html);
   assert.match(page, /Hire-purchase instalments, this month/);
   assert.ok(page.includes(text(money(1300))), 'this month: the two active loans');
-  assert.match(page, /2 active loans · next finishes Apr 2027 \(XAA 1001\)/);
+  assert.match(page, /2 active loans · next finishes Apr 2027 \(XAA 1001\) · 1 within 6 months of payoff/);
   assert.match(page, /Balance left, all loans/);
   assert.ok(page.includes(text(money(500 * 6 + 800 * 26))), 'balance left: instalments still to pay');
-  assert.match(page, /Within 6 months of payoff 1/);
-  // The asset row: the cars still owned (the settled one too), what they cost and were paid down, and their disposal value.
-  assert.match(page, /Cost of vehicles/);
+  // One row of four tiles: the loans, then the cars still owned (the settled one too), what they cost and were paid
+  // down, and their disposal value. No separate downpayment or near-payoff tile.
+  assert.equal((html.match(/aria-label="Vehicle loan figures"/g) ?? []).length, 1);
+  assert.match(html, /class="finance-summary-grid is-four loans-tiles" aria-label="Vehicle loan figures"/);
+  assert.doesNotMatch(html, /Vehicle asset figures/);
+  const tiles = ['Hire-purchase instalments, this month', 'Balance left, all loans', 'Cost of vehicles', 'Projected disposal value at payoff'].map((label) => page.indexOf(label));
+  assert.ok(tiles.every((at, i) => at >= 0 && (i === 0 || tiles[i - 1] < at)), `tile order ${tiles}`);
+  assert.doesNotMatch(page, /Within 6 months of payoff/);
+  assert.doesNotMatch(page, /Downpayment paid/);
   assert.ok(page.includes(text(money(99000))), 'cost: financing + downpayment of the three cars, none sold');
-  assert.match(page, /Downpayment paid/);
-  assert.ok(page.includes(text(money(9000))), 'downpayment of the three cars');
-  assert.match(page, /Projected disposal value at payoff/);
-  assert.match(page, /5% of cost a year/);
+  assert.ok(page.includes(text(`3 cars still owned · downpayment paid ${money(9000)}`)), 'downpayment of the three cars, under the cost');
+  assert.match(page, /today · 5% of cost a year, straight line /);
+  assert.doesNotMatch(page, /from commencement/);
   assert.match(page, /Depreciation, % a year/);
   assert.match(page, /Assumes every instalment is paid on time; the bank statement is the record\./);
   // The chart is drawn from the series, each running loan's end labelled by plate.

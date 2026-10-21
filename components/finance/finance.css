@@ -1358,9 +1358,12 @@
   background: #f0faf7;
   text-align: left;
 }
-/* Finance → Vehicle loans: three tiles, the commitment chart and each loan's progress bar. */
-.finance-summary-grid.is-three {
-  grid-template-columns: 1.6fr 1fr 1fr;
+/* Finance → Vehicle loans: one row of four tiles (the first wider), the commitment chart and each loan's progress bar.
+   is-four gives the two-column tablet and one-column phone layouts; only the wide layout is set here. */
+@media (min-width: 901px) {
+  .finance-summary-grid.is-four.loans-tiles {
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  }
 }
 .loans-depreciation {
   display: flex;
@@ -1584,10 +1587,5 @@
   }
   .loans-what-if {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 600px) {
-  .finance-summary-grid.is-three {
-    grid-template-columns: 1fr;
   }
 }
