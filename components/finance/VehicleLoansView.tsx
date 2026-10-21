@@ -173,7 +173,7 @@ function LoanRow({ loan, today, car, busy, onEdit, onDelete, open, onToggleSched
         {near && <span className="loan-pill is-near">Near payoff</span>}
         {!active && <span className="loan-pill is-closed">{LOAN_STATUS_LABELS[loan.status]}</span>}
         <small>
-          {[car, loan.bank, rateText(loan), `${loan.tenure_months} months from ${monthShort(loan.first_payment_date)}`, loan.commencement_date && `commenced ${dayLong(loan.commencement_date)}`].filter(Boolean).join(" · ")}
+          {[car, loan.bank, rateText(loan), `${loan.tenure_months} months from ${monthShort(loan.first_payment_date)}`].filter(Boolean).join(" · ")}
         </small>
       </div>
       <div className="loan-progress">

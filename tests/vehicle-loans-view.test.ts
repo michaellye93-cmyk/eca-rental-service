@@ -187,9 +187,10 @@ test('the loans are grouped under one heading per hirer, biggest monthly total f
   assert.ok(at('Fixture Owner · 2') < at('XAA 1001 ') && at('XAA 1001 ') < at('XAA 1004 ') && at('XAA 1004 ') < at('Fixture Owner Sdn Bhd · 1'));
   assert.ok(at('Fixture Owner Sdn Bhd · 1') < at('XAA 1002 ') && at('XAA 1002 ') < at('XAA 1003 ') && at('XAA 1003 ') < at('Ownership not set'));
   assert.ok(at('Ownership not set') < at('XAA 1005 '));
-  // The small print: the commencement date when set, and the rate type.
-  assert.match(page, /3\.00% flat · 60 months from May 2022 · commenced 5 Apr 2022/);
-  assert.match(page, /4\.50% variable · 60 months from Feb 2026/);
+  // The small print is one line: provider, rate and type, tenure from the first instalment; no commencement date.
+  assert.match(page, /Fixture Bank · 3\.00% flat · 60 months from May 2022 paid /);
+  assert.doesNotMatch(page, /commenced/);
+  assert.match(page, /Fixture Bank · 4\.50% variable · 60 months from Feb 2026/);
 });
 
 test("a variable-rate loan's schedule shows a dash for the interest split, with the line saying the bank gives it", async () => {
