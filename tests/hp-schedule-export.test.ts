@@ -55,3 +55,28 @@ test('without a known model the header block skips the Model line; a rounded loa
   assert.equal(sheet.getCell(11, 2).value, 43700 - 59 * 729);
   assert.deepEqual(valuesOf(sheet, 13), HEADERS);
 });
+
+test("with the letter's lines the header block follows the letter: Ownership, Cost and Commencement Date in their places", async () => {
+  const sheet = await sheetOf({ ...LOAN, hirer: 'Fixture Owner Sdn Bhd', cash_price: 34000, commencement_date: '2023-12-15', rate_type: 'FLAT' }, 'Fixture Bezza 1.3');
+  const header = Array.from({ length: 14 }, (_, i) => [sheet.getCell(i + 1, 1).value, sheet.getCell(i + 1, 2).value]);
+  assert.deepEqual(header, [
+    ['Plate', 'XAA 1001'], ['Model', 'Fixture Bezza 1.3'], ['Ownership', 'Fixture Owner Sdn Bhd'], ['Loan provider', 'Fixture Bank'],
+    ['Cost', 34000], ['Less downpayment', 3000], ['HP financing', 30000], ['Interest @ 3.00% flat', 4500], ['Total', 34500],
+    ['Commencement Date', '15.12.2023'], ['First payment date', '15.01.2024'], ['Number of instalments', 60],
+    ['Monthly instalment × 59 months', 575], ['Final instalment × 1 month', 575],
+  ]);
+  assert.equal(sheet.getRow(15).cellCount, 0, 'a blank row before the table');
+  assert.deepEqual(valuesOf(sheet, 16), HEADERS);
+});
+
+test('a variable-rate loan shows its rate type, no interest, total or split, and the line saying the bank gives it', async () => {
+  const sheet = await sheetOf({ ...LOAN, rate_type: 'VARIABLE', finance_amount: 10000, tenure_months: 24, monthly_instalment: 450, first_payment_date: '2025-01-10' });
+  const header = Array.from({ length: 12 }, (_, i) => [sheet.getCell(i + 1, 1).value, sheet.getCell(i + 1, 2).value]);
+  assert.deepEqual(header.slice(5, 7), [['Interest @ 3.00% variable', '—'], ['Total', '—']]);
+  assert.deepEqual(header[10], ['Final instalment × 1 month', '—']);
+  assert.equal(sheet.getCell(12, 1).value, "Variable rate: the bank's statement gives the interest split");
+  assert.deepEqual(valuesOf(sheet, 14), HEADERS);
+  assert.deepEqual(valuesOf(sheet, 15), [null, 1, 24, 450, '—', '—', null, null, null, null]);
+  assert.deepEqual(valuesOf(sheet, 17), ['31.03.2025', 3, 22, 450, '—', '—', 1350, '—', '—', 8650]);
+  assert.equal(sheet.rowCount, 14 + 24);
+});
