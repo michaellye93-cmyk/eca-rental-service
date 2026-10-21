@@ -100,7 +100,7 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
         <StatTile
           label="Projected disposal value at payoff"
           value={money(assets.disposalAtPayoff)}
-          hint={`worth about ${money(assets.valueToday)} today · ${assets.ratePercent}% a year off net book value from commencement`}
+          hint={`worth about ${money(assets.valueToday)} today · ${assets.ratePercent}% of cost a year, straight line from commencement`}
         />
       </section>
       <label className="loans-depreciation">

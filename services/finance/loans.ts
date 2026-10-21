@@ -176,9 +176,21 @@ export function progress(loan: VehicleLoan, today: string): LoanProgress {
   const finishes = lastInstalmentMonth(loan.first_payment_date, tenure);
   const paid = !isActive(loan) ? tenure
     : first === null || now === null ? 0
-      : Math.min(tenure, Math.max(0, now - first + 1));
+      : Math.min(tenure, Math.max(0, instalmentsDueBy(loan.first_payment_date, first, now, today)));
   return { paid, left: tenure - paid, percent: Math.round((paid / tenure) * 100), finishes };
 }
+
+/**
+ * Instalments whose due date has passed by `today` (the due day counted): the months since the first instalment, plus
+ * this month's once its day is reached. The due day is the first instalment's day, or the month's last day if shorter.
+ */
+const instalmentsDueBy = (firstPaymentDate: string, first: number, now: number, today: string): number => {
+  if (now < first) return 0;
+  const dueDay = Number(firstPaymentDate.slice(8, 10)) || 1;
+  const todayDay = Number(today.slice(8, 10)) || 1;
+  const dueThisMonth = Math.min(dueDay, lastDay(Math.floor(now / 12), (now % 12) + 1));
+  return now - first + (todayDay >= dueThisMonth ? 1 : 0);
+};
 
 /** An active loan with instalments still to pay, or paying its last one this month. */
 const isRunning = (loan: VehicleLoan, today: string) => {
@@ -240,7 +252,7 @@ export interface AssetSummary {
   /** Cash price of those cars (financing + downpayment when no cash price was typed). */
   cost: number;
   downpayment: number;
-  /** Net book value today: cost less ratePercent a year on the reducing balance since commencement. */
+  /** Net book value today: cost less ratePercent of cost a year (straight line) since commencement. */
   valueToday: number;
   /** The same at each loan's last instalment (today for a loan already settled): roughly what the cars fetch once paid off. */
   disposalAtPayoff: number;
@@ -259,12 +271,12 @@ const commencementIndex = (loan: VehicleLoan): number | null => {
   return first === null ? null : first - 1;
 };
 
-/** Net book value after `months` months: cost less ratePercent a year on the reducing balance (never negative months). */
-const bookValue = (cost: number, months: number, ratePercent: number): number => cost * Math.pow(1 - ratePercent / 100, Math.max(0, months) / 12);
+/** Net book value after `months` months: cost less ratePercent of cost a year, straight line, never below zero. */
+const bookValue = (cost: number, months: number, ratePercent: number): number => cost * Math.max(0, 1 - (ratePercent / 100) * (Math.max(0, months) / 12));
 
 /**
  * The asset figures for the page: cost and downpayment of the cars still owned, their net book value today, and the
- * projected disposal value once each loan is paid off (ratePercent a year off the reducing balance from commencement).
+ * projected disposal value once each loan is paid off (ratePercent of cost a year, straight line, from commencement).
  */
 export function assetSummary(loans: VehicleLoan[], today: string, ratePercent = 5): AssetSummary {
   const owned = loans.filter((loan) => loan.status !== 'SOLD');

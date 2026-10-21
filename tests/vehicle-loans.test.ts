@@ -62,7 +62,12 @@ test('progress counts whole months from the first payment month to this month, a
   const running = loan({});
   assert.deepEqual(progress(running, '2026-10-21'), { paid: 44, left: 16, percent: 73, finishes: '2028-02-01' });
   // The first payment month counts as paid from its first day (whole months, not days).
-  assert.deepEqual(progress(loan({ first_payment_date: '2026-10-25' }), '2026-10-01'), { paid: 1, left: 59, percent: 2, finishes: '2031-09-01' });
+  // An instalment counts only once its due date has passed: the 25th is still ahead on the 1st, counted on the 25th itself.
+  assert.deepEqual(progress(loan({ first_payment_date: '2026-10-25' }), '2026-10-01'), { paid: 0, left: 60, percent: 0, finishes: '2031-09-01' });
+  assert.deepEqual(progress(loan({ first_payment_date: '2026-10-25' }), '2026-10-25'), { paid: 1, left: 59, percent: 2, finishes: '2031-09-01' });
+  assert.equal(progress(loan({ first_payment_date: '2026-09-25' }), '2026-10-24').paid, 1, "October's instalment is not yet due on the 24th");
+  assert.equal(progress(loan({ first_payment_date: '2026-09-25' }), '2026-10-25').paid, 2);
+  assert.equal(progress(loan({ first_payment_date: '2026-01-31' }), '2026-02-28').paid, 2, 'a due day past the month end falls on the last day');
   // Before the first payment month nothing is paid.
   assert.deepEqual(progress(loan({ first_payment_date: '2027-01-05' }), '2026-10-21'), { paid: 0, left: 60, percent: 0, finishes: '2031-12-01' });
   // Capped at the tenure once the last month has passed.
@@ -196,7 +201,7 @@ test("the letter-fields database update is missing when a loaded loan carries no
   assert.equal(letterFieldsMissing([{ plate_key: 'XAA1001' } as any]), true, 'rows saved by the first SQL file have no rate_type column');
 });
 
-test('the asset figures: cost and downpayment of the cars still owned, and what they are worth at 5% a year off net book value', () => {
+test('the asset figures: cost and downpayment of the cars still owned, and what they are worth at 5% of cost a year', () => {
   const loans = [
     // No cash price typed: cost = financing + downpayment = 33000; commenced Feb 2023 (one month before the first instalment), last instalment Feb 2028.
     loan({ plate_key: 'XAA1001' }),
@@ -209,13 +214,15 @@ test('the asset figures: cost and downpayment of the cars still owned, and what 
   assert.equal(figures.count, 2);
   assert.equal(figures.cost, 83000);
   assert.equal(figures.downpayment, 11000);
-  // At payoff: 33000 × 0.95^5 (60 months) + 50000 × 0.95^3 (36 months).
-  assert.equal(figures.disposalAtPayoff, 25534.77 + 42868.75);
+  // At payoff, 5% of cost a year straight line: 33000 less 25% (60 months) + 50000 less 15% (36 months).
+  assert.equal(figures.disposalAtPayoff, 24750 + 42500);
   // Today: XAA1001 has run 44 months since Feb 2023; XAA1002 33 months since Jan 2024.
-  assert.equal(figures.valueToday, Math.round((27342.22 + 50000 * 0.95 ** (33 / 12)) * 100) / 100);
+  assert.equal(figures.valueToday, Math.round((33000 * (1 - 0.05 * 44 / 12) + 50000 * (1 - 0.05 * 33 / 12)) * 100) / 100);
   // A settled loan is finished: it counts at today's value, and the rate can be changed.
   const settled = assetSummary([loan({ plate_key: 'XAA1004', cash_price: 20000, status: 'SETTLED', closed_on: '2026-06-01', commencement_date: '2025-10-01' })], '2026-10-21', 10);
-  assert.equal(settled.disposalAtPayoff, Math.round(20000 * 0.9 ** 1 * 100) / 100);
+  assert.equal(settled.disposalAtPayoff, 18000);
+  // Fully written down: never below zero.
+  assert.equal(assetSummary([loan({ plate_key: 'XAA1005', cash_price: 20000, commencement_date: '2000-01-01' })], '2026-10-21', 5).valueToday, 0);
   assert.equal(settled.valueToday, settled.disposalAtPayoff);
   assert.deepEqual(assetSummary([], '2026-10-21'), { count: 0, cost: 0, downpayment: 0, valueToday: 0, disposalAtPayoff: 0, ratePercent: 5 });
 });

@@ -60,7 +60,7 @@ test('the Vehicle loans page shows the headline, the chart and the loans most pa
   assert.match(page, /Downpayment paid/);
   assert.ok(page.includes(text(money(9000))), 'downpayment of the three cars');
   assert.match(page, /Projected disposal value at payoff/);
-  assert.match(page, /5% a year off net book value/);
+  assert.match(page, /5% of cost a year/);
   assert.match(page, /Depreciation, % a year/);
   assert.match(page, /Assumes every instalment is paid on time; the bank statement is the record\./);
   // The chart is drawn from the series, each running loan's end labelled by plate.
