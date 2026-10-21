@@ -191,7 +191,7 @@ export default function Overview({
           <figure className="m-0">
             <div className="h-64" role="img" aria-label={`Operating margin by month: ${chart.map((point) => `${point.label} ${point.margin === null ? "no revenue" : `${point.margin.toFixed(1)}%`}`).join(", ")}. Target 20%.`}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chart} margin={{ top: 8, right: 0, bottom: 0, left: -8 }}>
+                <ComposedChart data={chart} barSize={28} barGap={4} margin={{ top: 8, right: 0, bottom: 0, left: -8 }}>
                   <CartesianGrid vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={{ stroke: "#d1d5db" }} />
                   <YAxis yAxisId="rm" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false}
@@ -203,10 +203,10 @@ export default function Overview({
                   <Legend verticalAlign="top" itemSorter={(item) => LEGEND_ORDER.indexOf(String(item.value))} formatter={(value) => <span className="text-xs text-gray-700">{value}</span>} />
                   <ReferenceLine yAxisId="pct" y={20} stroke={COLORS.target} strokeDasharray="6 4"
                     label={{ value: "20% target", position: "insideTopLeft", fontSize: 11, fill: COLORS.target }} />
-                  <Bar yAxisId="rm" dataKey="revenue" name="Revenue" fill={COLORS.revenue} maxBarSize={28} isAnimationActive={false}>
+                  <Bar yAxisId="rm" dataKey="revenue" name="Revenue" fill={COLORS.revenue} isAnimationActive={false}>
                     {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.4 : 1} />)}
                   </Bar>
-                  <Bar yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} maxBarSize={28} isAnimationActive={false}>
+                  <Bar yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} isAnimationActive={false}>
                     {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.4 : 1} />)}
                   </Bar>
                   <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
