@@ -1430,6 +1430,14 @@
   color: #506372;
   font-size: 12px;
 }
+.loans-letter-figure {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .loans-group + .loans-group {
   margin-top: 18px;
 }
