@@ -162,3 +162,36 @@ test('the Monthly Vehicle Costs total counts only the costs active in the month 
   assert.equal(activeMonthlyCostTotal(costs, '2026-09-01'), 1200);
   assert.equal(activeMonthlyCostTotal(costs, '2026-12'), 1400);
 });
+
+test('the Monthly Vehicle Costs total splits by Vehicle Master ownership: Car Owner against the company types, each with its share', async () => {
+  const { monthlyCostByOwnership } = await import('../services/finance/calculations.ts');
+  const vehicles = [
+    { plate_key: 'XAA1001', ownership_type: 'Car Owner' },
+    { plate_key: 'XAA1002', ownership_type: 'Company HP' },
+    { plate_key: 'XAA1003', ownership_type: 'Company' },
+    { plate_key: 'XAA1004', ownership_type: ' company hp ' },
+    { plate_key: 'XAA1005', ownership_type: 'Company Cash' },
+    { plate_key: 'XAA1006', ownership_type: 'Car Owner', deleted_at: '2026-09-01T00:00:00Z' },
+  ];
+  const cost = (plate_key: string, monthly_amount: number, extra: object = {}) => ({ plate_key, start_month: '2026-08-01', end_month: null, monthly_amount, ...extra });
+  const split = monthlyCostByOwnership([
+    cost('XAA1001', 400), cost('XAA1001', 100),
+    cost('XAA1002', 250), cost('XAA1004', 50),
+    cost('XAA1003', 100),
+    cost('XAA1005', 20),
+    cost('XAA1009', 80),
+    cost('XAA1001', 999, { cancelled_at: '2026-10-01T00:00:00Z' }),
+    cost('XAA1003', 999, { start_month: '2026-12-01' }),
+  ], vehicles, '2026-10');
+  assert.equal(split.total, 1000);
+  assert.deepEqual(split.carOwner, { amount: 500, share: 50 });
+  assert.deepEqual(split.company, { amount: 420, share: 42 });
+  assert.deepEqual(split.companyTypes, [
+    { label: 'Company HP', amount: 300, share: 30 },
+    { label: 'Company', amount: 100, share: 10 },
+    { label: 'Company Cash', amount: 20, share: 2 },
+  ]);
+  // A cost on a plate missing from Vehicle Master (or on a deleted car) stays visible instead of falling into a side.
+  assert.deepEqual(split.notInMaster, { amount: 80, share: 8 });
+  assert.equal(monthlyCostByOwnership([], vehicles, '2026-10').carOwner.share, 0);
+});
