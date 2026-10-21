@@ -17,12 +17,13 @@ const FINANCE_MIGRATIONS = [
   '20260920111527_simplify_operation_fixed_costs.sql',
 ];
 const RELEASE = '20261021090000_vehicle_loans.sql';
+const LETTER_FIELDS = '20261021150000_vehicle_loan_letter_fields.sql';
 const MANAGED = /This cost is managed in Vehicle loans/;
 
 // Fixture cars only; amounts are made up.
 async function setup() {
   const db = await database();
-  for (const file of [...FINANCE_MIGRATIONS, RELEASE]) await migrate(db, file);
+  for (const file of [...FINANCE_MIGRATIONS, RELEASE, LETTER_FIELDS]) await migrate(db, file);
   await db.exec(`reset role;
     insert into finance_private.vehicles(plate_key,display_plate,business_unit,ownership_type,status) values
       ('XAA1001','XAA 1001','E-HAILING','Own Fleet','Active'),
@@ -275,5 +276,52 @@ test('correcting a plate in Vehicle Master moves the loan with its cost, so the 
     assert.equal(cost.loan_id, loan.id, 'the cost moved with it and stays linked');
     const [edited] = await save(db, 'UPDATE', { ...loanRecord({ plate_key: 'XAA1009', bank: 'Fixture Bank Two' }), id: moved.id, record_version: moved.record_version });
     assert.equal(edited.bank, 'Fixture Bank Two', 'the loan is still editable under its corrected plate');
+  } finally { await db.close(); }
+});
+
+test("the bank letter's fields (cost, rate type, commencement date, hirer) are stored on ADD and UPDATE", async () => {
+  const db = await setup();
+  try {
+    const [plain] = await save(db, 'ADD', loanRecord({ plate_key: 'XAA1002' }));
+    assert.deepEqual([plain.cash_price, plain.rate_type, plain.commencement_date, plain.hirer], [null, 'FLAT', null, null], 'all optional; the rate is flat unless given');
+    const added = await save(db, 'ADD', loanRecord({ cash_price: 33000, rate_type: 'variable', commencement_date: '2023-02-05', hirer: '  Fixture Owner Sdn Bhd ' }));
+    const loan = added.find((row: any) => row.plate_key === 'XAA1001');
+    assert.deepEqual([loan.cash_price, loan.rate_type, loan.commencement_date, loan.hirer], [33000, 'VARIABLE', '2023-02-05', 'Fixture Owner Sdn Bhd']);
+    const edited = (await save(db, 'UPDATE', { ...loanRecord({ cash_price: 34000.5, rate_type: 'FLAT', commencement_date: '2023-02-04', hirer: 'Fixture Owner' }), id: loan.id, record_version: loan.record_version }))
+      .find((row: any) => row.id === loan.id);
+    assert.deepEqual([edited.cash_price, edited.rate_type, edited.commencement_date, edited.hirer], [34000.5, 'FLAT', '2023-02-04', 'Fixture Owner']);
+    const cleared = (await save(db, 'UPDATE', { ...loanRecord({ cash_price: null, commencement_date: null, hirer: ' ' }), id: loan.id, record_version: edited.record_version }))
+      .find((row: any) => row.id === loan.id);
+    assert.deepEqual([cleared.cash_price, cleared.rate_type, cleared.commencement_date, cleared.hirer], [null, 'FLAT', null, null], 'blanks clear them');
+  } finally { await db.close(); }
+});
+
+test('a rate type other than Flat or Variable, or a cost below zero, is refused', async () => {
+  const db = await setup();
+  try {
+    await assert.rejects(save(db, 'ADD', loanRecord({ rate_type: 'FIXED' })), /Choose Flat or Variable/);
+    await assert.rejects(save(db, 'ADD', loanRecord({ cash_price: -1 })), /The cost cannot be below zero/);
+    assert.deepEqual(await list(db), [], 'nothing saved');
+  } finally { await db.close(); }
+});
+
+test('loans saved before the letter fields read back with no cost, a flat rate and no hirer, and the file runs twice', async () => {
+  const db = await database();
+  try {
+    for (const file of [...FINANCE_MIGRATIONS, RELEASE]) await migrate(db, file);
+    await db.exec(`reset role; insert into finance_private.vehicles(plate_key,display_plate,business_unit,ownership_type,status) values ('XAA1001','XAA 1001','E-HAILING','Own Fleet','Active');`);
+    await asUser(db);
+    const [old] = await save(db, 'ADD', loanRecord());
+    await db.exec('reset role');
+    await migrate(db, LETTER_FIELDS);
+    await migrate(db, LETTER_FIELDS);
+    await asUser(db);
+    const [read] = await list(db);
+    assert.equal(read.id, old.id);
+    assert.deepEqual([read.cash_price, read.rate_type, read.commencement_date, read.hirer, read.monthly_instalment], [null, 'FLAT', null, null, 575]);
+    const [edited] = await save(db, 'UPDATE', { ...loanRecord({ hirer: 'Fixture Owner Sdn Bhd' }), id: read.id, record_version: read.record_version });
+    assert.equal(edited.hirer, 'Fixture Owner Sdn Bhd', 'the replaced save still works after a second run');
+    const cost = { id: old.recurring_cost_id, plate_key: 'XAA1001', cost_type: 'Hire Purchase / Loan', monthly_amount: 1, payee: 'x', start_month: '2023-03-01', end_month: null };
+    await assert.rejects(mutate(db, 'UPDATE', cost), MANAGED, 'the loan-owned cost is still guarded');
   } finally { await db.close(); }
 });
