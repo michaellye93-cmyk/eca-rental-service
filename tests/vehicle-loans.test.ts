@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   commitmentSeries,
+  firstInstalmentDate,
+  groupLoansByHirer,
   instalment,
   lastInstalmentMonth,
+  letterFigures,
   loanSummary,
   nearPayoff,
   progress,
@@ -131,4 +134,51 @@ test('loans are listed soonest to finish first, with settled and sold loans last
     loan({ plate_key: 'XAA1001', first_payment_date: '2022-05-05' }),
   ];
   assert.deepEqual(sortLoans(loans, '2026-10-21').map((row) => row.plate_key), ['XAA1001', 'XAA1002', 'XAA1003']);
+});
+
+test('the first instalment date is the commencement date plus one month, the same day capped at the month end', () => {
+  assert.equal(firstInstalmentDate('2024-01-15'), '2024-02-15');
+  assert.equal(firstInstalmentDate('2024-01-31'), '2024-02-29', 'leap year');
+  assert.equal(firstInstalmentDate('2025-01-31'), '2025-02-28');
+  assert.equal(firstInstalmentDate('2024-03-31'), '2024-04-30');
+  assert.equal(firstInstalmentDate('2024-12-10'), '2025-01-10', 'across the year end');
+  assert.equal(firstInstalmentDate(''), '');
+  assert.equal(firstInstalmentDate('not a date'), '');
+});
+
+test("the letter's interest, total and final instalment follow the flat rate; a variable rate has none of them", () => {
+  // 30,000 × 3% × 5 years = 4,500 interest; 34,500 total; the final instalment is 34,500 − 59 × 575 = 575.
+  assert.deepEqual(letterFigures({ finance_amount: 30000, flat_rate_percent: 3, tenure_months: 60, monthly_instalment: 575 }), { interest: 4500, total: 34500, final: 575 });
+  // A rounded-up instalment: 38,000 × 3% × 5 = 5,700; 43,700 − 59 × 729 = 689.
+  assert.deepEqual(letterFigures({ finance_amount: 38000, flat_rate_percent: 3, tenure_months: 60, monthly_instalment: 729 }), { interest: 5700, total: 43700, final: 689 });
+  // To the sen: 10,000 × 2.15% × 3 years = 645.
+  assert.deepEqual(letterFigures({ finance_amount: 10000, flat_rate_percent: 2.15, tenure_months: 36, monthly_instalment: 296 }), { interest: 645, total: 10645, final: 285 });
+  assert.deepEqual(letterFigures({ finance_amount: 30000, flat_rate_percent: 3, tenure_months: 60, monthly_instalment: 575, rate_type: 'VARIABLE' }), { interest: null, total: null, final: null });
+  assert.deepEqual(letterFigures({ finance_amount: 0, flat_rate_percent: 3, tenure_months: 60, monthly_instalment: 0 }), { interest: null, total: null, final: null }, 'nothing until the figures are given');
+});
+
+test('loans are grouped by hirer: active count and monthly total per group, biggest total first, unset last when smaller', () => {
+  const today = '2026-10-21';
+  const loans = [
+    loan({ plate_key: 'XAA1001', hirer: 'Fixture Owner', monthly_instalment: 500, first_payment_date: '2022-05-05' }), // 6 left
+    loan({ plate_key: 'XAA1002', hirer: 'Fixture Owner Sdn Bhd', monthly_instalment: 800, first_payment_date: '2025-01-05', tenure_months: 48 }),
+    loan({ plate_key: 'XAA1003', hirer: 'Fixture Owner Sdn Bhd', monthly_instalment: 300, status: 'SETTLED', closed_on: '2026-06-10' }),
+    loan({ plate_key: 'XAA1004', hirer: 'Fixture Owner', monthly_instalment: 450, first_payment_date: '2026-01-05' }),
+    loan({ plate_key: 'XAA1005', monthly_instalment: 200, first_payment_date: '2026-02-05' }),
+    loan({ plate_key: 'XAA1006', hirer: '  ', monthly_instalment: 100, first_payment_date: '2026-03-05' }),
+  ];
+  const groups = groupLoansByHirer(loans, today);
+  assert.deepEqual(groups.map((group) => [group.hirer, group.activeCount, group.monthlyTotal]), [
+    ['Fixture Owner', 2, 950],
+    ['Fixture Owner Sdn Bhd', 1, 800],
+    [null, 2, 300],
+  ]);
+  assert.equal(groups[2].label, 'Ownership not set');
+  assert.equal(groups[0].label, 'Fixture Owner');
+  // Inside a group, the soonest to finish first; a settled loan last.
+  assert.deepEqual(groups[0].loans.map((row) => row.plate_key), ['XAA1001', 'XAA1004']);
+  assert.deepEqual(groups[1].loans.map((row) => row.plate_key), ['XAA1002', 'XAA1003']);
+  // The group totals add up to this month's tile.
+  assert.equal(groups.reduce((sum, group) => sum + group.monthlyTotal, 0), loanSummary(loans, today).thisMonth);
+  assert.deepEqual(groupLoansByHirer([], today), []);
 });

@@ -9,6 +9,12 @@
  */
 
 export type LoanStatus = 'ACTIVE' | 'SETTLED' | 'SOLD';
+/** How the bank charges interest: flat (Malaysian HP, worked out here) or variable (the bank's statement gives it). */
+export type RateType = 'FLAT' | 'VARIABLE';
+
+export const RATE_TYPE_LABELS: Record<RateType, string> = { FLAT: 'Flat', VARIABLE: 'Variable' };
+export const NO_HIRER = 'Ownership not set';
+export const VARIABLE_NOTE = "Variable rate: the bank's statement gives the interest split";
 
 export const LOAN_STATUS_LABELS: Record<LoanStatus, string> = { ACTIVE: 'Active', SETTLED: 'Settled', SOLD: 'Car sold' };
 
@@ -19,8 +25,16 @@ export interface VehicleLoan {
   display_plate: string;
   bank: string;
   finance_amount: number;
-  /** Flat interest rate, % per year. */
+  /** Interest rate, % per year (flat unless rate_type is VARIABLE). */
   flat_rate_percent: number;
+  /** FLAT unless given; rows saved before 20261021150000 read back FLAT. */
+  rate_type?: RateType;
+  /** The letter's "Cost" (cash price), RM; null when not typed. */
+  cash_price?: number | null;
+  /** The agreement's commencement date; the first instalment date is its own line. */
+  commencement_date?: string | null;
+  /** The hirer on the HP agreement (the registered owner); the list is grouped by it. */
+  hirer?: string | null;
   tenure_months: number;
   first_payment_date: string;
   downpayment: number;
@@ -112,6 +126,38 @@ export function lastInstalmentMonth(firstPaymentDate: string, tenureMonths: numb
 }
 
 const isActive = (loan: VehicleLoan) => loan.status === 'ACTIVE';
+const isVariable = (loan: Pick<VehicleLoan, 'rate_type'>) => loan.rate_type === 'VARIABLE';
+const toSen = (value: unknown) => Math.round(Number(value || 0) * 100);
+const fromSen = (value: number) => value / 100;
+
+/**
+ * The first instalment date the letter implies: the commencement date plus one month, the same day capped at that
+ * month's end (31 Jan -> 28 or 29 Feb). '' for anything that is not a YYYY-MM-DD date.
+ */
+export function firstInstalmentDate(commencement: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(commencement ?? '');
+  if (!match) return '';
+  const index = Number(match[1]) * 12 + Number(match[2]); // the next month, counted from 0
+  const year = Math.floor(index / 12), month = (index % 12) + 1;
+  const day = Math.min(Number(match[3]), new Date(Date.UTC(year, month, 0)).getUTCDate());
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * The letter's read-only lines for a flat-rate loan, to the sen: interest = financing × rate × years, total =
+ * financing + interest, final instalment = total − (instalments − 1) × monthly instalment (what hpSchedule's last row
+ * pays). All null for a variable rate, or until financing and tenure are given (final also needs the instalment).
+ */
+export function letterFigures(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate_percent' | 'tenure_months' | 'monthly_instalment' | 'rate_type'>): { interest: number | null; total: number | null; final: number | null } {
+  const finance = toSen(loan.finance_amount);
+  const n = Math.floor(Number(loan.tenure_months) || 0);
+  const rate = Number(loan.flat_rate_percent || 0);
+  if (isVariable(loan) || !(finance > 0) || !(n > 0) || !(rate >= 0)) return { interest: null, total: null, final: null };
+  const interest = Math.round((finance * rate * n) / 1200);
+  const total = finance + interest;
+  const monthly = toSen(loan.monthly_instalment);
+  return { interest: fromSen(interest), total: fromSen(total), final: monthly > 0 ? fromSen(total - (n - 1) * monthly) : null };
+}
 
 /**
  * How far a loan has run on `today`: whole months from the first payment month to this month, both counted, capped at
@@ -187,15 +233,41 @@ export function loanSummary(loans: VehicleLoan[], today: string): LoanSummary {
   };
 }
 
+export interface HirerGroup {
+  /** The hirer as typed on the loans; null for loans without one. */
+  hirer: string | null;
+  /** The heading: the hirer, or "Ownership not set". */
+  label: string;
+  /** Soonest to finish first, settled and sold last (sortLoans). */
+  loans: VehicleLoan[];
+  /** Loans still running this month (as the page's tile counts them). */
+  activeCount: number;
+  /** This month's instalments for the group (as the page's tile adds them). */
+  monthlyTotal: number;
+}
+
+/** The loan list grouped by hirer, the biggest monthly total first (then by name, the unset group last on a tie). */
+export function groupLoansByHirer(loans: VehicleLoan[], today: string): HirerGroup[] {
+  const byHirer = new Map<string | null, VehicleLoan[]>();
+  for (const loan of loans) {
+    const hirer = loan.hirer?.trim() || null;
+    byHirer.set(hirer, [...(byHirer.get(hirer) ?? []), loan]);
+  }
+  return [...byHirer].map(([hirer, members]) => {
+    const summary = loanSummary(members, today);
+    return { hirer, label: hirer ?? NO_HIRER, loans: sortLoans(members, today), activeCount: summary.activeCount, monthlyTotal: summary.thisMonth };
+  }).sort((a, b) => b.monthlyTotal - a.monthlyTotal || Number(a.hirer === null) - Number(b.hirer === null) || a.label.localeCompare(b.label));
+}
+
 /** A financial year's figures, on the row that closes it (each 31 March, and the last instalment). */
 export interface HpYearEnd {
   /** 31.03.YYYY, or the last instalment's own date (DD.MM.YYYY) when it is not in March. */
   label: string;
-  /** Instalments, interest and principal of the financial year, since the previous year-end row. */
+  /** Instalments, interest and principal of the financial year, since the previous year-end row (no split, null, for a variable rate). */
   instalments: number;
-  interest: number;
-  principal: number;
-  /** Finance amount less every instalment's principal so far; 0 on the last row. */
+  interest: number | null;
+  principal: number | null;
+  /** Finance amount less every instalment's principal so far; 0 on the last row. Variable: less every instalment, floor 0. */
   balance: number;
 }
 
@@ -207,20 +279,20 @@ export interface HpScheduleRow {
   /** Rule of 78 digit: tenure − number + 1. */
   digit: number;
   amount: number;
-  interest: number;
-  principal: number;
+  /** null for a variable rate: the bank's statement gives the split. */
+  interest: number | null;
+  principal: number | null;
   yearEnd: HpYearEnd | null;
 }
 
 export interface HpSchedule {
   rows: HpScheduleRow[];
-  totalInterest: number;
-  totalPayable: number;
+  /** null for a variable rate. */
+  totalInterest: number | null;
+  totalPayable: number | null;
   sumOfDigits: number;
 }
 
-const toSen = (value: unknown) => Math.round(Number(value || 0) * 100);
-const fromSen = (value: number) => value / 100;
 const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 /**
@@ -229,8 +301,13 @@ const lastDay = (year: number, month: number) => new Date(Date.UTC(year, month, 
  * Interest is split by the Rule of 78 (sum of digits), the last instalment taking the rounding residual, so interest
  * sums to the total and principal to the finance amount, to the sen. The financial year ends on 31 March.
  * Worked in whole sen, and dates from the text alone.
+ *
+ * A variable rate has no interest worked out here: every row is the typed instalment, interest and principal are null,
+ * the year-end rows total the instalments only, and the balance is the finance amount less the instalments so far
+ * (never below nil).
  */
-export function hpSchedule(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate_percent' | 'tenure_months' | 'first_payment_date' | 'monthly_instalment'>): HpSchedule {
+export function hpSchedule(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate_percent' | 'tenure_months' | 'first_payment_date' | 'monthly_instalment' | 'rate_type'>): HpSchedule {
+  const variable = isVariable(loan);
   const n = Math.max(0, Math.floor(Number(loan.tenure_months) || 0));
   const finance = toSen(loan.finance_amount);
   const totalInterest = Math.round((finance * Number(loan.flat_rate_percent || 0) * n) / 1200);
@@ -239,9 +316,10 @@ export function hpSchedule(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate
   const sumOfDigits = (n * (n + 1)) / 2;
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(loan.first_payment_date ?? '');
   const rows: HpScheduleRow[] = [];
-  if (!match || n === 0) return { rows, totalInterest: fromSen(totalInterest), totalPayable: fromSen(totalPayable), sumOfDigits };
+  const totals = variable ? { totalInterest: null, totalPayable: null } : { totalInterest: fromSen(totalInterest), totalPayable: fromSen(totalPayable) };
+  if (!match || n === 0) return { rows, ...totals, sumOfDigits };
   const [year0, month0, day0] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  let interestSoFar = 0, principalSoFar = 0;
+  let interestSoFar = 0, principalSoFar = 0, paidSoFar = 0;
   let yearAmount = 0, yearInterest = 0, yearPrincipal = 0;
   for (let i = 1; i <= n; i++) {
     const index = year0 * 12 + month0 - 1 + i - 1;
@@ -250,7 +328,8 @@ export function hpSchedule(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate
     const pad = (value: number) => String(value).padStart(2, '0');
     const digit = n - i + 1;
     const last = i === n;
-    const amount = last ? totalPayable - (n - 1) * monthly : monthly;
+    const amount = last && !variable ? totalPayable - (n - 1) * monthly : monthly;
+    paidSoFar += amount;
     const interest = last ? totalInterest - interestSoFar : Math.round((totalInterest * digit) / sumOfDigits);
     const principal = amount - interest;
     interestSoFar += interest;
@@ -263,13 +342,13 @@ export function hpSchedule(loan: Pick<VehicleLoan, 'finance_amount' | 'flat_rate
       yearEnd = {
         label: month === 3 ? `31.03.${year}` : `${pad(day)}.${pad(month)}.${year}`,
         instalments: fromSen(yearAmount),
-        interest: fromSen(yearInterest),
-        principal: fromSen(yearPrincipal),
-        balance: last ? 0 : fromSen(finance - principalSoFar),
+        interest: variable ? null : fromSen(yearInterest),
+        principal: variable ? null : fromSen(yearPrincipal),
+        balance: variable ? fromSen(Math.max(0, finance - paidSoFar)) : last ? 0 : fromSen(finance - principalSoFar),
       };
       yearAmount = yearInterest = yearPrincipal = 0;
     }
-    rows.push({ date: `${year}-${pad(month)}-${pad(day)}`, number: i, digit, amount: fromSen(amount), interest: fromSen(interest), principal: fromSen(principal), yearEnd });
+    rows.push({ date: `${year}-${pad(month)}-${pad(day)}`, number: i, digit, amount: fromSen(amount), interest: variable ? null : fromSen(interest), principal: variable ? null : fromSen(principal), yearEnd });
   }
-  return { rows, totalInterest: fromSen(totalInterest), totalPayable: fromSen(totalPayable), sumOfDigits };
+  return { rows, ...totals, sumOfDigits };
 }

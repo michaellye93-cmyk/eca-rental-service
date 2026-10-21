@@ -88,3 +88,23 @@ test('a one-instalment loan is a single year-end row, and a last instalment in M
   const strings = hpSchedule(loan({ finance_amount: '30000' as unknown as number, flat_rate_percent: '3' as unknown as number, monthly_instalment: '575' as unknown as number }));
   assert.equal(strings.totalPayable, 34500);
 });
+
+test('a variable-rate schedule lists the instalments only: no interest split, the balance is the finance amount less the instalments', () => {
+  const schedule = hpSchedule(loan({ rate_type: 'VARIABLE', finance_amount: 10000, tenure_months: 24, monthly_instalment: 450, first_payment_date: '2025-01-10' }));
+  assert.equal(schedule.rows.length, 24);
+  assert.equal(schedule.totalInterest, null);
+  assert.equal(schedule.totalPayable, null);
+  for (const row of schedule.rows) {
+    assert.equal(row.amount, 450, 'every instalment is the typed one, the last included');
+    assert.equal(row.interest, null);
+    assert.equal(row.principal, null);
+  }
+  const yearEnds = schedule.rows.filter((row) => row.yearEnd);
+  assert.deepEqual(yearEnds.map((row) => row.number), [3, 15, 24]);
+  assert.deepEqual(yearEnds[0].yearEnd, { label: '31.03.2025', instalments: 1350, interest: null, principal: null, balance: 10000 - 1350 });
+  assert.deepEqual(yearEnds[1].yearEnd, { label: '31.03.2026', instalments: 5400, interest: null, principal: null, balance: 10000 - 15 * 450 });
+  // 24 × 450 = 10,800 is more than 10,000: the balance stops at nil.
+  assert.deepEqual(yearEnds[2].yearEnd, { label: '10.12.2026', instalments: 4050, interest: null, principal: null, balance: 0 });
+  // A flat loan is unchanged when the rate type is given.
+  assert.deepEqual(hpSchedule(loan({ rate_type: 'FLAT' })), hpSchedule(loan()));
+});
