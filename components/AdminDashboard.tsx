@@ -9,6 +9,7 @@ const TerminationReport = React.lazy(() => import('./TerminationReport'));
 import type { Page as MoneyPage } from './finance/FinanceView';
 import CashLine from './money/CashLine';
 import { cashLine, type CashBalanceEntry, type CashOutlookData } from '../services/cashOutlook';
+import { claimBoxOnOpen } from '../services/paymentLog';
 import { loadCashOutlook } from '../services/finance/api';
 import { buildTerminationReport } from '../terminationReport';
 import { fleet } from '../services/fleet/client';
@@ -229,8 +230,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // The driver whose payment window is open
   const [selectedDriverForPayment, setSelectedDriverForPayment] = useState<Driver | null>(null);
-  // The payment window's Claim box, kept until a payment is recorded (the rest of the form starts afresh each time)
+  // The payment window's Claim box, kept for the same driver until a payment is recorded (the rest of the form starts
+  // afresh each time); another driver's window starts at 0, so a claim is never carried to the wrong driver
   const [serviceClaimAmount, setServiceClaimAmount] = useState('0');
+  const claimDriverId = useRef<string | null>(null);
   const [paymentWindowOpening, setPaymentWindowOpening] = useState(0);
 
   const liveDriverForPayment = selectedDriverForPayment ? (drivers.find(d => d.id === selectedDriverForPayment.id) || selectedDriverForPayment) : null;
@@ -440,6 +443,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Opening a driver's payment window or Edit form does not mark them screened: only the "mark screened" button does
   const handleOpenPaymentModal = (driver: Driver) => {
+    setServiceClaimAmount(claimBoxOnOpen(claimDriverId.current === null ? null : { driverId: claimDriverId.current, value: serviceClaimAmount }, driver.id));
+    claimDriverId.current = driver.id;
     setSelectedDriverForPayment(driver);
     setPaymentWindowOpening(n => n + 1); // a fresh form each time it opens, even over an open window
   };

@@ -225,7 +225,8 @@ export function windowBills(outlook: CashOutlookData, from: string, to: string, 
 /**
  * Money expected in besides rent: Smart Drive (net of commission) and one-off other income as 3-month averages, plus
  * monthly recurring other income at its amount for each month the window covers (weighted by the days covered, like
- * the monthly bills). Without recurring_ahead (an older server) all other income is averaged, as before.
+ * the monthly bills); a month whose recurring line is already Confirmed is in the balance, so the server leaves it out
+ * of recurring_ahead. Without recurring_ahead (an older server) all other income is averaged, as before.
  */
 export function windowOtherIncome(outlook: CashOutlookData, from: string, to: string): number {
   const avg = averages(outlook);

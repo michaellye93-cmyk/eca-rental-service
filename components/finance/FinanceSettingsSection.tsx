@@ -5,6 +5,7 @@ import type { DriverWithMetrics } from "../../types";
 import type { SectionKind } from "../../services/finance/workspace";
 import type { FinanceEditableExportKind } from "../../services/finance/exports";
 import { insuranceCashOutflow, insuranceHeaderTotals, insuranceProblems, overlappingInsurance } from "../../services/finance/insurance";
+import { activeMonthlyCostTotal } from "../../services/finance/calculations";
 import Dialog from "./FinanceDialog";
 import PlatesToCheck from "./PlatesToCheck";
 import { InsuranceForm, RecurringForm, VehicleForm } from "./FinanceRecordForms";
@@ -58,10 +59,8 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
   const activeCosts = input.recurring_costs.filter(
     (cost: RecurringCost) => !cost.cancelled_at,
   );
-  const monthlyCostTotal = activeCosts.reduce(
-    (sum: number, cost: RecurringCost) => sum + cost.monthly_amount,
-    0,
-  );
+  // Only the costs running in the month viewed: a loan that has ended, or one not started yet, is listed but not added
+  const monthlyCostTotal = activeMonthlyCostTotal(activeCosts, month);
   const insuranceTotals = insuranceHeaderTotals(input.insurance, new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }));
   const insuranceOverlaps = overlappingInsurance(input.insurance);
   const displayedCosts = costSort
@@ -137,7 +136,7 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
           <SectionHeading
             title="Monthly Vehicle Costs"
             detail="Excel columns: Car Plate, Start Month, Cost Type, Monthly Amount. Active costs are applied automatically."
-            summary={<strong>Total cost: {money(monthlyCostTotal)}</strong>}
+            summary={<strong>Total this month: {money(monthlyCostTotal)}</strong>}
             action={<div className="finance-dialog-actions"><button className="finance-secondary" onClick={() => onExport("vehicle_monthly_costs", input.recurring_costs.filter((row: RecurringCost) => !row.cancelled_at))}>Export Excel</button><button className="finance-primary" disabled={disabled} onClick={() => setEditor(null)}>Add monthly cost</button><FileButton
                 disabled={disabled}
                 label="Import Excel"

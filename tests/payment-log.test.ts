@@ -106,3 +106,20 @@ test('only bank transfers and cash deposits with an amount are bank receipts (th
   assert.equal(isBankReceipt(400, 'CASH'), false);
   assert.equal(isBankReceipt(0, 'BANK TRANSFER'), false, 'a claim-only line');
 });
+
+test('a payment with no amount and a claim is saved as CLAIM whatever method was clicked; otherwise the clicked method', async () => {
+  const { savedPaymentMethod } = await import('../services/paymentLog.ts');
+  assert.equal(savedPaymentMethod(0, 150, 'BANK TRANSFER'), 'CLAIM');
+  assert.equal(savedPaymentMethod(0, 150, null), 'CLAIM');
+  assert.equal(savedPaymentMethod(100, 150, 'CASH DEPOSIT'), 'CASH DEPOSIT');
+  assert.equal(savedPaymentMethod(100, 0, null), null, 'a cash payment still needs a method chosen');
+  assert.equal(savedPaymentMethod(0, 0, 'CASH'), 'CASH');
+  assert.equal(savedPaymentMethod(100, 150, 'CLAIM'), 'BANK TRANSFER', 'a claim-only payment edited into money reads as the select shows');
+});
+
+test("the payment window's Claim box keeps a typed claim for the same driver only; another driver's window starts at 0", async () => {
+  const { claimBoxOnOpen } = await import('../services/paymentLog.ts');
+  assert.equal(claimBoxOnOpen({ driverId: 'd1', value: '150' }, 'd1'), '150');
+  assert.equal(claimBoxOnOpen({ driverId: 'd1', value: '150' }, 'd2'), '0');
+  assert.equal(claimBoxOnOpen(null, 'd2'), '0');
+});

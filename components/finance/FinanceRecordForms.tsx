@@ -184,8 +184,10 @@ export function ExpenseForm({
         : vehicleCategories;
   const records = useMemo(
     () =>
+      // Deleted (cancelled) expenses come back from the server too; only live ones can be picked
       input.expenses.filter(
         (record) =>
+          !record.cancelled_at &&
           record.payment_source === source &&
           record.finance_month.slice(0, 7) === month.slice(0, 7),
       ),

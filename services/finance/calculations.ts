@@ -1,4 +1,4 @@
-import type { BusinessUnit, FinanceInput, FinanceTotals, Insurance, QualityIssue, VehicleContribution } from '../../types/finance.ts';
+import type { BusinessUnit, FinanceInput, FinanceTotals, Insurance, QualityIssue, RecurringCost, VehicleContribution } from '../../types/finance.ts';
 import { insuranceStatus, ownerPremiumReview } from './insurance.ts';
 import { round2 } from '../fmt.ts';
 
@@ -18,7 +18,7 @@ export function swappedNeighbours(left: string, right: string): boolean {
   return diff.length === 2 && diff[1] === diff[0] + 1 && a[diff[0]] === b[diff[1]] && a[diff[1]] === b[diff[0]];
 }
 
-function monthOverlaps(cost: { start_month: string; end_month: string | null }, month: string): boolean {
+export function monthOverlaps(cost: { start_month: string; end_month: string | null }, month: string): boolean {
   const selected = monthKey(month); const start = monthKey(cost.start_month); const end = cost.end_month ? monthKey(cost.end_month) : null;
   return Boolean(selected && start && start <= selected && (!end || end >= selected));
 }
@@ -208,6 +208,12 @@ export function recurringOtherIncomeMissing(input: FinanceInput): boolean {
   const covered = new Set((input.other_income ?? []).filter((row) => row.series_id && monthKey(row.finance_month) === month).map((row) => row.series_id));
   return input.other_income_series.some((series) => monthOverlaps({ start_month: series.effective_from, end_month: series.effective_until }, month)
     && !covered.has(series.id));
+}
+
+/** The monthly vehicle costs applied in `month` (YYYY-MM or a first day) added up: not deleted, and running that month. */
+export function activeMonthlyCostTotal(costs: ReadonlyArray<Pick<RecurringCost, 'start_month' | 'end_month' | 'monthly_amount' | 'cancelled_at'>>, month: string): number {
+  const key = monthKey(month);
+  return round2(costs.filter((cost) => !cost.cancelled_at && monthOverlaps(cost, key)).reduce((sum, cost) => sum + Number(cost.monthly_amount), 0));
 }
 
 export const buildFinanceReport = calculateFinance;
