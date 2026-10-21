@@ -61,6 +61,9 @@ Notes:
 - **Agreements.** The PDF is made in the browser (jsPDF, A4) and never stored. It reads the driver, Fleet's
   `car_details` and `driver_deposits`; only signing-day details are typed. A text copy goes to `driver_agreements`
   so the driver can see and download it on their phone. The Grab and "other EHO" authorization letters live here too.
+- **Vehicle Master ownership type.** A fixed choice, Car Owner / Company HP / Company (`services/finance/vehicleOwnership.ts`),
+  because Monthly Vehicle Costs splits the month's total by this exact value (`monthlyCostByOwnership`). A car saved with
+  another value keeps it in its own dropdown until it is changed.
 - **Vehicle loans (Finance → Work).** Each own-fleet car's hire-purchase loan (`finance_private.vehicle_loans`, through
   `finance_vehicle_loans` / `finance_save_vehicle_loan`). The loan is the master of the car's "Hire Purchase / Loan" monthly
   cost (`recurring_costs.loan_id`): saving it writes that row, Records shows it read-only, and a trigger refuses any other
