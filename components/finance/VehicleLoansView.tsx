@@ -58,7 +58,6 @@ export interface VehicleLoansViewProps {
   busy?: boolean;
   onAdd?: () => void;
   onEdit?: (loan: VehicleLoan) => void;
-  onDelete?: (loan: VehicleLoan) => void;
   /** Loans whose HP schedule is open, by scheduleKey (the parent keeps the set). */
   expanded?: ReadonlySet<string>;
   onToggleSchedule?: (loan: VehicleLoan) => void;
@@ -69,7 +68,7 @@ export interface VehicleLoansViewProps {
 /** The key a loan's open schedule is kept under. */
 export const scheduleKey = (loan: VehicleLoan) => loan.id ?? loan.plate_key;
 
-export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfChange, depreciation = "5", onDepreciationChange, busy, onAdd, onEdit, onDelete, expanded, onToggleSchedule, onDownloadSchedule }: VehicleLoansViewProps) {
+export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfChange, depreciation = "5", onDepreciationChange, busy, onAdd, onEdit, expanded, onToggleSchedule, onDownloadSchedule }: VehicleLoansViewProps) {
   const summary = loanSummary(loans, today);
   const rate = Number(depreciation);
   const assets = assetSummary(loans, today, Number.isFinite(rate) && rate >= 0 && rate < 100 ? rate : 5);
@@ -141,7 +140,7 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
               <ul className="loans-list">
                 {group.loans.map((loan) => (
                   <LoanRow
-                    key={scheduleKey(loan)} loan={loan} today={today} car={cars.get(loan.plate_key)} busy={busy} onEdit={onEdit} onDelete={onDelete}
+                    key={scheduleKey(loan)} loan={loan} today={today} car={cars.get(loan.plate_key)} busy={busy} onEdit={onEdit}
                     open={expanded?.has(scheduleKey(loan)) ?? false} onToggleSchedule={onToggleSchedule} onDownloadSchedule={onDownloadSchedule}
                   />
                 ))}
@@ -154,8 +153,8 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
   );
 }
 
-function LoanRow({ loan, today, car, busy, onEdit, onDelete, open, onToggleSchedule, onDownloadSchedule }: {
-  loan: VehicleLoan; today: string; car?: string; busy?: boolean; onEdit?: (loan: VehicleLoan) => void; onDelete?: (loan: VehicleLoan) => void;
+function LoanRow({ loan, today, car, busy, onEdit, open, onToggleSchedule, onDownloadSchedule }: {
+  loan: VehicleLoan; today: string; car?: string; busy?: boolean; onEdit?: (loan: VehicleLoan) => void;
   open: boolean; onToggleSchedule?: (loan: VehicleLoan) => void; onDownloadSchedule?: (loan: VehicleLoan) => void;
 }) {
   const scheduleId = `loan-schedule-${loan.plate_key}`;
@@ -189,7 +188,6 @@ function LoanRow({ loan, today, car, busy, onEdit, onDelete, open, onToggleSched
       <div className="loan-actions">
         <button type="button" className="finance-secondary" disabled={!onToggleSchedule} aria-expanded={open} aria-controls={scheduleId} onClick={() => onToggleSchedule?.(loan)}>Schedule</button>
         {onEdit && <button type="button" className="finance-secondary" disabled={busy} onClick={() => onEdit(loan)}>Edit</button>}
-        {onDelete && <button type="button" className="finance-destructive" disabled={busy} onClick={() => onDelete(loan)}>Delete</button>}
       </div>
       {open && <LoanSchedule id={scheduleId} loan={loan} today={today} onDownload={onDownloadSchedule} />}
     </li>

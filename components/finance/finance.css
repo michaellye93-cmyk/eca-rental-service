@@ -1450,6 +1450,10 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* Edit loan: Delete loan… sits at the left of the Cancel / Save row. */
+.loans-delete {
+  margin-right: auto;
+}
 
 .loans-group + .loans-group {
   margin-top: 18px;

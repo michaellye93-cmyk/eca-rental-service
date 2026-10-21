@@ -108,12 +108,12 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
     }
   };
 
+  /** Delete loan… in Edit loan: true once deleted, false when cancelled; a failure is thrown for the form to show. */
   const remove = async (loan: VehicleLoan) => {
-    if (!(await ask(`Delete the loan for ${loan.display_plate}? Its Hire Purchase / Loan monthly cost is deleted with it. Closed months keep their figures.`))) return;
+    if (!(await ask(`Delete the loan for ${loan.display_plate}? Its Hire Purchase / Loan monthly cost is deleted with it. Closed months keep their figures.`))) return false;
     const reason = await askText("Reason for deleting this loan");
-    if (!reason?.trim()) return;
-    try { await save("DELETE", { id: loan.id, record_version: loan.record_version }, reason.trim()); }
-    catch (cause) { setError(messageOf(cause)); }
+    if (!reason?.trim()) return false;
+    return save("DELETE", { id: loan.id, record_version: loan.record_version }, reason.trim());
   };
 
   if (loadError) {
@@ -143,7 +143,6 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
         busy={busy}
         onAdd={() => setEditing("new")}
         onEdit={(loan) => setEditing(loan)}
-        onDelete={(loan) => void remove(loan)}
         expanded={expanded}
         onToggleSchedule={(loan) => setExpanded((current) => {
           const next = new Set(current);
@@ -164,6 +163,9 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
             notInFinance={notInFinance}
             busy={busy}
             onCancel={() => setEditing(null)}
+            onDelete={editing === "new" ? undefined : async () => {
+              if ((await remove(editing)) && mounted.current) setEditing(null);
+            }}
             onSave={async (record) => {
               await save(editing === "new" ? "ADD" : "UPDATE", record);
               if (mounted.current) setEditing(null);
@@ -253,7 +255,7 @@ export function changeLoanForm(current: LoanValues, key: LetterKey, value: strin
 /** A read-only line of the letter: its figure, or a dash. */
 const shown = (value: number | null) => (value === null ? "—" : money(value));
 
-export function LoanForm({ loan, cars, owners, hirers, carsError, notInFinance, busy, onSave, onCancel }: {
+export function LoanForm({ loan, cars, owners, hirers, carsError, notInFinance, busy, onSave, onCancel, onDelete }: {
   loan: VehicleLoan | null;
   cars: Car[];
   /** Fleet's registered owner by plate (capitals, no spaces): Ownership's prefill. */
@@ -265,6 +267,8 @@ export function LoanForm({ loan, cars, owners, hirers, carsError, notInFinance, 
   busy: boolean;
   onSave: (record: Partial<VehicleLoan>) => Promise<void>;
   onCancel: () => void;
+  /** Delete loan… (an existing loan only): asks, then deletes; a failure is shown on the form. */
+  onDelete?: () => Promise<void>;
 }) {
   const [values, setValues] = useState<LoanValues>(() => valuesOf(loan));
   const [formError, setFormError] = useState<string | null>(null);
@@ -305,6 +309,11 @@ export function LoanForm({ loan, cars, owners, hirers, carsError, notInFinance, 
     } catch (cause) {
       setFormError(messageOf(cause));
     }
+  };
+  const deleteLoan = async () => {
+    setFormError(null);
+    try { await onDelete?.(); }
+    catch (cause) { setFormError(messageOf(cause)); }
   };
   const label = (text: string) => <span className="loans-letter-label">{text}</span>;
   return (
@@ -372,6 +381,7 @@ export function LoanForm({ loan, cars, owners, hirers, carsError, notInFinance, 
       {values.status !== "ACTIVE" && <p className="finance-muted-action">The monthly cost in Finance stops from the month it closed.</p>}
       <label className="finance-field"><span>Notes</span><input value={values.notes} disabled={busy} onChange={(event) => set("notes", event.target.value)} /></label>
       <div className="finance-dialog-actions">
+        {loan && onDelete && <button type="button" className="finance-destructive loans-delete" disabled={busy} onClick={() => void deleteLoan()}>Delete loan…</button>}
         <button type="button" className="finance-secondary" disabled={busy} onClick={onCancel}>Cancel</button>
         <button type="submit" className="finance-primary" disabled={busy}>{busy ? "Saving…" : "Save loan"}</button>
       </div>

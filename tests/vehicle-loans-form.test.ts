@@ -132,3 +132,14 @@ test('typing the letter fills the lines that follow from it until they are typed
   assert.equal(changeLoanForm(valuesOf({ ...LOAN, hirer: null }), 'plate_key', 'XAA1002', owners).hirer, 'Fixture Owner');
   assert.equal(valuesOf({ ...LOAN, rate_type: 'VARIABLE' }).override, true, 'a stored variable loan opens with its typed instalment');
 });
+
+test('Edit loan has a Delete loan… button left of Cancel / Save; Add loan has none', async () => {
+  const onDelete = async () => {};
+  const html = await render({ loan: LOAN, onDelete });
+  assert.equal((html.match(/>Delete loan…</g) ?? []).length, 1);
+  assert.match(html, /<button type="button" class="finance-destructive[^"]*"[^>]*>Delete loan…<\/button>/);
+  const actions = html.slice(html.indexOf('class="finance-dialog-actions"'));
+  assert.ok(actions.indexOf('>Delete loan…<') >= 0 && actions.indexOf('>Delete loan…<') < actions.indexOf('>Cancel<') && actions.indexOf('>Cancel<') < actions.indexOf('>Save loan<'));
+  assert.doesNotMatch(await render({ onDelete }), /Delete loan/, 'a new loan has nothing to delete');
+  assert.doesNotMatch(await render({ loan: LOAN }), /Delete loan/, 'no delete handler, no button');
+});

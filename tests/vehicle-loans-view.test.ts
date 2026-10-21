@@ -45,7 +45,7 @@ test('the Vehicle loans page shows the headline, the chart and the loans most pa
   const html: string = renderToStaticMarkup(createElement(View, {
     loans: LOANS, today: '2026-10-21', cars: new Map([['XAA1001', 'Fixture Bezza 1.3']]),
     whatIf: { finance_amount: '', flat_rate_percent: '', tenure_months: '', first_payment_month: '' },
-    onAdd: () => {}, onEdit: () => {}, onDelete: () => {}, onWhatIfChange: () => {},
+    onAdd: () => {}, onEdit: () => {}, onWhatIfChange: () => {},
   }));
   const page = text(html);
   assert.match(page, /Hire-purchase instalments, this month/);
@@ -84,6 +84,7 @@ test('the Vehicle loans page shows the headline, the chart and the loans most pa
   assert.match(html, /class="loan-bar-fill"[^>]*style="width:46%"/);
   assert.match(page, /Add loan/);
   assert.equal((html.match(/>Edit</g) ?? []).length, 3, 'each loan can be edited');
+  assert.doesNotMatch(html, />Delete/, 'no Delete on a loan row: it sits inside Edit loan');
 });
 
 test('a what-if loan adds a dotted line to the chart; no loans shows an empty state', async () => {
