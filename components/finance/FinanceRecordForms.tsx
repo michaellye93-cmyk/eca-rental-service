@@ -17,6 +17,7 @@ import {
   normalizePlate,
   swappedNeighbours,
 } from "../../services/finance/calculations";
+import { ownershipChoices } from "../../services/finance/vehicleOwnership";
 
 const vehicleCategories = [
   "Road Tax",
@@ -559,14 +560,21 @@ export function VehicleForm({ input, month, disabled, onSave, onDelete, initialI
           <input value={values.model} disabled={locked} onChange={(event) => setValues({ ...values, model: event.target.value })} />
         </Field>
         <Field label="Ownership type">
-          <input
+          <select
             required
             value={values.ownership_type}
             disabled={locked}
             onChange={(event) =>
               setValues({ ...values, ownership_type: event.target.value })
             }
-          />
+          >
+            <option value="">Choose ownership type</option>
+            {ownershipChoices(values.ownership_type).map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Status">
           <select
