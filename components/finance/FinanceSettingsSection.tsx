@@ -141,7 +141,7 @@ export default function SettingsSection({ tab, input, month, disabled, onSave, o
             summary={<><strong>Total this month: {money(monthlyCostTotal)}</strong>{monthlyCostTotal > 0 && (
               <p>
                 Car Owner {shareText(costSplit.carOwner)} · Company {shareText(costSplit.company)}
-                {costSplit.companyTypes.length > 0 && <> ({costSplit.companyTypes.map((part) => `${part.label} ${shareText(part)}`).join(", ")})</>}
+                {costSplit.companyTypes.some((part) => part.amount > 0) && <> ({costSplit.companyTypes.filter((part) => part.amount > 0).map((part) => `${part.label} ${shareText(part)}`).join(", ")})</>}
                 {costSplit.notInMaster.amount > 0 && <> · Not in Vehicle Master {shareText(costSplit.notInMaster)}</>}
               </p>
             )}</>}
