@@ -192,7 +192,7 @@ export interface LoanValues {
   closed_on: string;
   notes: string;
   /** Lines typed by hand, so the lines they follow from no longer fill them (true for a stored loan's own figures). */
-  typed: { finance_amount: boolean; first_payment_date: boolean; hirer: boolean };
+  typed: { finance_amount: boolean; hirer: boolean };
 }
 
 export const valuesOf = (loan: VehicleLoan | null): LoanValues => {
@@ -200,7 +200,7 @@ export const valuesOf = (loan: VehicleLoan | null): LoanValues => {
     return {
       plate_key: "", hirer: "", bank: "", cash_price: "", downpayment: "0", finance_amount: "", flat_rate_percent: "", rate_type: "FLAT",
       commencement_date: "", first_payment_date: "", tenure_months: "", override: false, monthly_instalment: "", status: "ACTIVE", closed_on: "", notes: "",
-      typed: { finance_amount: false, first_payment_date: false, hirer: false },
+      typed: { finance_amount: false, hirer: false },
     };
   }
   const rateType: RateType = loan.rate_type === "VARIABLE" ? "VARIABLE" : "FLAT";
@@ -212,7 +212,7 @@ export const valuesOf = (loan: VehicleLoan | null): LoanValues => {
     rate_type: rateType, commencement_date: loan.commencement_date ?? "", first_payment_date: loan.first_payment_date, tenure_months: String(loan.tenure_months),
     override: rateType === "VARIABLE" || calculated !== Number(loan.monthly_instalment), monthly_instalment: String(loan.monthly_instalment),
     status: loan.status, closed_on: loan.closed_on ?? "", notes: loan.notes ?? "",
-    typed: { finance_amount: true, first_payment_date: true, hirer: Boolean(loan.hirer?.trim()) },
+    typed: { finance_amount: true, hirer: Boolean(loan.hirer?.trim()) },
   };
 };
 
@@ -233,8 +233,10 @@ export function changeLoanForm(current: LoanValues, key: LetterKey, value: strin
     const financing = Math.round((Number(next.cash_price) - Number(next.downpayment || 0)) * 100) / 100;
     if (Number.isFinite(financing)) next.finance_amount = financing > 0 ? String(financing) : "";
   }
-  if (key === "first_payment_date") next.typed.first_payment_date = true;
-  if (key === "commencement_date" && !next.typed.first_payment_date) {
+  // A changed commencement always moves the first instalment to one month later, on a new or a stored loan: the owner
+  // corrects commencement dates and expects the bar to follow. Typing the first instalment directly keeps that date
+  // until the commencement is changed again.
+  if (key === "commencement_date") {
     const first = firstInstalmentDate(value);
     if (first) next.first_payment_date = first;
   }

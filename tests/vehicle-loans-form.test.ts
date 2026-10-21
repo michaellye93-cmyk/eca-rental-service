@@ -114,17 +114,20 @@ test('typing the letter fills the lines that follow from it until they are typed
   values = changeLoanForm(values, 'commencement_date', '2024-01-31', owners);
   assert.equal(values.first_payment_date, '2024-02-29');
   values = changeLoanForm(values, 'first_payment_date', '2024-03-05', owners);
-  values = changeLoanForm(values, 'commencement_date', '2024-02-05', owners);
-  assert.equal(values.first_payment_date, '2024-03-05', 'typed by hand: left alone');
+  assert.equal(values.first_payment_date, '2024-03-05', 'typed directly: kept');
+  values = changeLoanForm(values, 'commencement_date', '2024-02-10', owners);
+  assert.equal(values.first_payment_date, '2024-03-10', 'a changed commencement always moves the first instalment with it');
   // Variable: the instalment is typed (override on); back to Flat leaves the override as it was.
   values = changeLoanForm(values, 'rate_type', 'VARIABLE', owners);
   assert.equal(values.override, true);
-  // An existing loan's own figures are never overwritten by typing the cost or commencement.
+  // An existing loan's financing and ownership are never overwritten by typing the cost or picking the car, but a
+  // changed commencement moves its first instalment (the owner corrects commencement dates and expects the bar to follow).
   let edit = valuesOf(LOAN);
   edit = changeLoanForm(edit, 'cash_price', '40000', owners);
-  edit = changeLoanForm(edit, 'commencement_date', '2023-11-01', owners);
   edit = changeLoanForm(edit, 'plate_key', 'XAA1002', owners);
   assert.deepEqual([edit.finance_amount, edit.first_payment_date, edit.hirer], ['30000', '2024-01-15', 'Fixture Owner Sdn Bhd']);
+  edit = changeLoanForm(edit, 'commencement_date', '2023-11-01', owners);
+  assert.equal(edit.first_payment_date, '2023-12-01');
   // A stored loan without an Ownership is filled from Fleet when its car is picked.
   assert.equal(changeLoanForm(valuesOf({ ...LOAN, hirer: null }), 'plate_key', 'XAA1002', owners).hirer, 'Fixture Owner');
   assert.equal(valuesOf({ ...LOAN, rate_type: 'VARIABLE' }).override, true, 'a stored variable loan opens with its typed instalment');
