@@ -4,6 +4,7 @@ import {
   commitmentSeries,
   firstInstalmentDate,
   groupLoansByHirer,
+  letterFieldsMissing,
   instalment,
   lastInstalmentMonth,
   letterFigures,
@@ -181,4 +182,11 @@ test('loans are grouped by hirer: active count and monthly total per group, bigg
   // The group totals add up to this month's tile.
   assert.equal(groups.reduce((sum, group) => sum + group.monthlyTotal, 0), loanSummary(loans, today).thisMonth);
   assert.deepEqual(groupLoansByHirer([], today), []);
+});
+
+test("the letter-fields database update is missing when a loaded loan carries no rate type; no loans tells nothing", () => {
+  assert.equal(letterFieldsMissing([]), false);
+  assert.equal(letterFieldsMissing([{ rate_type: 'FLAT' } as any]), false);
+  assert.equal(letterFieldsMissing([{ rate_type: 'VARIABLE' } as any, { rate_type: 'FLAT' } as any]), false);
+  assert.equal(letterFieldsMissing([{ plate_key: 'XAA1001' } as any]), true, 'rows saved by the first SQL file have no rate_type column');
 });

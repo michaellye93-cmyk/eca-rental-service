@@ -126,6 +126,12 @@ export function lastInstalmentMonth(firstPaymentDate: string, tenureMonths: numb
 }
 
 const isActive = (loan: VehicleLoan) => loan.status === 'ACTIVE';
+/**
+ * Whether the letter-fields database update (20261021150000) has not been run: a loan read from the database then has
+ * no rate_type at all (the first SQL file never returned one). With no loans nothing can be told.
+ */
+export const letterFieldsMissing = (loans: VehicleLoan[]): boolean => loans.length > 0 && loans.every((loan) => loan.rate_type === undefined);
+
 const isVariable = (loan: Pick<VehicleLoan, 'rate_type'>) => loan.rate_type === 'VARIABLE';
 const toSen = (value: unknown) => Math.round(Number(value || 0) * 100);
 const fromSen = (value: number) => value / 100;

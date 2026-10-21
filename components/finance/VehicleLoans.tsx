@@ -5,7 +5,7 @@ import { Skeleton } from "./FinancePrimitives";
 import VehicleLoansView, { BLANK_WHAT_IF, scheduleKey, type WhatIfForm } from "./VehicleLoansView";
 import { loadVehicleLoans, saveVehicleLoan } from "../../services/finance/api";
 import { exportHpScheduleWorkbook, hpScheduleFileName } from "../../services/finance/hpScheduleExport";
-import { firstInstalmentDate, instalment, letterFigures, LOAN_STATUS_LABELS, RATE_TYPE_LABELS, type LoanStatus, type RateType, type VehicleLoan } from "../../services/finance/loans";
+import { letterFieldsMissing, firstInstalmentDate, instalment, letterFigures, LOAN_STATUS_LABELS, RATE_TYPE_LABELS, type LoanStatus, type RateType, type VehicleLoan } from "../../services/finance/loans";
 import { money } from "../../services/fmt";
 import { fleet } from "../../services/fleet/client";
 import type { Car, VehicleDetails } from "../../services/fleet/rules";
@@ -17,6 +17,7 @@ import { normalizePlate } from "../../utils";
 
 const NOT_IN_FINANCE = "Add this car to Finance's vehicle list first";
 const MIGRATION = "supabase/migrations/20261021090000_vehicle_loans.sql";
+const LETTER_MIGRATION = "supabase/migrations/20261021150000_vehicle_loan_letter_fields.sql";
 
 /** The database update has not been run yet (the functions are unknown to Supabase). */
 const updateMissing = (message: string) => /could not find the function|does not exist|schema cache/i.test(message);
@@ -128,6 +129,7 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
   return (
     <>
       {error && <p role="alert" className="finance-message is-error">{error}</p>}
+      {letterFieldsMissing(loans) && <p role="alert" className="finance-message is-error">Vehicle loans needs its next database update: run {LETTER_MIGRATION} in the Supabase SQL Editor, then reload. Until then cost, rate type, commencement date and ownership are not saved.</p>}
       {notice && <p role="alert" className="finance-message is-success">{notice}</p>}
       <VehicleLoansView
         loans={loans}

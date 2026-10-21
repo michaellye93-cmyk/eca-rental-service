@@ -65,6 +65,8 @@ Notes:
   `finance_vehicle_loans` / `finance_save_vehicle_loan`). The loan is the master of the car's "Hire Purchase / Loan" monthly
   cost (`recurring_costs.loan_id`): saving it writes that row, Records shows it read-only, and a trigger refuses any other
   change to it. Rules in `services/finance/loans.ts`; the page assumes every instalment is paid on time.
+  Since 20261021150000 the loan also carries the bank letter's cost, rate type (flat or variable), commencement date and
+  ownership (hirer); the list is grouped by hirer, and each loan opens its HP schedule (Rule of 78, year end 31 March).
 - **Finance.** Monthly P&L, cash, collections, vehicles, records, month close and Reconcile (matching bank statements
   to payments). Bank statement files are read by the Edge Function `finance-extract-bank-statement` (Gemini); only
   the extracted lines are kept.
