@@ -8,6 +8,7 @@ import {
   instalment,
   lastInstalmentMonth,
   letterFigures,
+  assetSummary,
   loanSummary,
   nearPayoff,
   progress,
@@ -193,4 +194,28 @@ test("the letter-fields database update is missing when a loaded loan carries no
   assert.equal(letterFieldsMissing([{ rate_type: 'FLAT' } as any]), false);
   assert.equal(letterFieldsMissing([{ rate_type: 'VARIABLE' } as any, { rate_type: 'FLAT' } as any]), false);
   assert.equal(letterFieldsMissing([{ plate_key: 'XAA1001' } as any]), true, 'rows saved by the first SQL file have no rate_type column');
+});
+
+test('the asset figures: cost and downpayment of the cars still owned, and what they are worth at 5% a year off net book value', () => {
+  const loans = [
+    // No cash price typed: cost = financing + downpayment = 33000; commenced Feb 2023 (one month before the first instalment), last instalment Feb 2028.
+    loan({ plate_key: 'XAA1001' }),
+    // Cash price typed; commenced 10 Jan 2024, 36 months, last instalment Jan 2027.
+    loan({ plate_key: 'XAA1002', cash_price: 50000, downpayment: 8000, commencement_date: '2024-01-10', first_payment_date: '2024-02-10', tenure_months: 36 }),
+    // Sold: no longer an asset, so left out everywhere.
+    loan({ plate_key: 'XAA1003', cash_price: 40000, downpayment: 4000, status: 'SOLD', closed_on: '2026-06-10' }),
+  ];
+  const figures = assetSummary(loans, '2026-10-21');
+  assert.equal(figures.count, 2);
+  assert.equal(figures.cost, 83000);
+  assert.equal(figures.downpayment, 11000);
+  // At payoff: 33000 × 0.95^5 (60 months) + 50000 × 0.95^3 (36 months).
+  assert.equal(figures.disposalAtPayoff, 25534.77 + 42868.75);
+  // Today: XAA1001 has run 44 months since Feb 2023; XAA1002 33 months since Jan 2024.
+  assert.equal(figures.valueToday, Math.round((27342.22 + 50000 * 0.95 ** (33 / 12)) * 100) / 100);
+  // A settled loan is finished: it counts at today's value, and the rate can be changed.
+  const settled = assetSummary([loan({ plate_key: 'XAA1004', cash_price: 20000, status: 'SETTLED', closed_on: '2026-06-01', commencement_date: '2025-10-01' })], '2026-10-21', 10);
+  assert.equal(settled.disposalAtPayoff, Math.round(20000 * 0.9 ** 1 * 100) / 100);
+  assert.equal(settled.valueToday, settled.disposalAtPayoff);
+  assert.deepEqual(assetSummary([], '2026-10-21'), { count: 0, cost: 0, downpayment: 0, valueToday: 0, disposalAtPayoff: 0, ratePercent: 5 });
 });

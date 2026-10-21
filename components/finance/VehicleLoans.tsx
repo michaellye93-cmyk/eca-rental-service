@@ -35,6 +35,7 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<VehicleLoan | "new" | null>(null);
   const [whatIf, setWhatIf] = useState<WhatIfForm>(BLANK_WHAT_IF);
+  const [depreciation, setDepreciation] = useState("5");
   // Loans whose HP schedule is open (browser state only).
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   // Plates the server refused because Finance's vehicle list does not have them yet: shown with that hint.
@@ -136,6 +137,8 @@ export default function VehicleLoans({ today, onChanged }: { today: string; onCh
         today={today}
         cars={carNames}
         whatIf={whatIf}
+        depreciation={depreciation}
+        onDepreciationChange={setDepreciation}
         onWhatIfChange={(key, value) => setWhatIf((current) => ({ ...current, [key]: value }))}
         busy={busy}
         onAdd={() => setEditing("new")}

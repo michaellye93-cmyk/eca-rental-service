@@ -3,6 +3,7 @@ import StatTile from "../StatTile";
 import { Empty, SectionHeading } from "./FinancePrimitives";
 import { money, monthShort, MONTH_SHORT } from "../../services/fmt";
 import {
+  assetSummary,
   balanceLeft,
   commitmentSeries,
   groupLoansByHirer,
@@ -51,6 +52,9 @@ export interface VehicleLoansViewProps {
   whatIf: WhatIfForm;
   /** One what-if figure typed (the parent keeps the form). */
   onWhatIfChange?: (key: keyof WhatIfForm, value: string) => void;
+  /** Depreciation, % a year off net book value, as typed (browser state; 5 when blank or not a number). */
+  depreciation?: string;
+  onDepreciationChange?: (value: string) => void;
   busy?: boolean;
   onAdd?: () => void;
   onEdit?: (loan: VehicleLoan) => void;
@@ -65,8 +69,10 @@ export interface VehicleLoansViewProps {
 /** The key a loan's open schedule is kept under. */
 export const scheduleKey = (loan: VehicleLoan) => loan.id ?? loan.plate_key;
 
-export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfChange, busy, onAdd, onEdit, onDelete, expanded, onToggleSchedule, onDownloadSchedule }: VehicleLoansViewProps) {
+export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfChange, depreciation = "5", onDepreciationChange, busy, onAdd, onEdit, onDelete, expanded, onToggleSchedule, onDownloadSchedule }: VehicleLoansViewProps) {
   const summary = loanSummary(loans, today);
+  const rate = Number(depreciation);
+  const assets = assetSummary(loans, today, Number.isFinite(rate) && rate >= 0 && rate < 100 ? rate : 5);
   const typed = whatIfLoan(whatIf);
   const series = commitmentSeries(loans, today, CHART_MONTHS, typed);
   const groups = groupLoansByHirer(loans, today);
@@ -84,6 +90,23 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
         <StatTile label="Balance left, all loans" value={money(summary.balanceLeft)} hint="instalments still to pay, no early settlement" />
         <StatTile label="Within 6 months of payoff" value={String(summary.nearPayoffCount)} hint="bars shown in amber below" />
       </section>
+      <section className="finance-summary-grid is-three" aria-label="Vehicle asset figures">
+        <StatTile
+          label="Cost of vehicles"
+          value={money(assets.cost)}
+          hint={`cash price of ${assets.count} ${assets.count === 1 ? "car" : "cars"} still owned · financing + downpayment where no cash price is typed`}
+        />
+        <StatTile label="Downpayment paid" value={money(assets.downpayment)} hint="on the cars still owned" />
+        <StatTile
+          label="Projected disposal value at payoff"
+          value={money(assets.disposalAtPayoff)}
+          hint={`worth about ${money(assets.valueToday)} today · ${assets.ratePercent}% a year off net book value from commencement`}
+        />
+      </section>
+      <label className="loans-depreciation">
+        Depreciation, % a year
+        <input type="number" min="0" max="99" step="0.5" inputMode="decimal" value={depreciation} disabled={!onDepreciationChange} onChange={(event) => onDepreciationChange?.(event.target.value)} />
+      </label>
 
       <section className="finance-panel">
         <SectionHeading

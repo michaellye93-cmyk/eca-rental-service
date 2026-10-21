@@ -233,6 +233,58 @@ export function sortLoans(loans: VehicleLoan[], today: string): VehicleLoan[] {
 const soonestToFinish = (running: VehicleLoan[], today: string): VehicleLoan | undefined =>
   running.map((loan) => ({ loan, left: progress(loan, today).left })).sort((a, b) => a.left - b.left || a.loan.plate_key.localeCompare(b.loan.plate_key))[0]?.loan;
 
+/** The cars as assets: what they cost, what was paid down, and what they are worth at the owner's depreciation rate. */
+export interface AssetSummary {
+  /** Cars still owned (every loan not marked Car sold). */
+  count: number;
+  /** Cash price of those cars (financing + downpayment when no cash price was typed). */
+  cost: number;
+  downpayment: number;
+  /** Net book value today: cost less ratePercent a year on the reducing balance since commencement. */
+  valueToday: number;
+  /** The same at each loan's last instalment (today for a loan already settled): roughly what the cars fetch once paid off. */
+  disposalAtPayoff: number;
+  ratePercent: number;
+}
+
+/** What a car cost: the letter's cash price, or financing + downpayment when none was typed. */
+export const vehicleCost = (loan: Pick<VehicleLoan, 'cash_price' | 'finance_amount' | 'downpayment'>): number =>
+  Math.round((loan.cash_price != null && Number(loan.cash_price) > 0 ? Number(loan.cash_price) : Number(loan.finance_amount) + Number(loan.downpayment ?? 0)) * 100) / 100;
+
+/** The month the loan commenced: the commencement date, else one month before the first instalment. */
+const commencementIndex = (loan: VehicleLoan): number | null => {
+  const commenced = monthIndex(loan.commencement_date);
+  if (commenced !== null) return commenced;
+  const first = monthIndex(loan.first_payment_date);
+  return first === null ? null : first - 1;
+};
+
+/** Net book value after `months` months: cost less ratePercent a year on the reducing balance (never negative months). */
+const bookValue = (cost: number, months: number, ratePercent: number): number => cost * Math.pow(1 - ratePercent / 100, Math.max(0, months) / 12);
+
+/**
+ * The asset figures for the page: cost and downpayment of the cars still owned, their net book value today, and the
+ * projected disposal value once each loan is paid off (ratePercent a year off the reducing balance from commencement).
+ */
+export function assetSummary(loans: VehicleLoan[], today: string, ratePercent = 5): AssetSummary {
+  const owned = loans.filter((loan) => loan.status !== 'SOLD');
+  const now = monthIndex(today) ?? 0;
+  let cost = 0, downpayment = 0, valueToday = 0, disposalAtPayoff = 0;
+  for (const loan of owned) {
+    const price = vehicleCost(loan);
+    cost += price;
+    downpayment += Number(loan.downpayment ?? 0);
+    const start = commencementIndex(loan);
+    if (start === null) { valueToday += price; disposalAtPayoff += price; continue; }
+    const last = start + 1 + Math.max(1, loan.tenure_months) - 1;
+    const payoffAt = isActive(loan) ? Math.max(last, now) : now;
+    valueToday += bookValue(price, now - start, ratePercent);
+    disposalAtPayoff += bookValue(price, payoffAt - start, ratePercent);
+  }
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+  return { count: owned.length, cost: round2(cost), downpayment: round2(downpayment), valueToday: round2(valueToday), disposalAtPayoff: round2(disposalAtPayoff), ratePercent };
+}
+
 /** The page's three tiles. */
 export function loanSummary(loans: VehicleLoan[], today: string): LoanSummary {
   const running = loans.filter((loan) => isRunning(loan, today));

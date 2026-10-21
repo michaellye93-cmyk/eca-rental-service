@@ -1362,6 +1362,16 @@
 .finance-summary-grid.is-three {
   grid-template-columns: 1.6fr 1fr 1fr;
 }
+.loans-depreciation {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--f-muted);
+}
+.loans-depreciation input {
+  width: 5rem;
+}
 .loans-chart {
   display: block;
   width: 100%;

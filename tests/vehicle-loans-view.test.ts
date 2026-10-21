@@ -54,6 +54,14 @@ test('the Vehicle loans page shows the headline, the chart and the loans most pa
   assert.match(page, /Balance left, all loans/);
   assert.ok(page.includes(text(money(500 * 6 + 800 * 26))), 'balance left: instalments still to pay');
   assert.match(page, /Within 6 months of payoff 1/);
+  // The asset row: the cars still owned (the settled one too), what they cost and were paid down, and their disposal value.
+  assert.match(page, /Cost of vehicles/);
+  assert.ok(page.includes(text(money(99000))), 'cost: financing + downpayment of the three cars, none sold');
+  assert.match(page, /Downpayment paid/);
+  assert.ok(page.includes(text(money(9000))), 'downpayment of the three cars');
+  assert.match(page, /Projected disposal value at payoff/);
+  assert.match(page, /5% a year off net book value/);
+  assert.match(page, /Depreciation, % a year/);
   assert.match(page, /Assumes every instalment is paid on time; the bank statement is the record\./);
   // The chart is drawn from the series, each running loan's end labelled by plate.
   assert.match(html, /<svg[^>]*role="img"/);
