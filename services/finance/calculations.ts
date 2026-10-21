@@ -198,6 +198,18 @@ export function fixedCostsMissing(input: FinanceInput): boolean {
     && !covered.has(template.series_id));
 }
 
+/**
+ * A Draft month still needs its monthly recurring Other Income lines: an active series covers the month and has no line
+ * there yet (a line deleted by hand counts, as the database does not make it again). Older servers send no series.
+ */
+export function recurringOtherIncomeMissing(input: FinanceInput): boolean {
+  if (input.month.status !== 'DRAFT' || !input.other_income_series?.length) return false;
+  const month = monthKey(input.month.finance_month);
+  const covered = new Set((input.other_income ?? []).filter((row) => row.series_id && monthKey(row.finance_month) === month).map((row) => row.series_id));
+  return input.other_income_series.some((series) => monthOverlaps({ start_month: series.effective_from, end_month: series.effective_until }, month)
+    && !covered.has(series.id));
+}
+
 export const buildFinanceReport = calculateFinance;
 
 /** Other Income for a month split into what the P&L counts (Confirmed) and Draft lines that wait for confirming. */

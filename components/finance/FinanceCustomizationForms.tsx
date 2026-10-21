@@ -10,6 +10,7 @@ import type {
   WorkshopSummary,
 } from "../../types/finance";
 import Dialog from "./FinanceDialog";
+import { useConfirm } from "../Dialog";
 import { otherIncomeTotals } from "../../services/finance/calculations";
 
 
@@ -391,7 +392,8 @@ export function FixedOperatingCostsPanel({
   );
 }
 
-type OtherIncomeAction = "ADD" | "UPDATE" | "CANCEL";
+type OtherIncomeAction = "ADD" | "UPDATE" | "CANCEL" | "STOP_RECURRING";
+type IncomeFrequency = "ONE_OFF" | "MONTHLY_RECURRING";
 
 export interface OtherIncomePanelProps {
   records: OtherIncome[];
@@ -415,6 +417,10 @@ type IncomeDraft = {
   plate_key: string;
   business_unit: BusinessUnit;
   receipt_date: string;
+  /** Asked on Add only: a monthly recurring line carries forward into each Draft month opened. */
+  frequency: IncomeFrequency;
+  /** YYYY-MM, the last month of a recurring series; blank keeps it going until stopped. */
+  until_month: string;
 };
 
 const incomeDraft = (row?: OtherIncome): IncomeDraft => ({
@@ -426,7 +432,83 @@ const incomeDraft = (row?: OtherIncome): IncomeDraft => ({
   plate_key: row?.plate_key ?? "",
   business_unit: row?.business_unit ?? "E-HAILING",
   receipt_date: row?.receipt_date ?? "",
+  frequency: "ONE_OFF",
+  until_month: "",
 });
+
+/** The record saved for the form. Frequency and Until month go with Add only: an edit changes this month's line only. */
+export function otherIncomePayload(
+  values: IncomeDraft,
+  month: string,
+  vehicleByPlate: ReadonlyMap<string, FinanceVehicle>,
+  row?: OtherIncome,
+): Record<string, unknown> {
+  const vehicle = values.plate_key ? vehicleByPlate.get(values.plate_key) : undefined;
+  return {
+    id: row?.id,
+    finance_month: monthStart(month),
+    status: values.status,
+    income_type: values.source_type.trim(),
+    source_type: values.source_type.trim(),
+    amount: Number(values.amount),
+    plate_key: values.plate_key || null,
+    business_unit: vehicle?.business_unit ?? values.business_unit,
+    receipt_date: values.receipt_date || null,
+    reference: nullable(values.source_record_id),
+    source_record_id: nullable(values.source_record_id),
+    notes: nullable(values.description),
+    description: nullable(values.description),
+    source: "Manual / Other Income",
+    ...(row ? {} : {
+      frequency: values.frequency,
+      end_month: values.frequency === "MONTHLY_RECURRING" && values.until_month ? values.until_month : null,
+    }),
+  };
+}
+
+/** Add Other Income: how often it comes in, and for a monthly one the optional last month. */
+export function RecurringFields({
+  frequency,
+  untilMonth,
+  month,
+  disabled,
+  onChange,
+}: {
+  frequency: IncomeFrequency;
+  untilMonth: string;
+  month: string;
+  disabled: boolean;
+  onChange: (change: { frequency?: IncomeFrequency; until_month?: string }) => void;
+}) {
+  return (
+    <>
+      <Field label="Frequency">
+        <select
+          value={frequency}
+          disabled={disabled}
+          onChange={(event) => onChange({ frequency: event.target.value as IncomeFrequency })}
+        >
+          <option value="ONE_OFF">One-off</option>
+          <option value="MONTHLY_RECURRING">Monthly recurring</option>
+        </select>
+      </Field>
+      {frequency === "MONTHLY_RECURRING" && (
+        <label className="finance-field">
+          <span>Until month (optional)</span>
+          <input
+            aria-label="Until month"
+            type="month"
+            min={month.slice(0, 7)}
+            value={untilMonth}
+            disabled={disabled}
+            onChange={(event) => onChange({ until_month: event.target.value })}
+          />
+          <small className="finance-muted-action">Leave blank to keep going until you stop it. Each new month gets a Draft line to confirm when the money arrives.</small>
+        </label>
+      )}
+    </>
+  );
+}
 
 export function OtherIncomePanel({
   records,
@@ -445,6 +527,7 @@ export function OtherIncomePanel({
   const [deleting, setDeleting] = useState<OtherIncome | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { ask, dialog } = useConfirm();
   const current = records.filter(
     (row) =>
       !row.cancelled_at && row.finance_month.slice(0, 7) === month.slice(0, 7),
@@ -466,26 +549,10 @@ export function OtherIncomePanel({
     }
   };
 
-  const payload = (values: IncomeDraft, row?: OtherIncome) => {
-    const vehicle = values.plate_key
-      ? vehicleByPlate.get(values.plate_key)
-      : undefined;
-    return {
-      id: row?.id,
-      finance_month: monthStart(month),
-      status: values.status,
-      income_type: values.source_type.trim(),
-      source_type: values.source_type.trim(),
-      amount: Number(values.amount),
-      plate_key: values.plate_key || null,
-      business_unit: vehicle?.business_unit ?? values.business_unit,
-      receipt_date: values.receipt_date || null,
-      reference: nullable(values.source_record_id),
-      source_record_id: nullable(values.source_record_id),
-      notes: nullable(values.description),
-      description: nullable(values.description),
-      source: "Manual / Other Income",
-    };
+  const payload = (values: IncomeDraft, row?: OtherIncome) => otherIncomePayload(values, month, vehicleByPlate, row);
+  const stopRecurring = async (row: OtherIncome) => {
+    if (!(await ask(`Stop ${row.income_type} (${formatCurrency(row.amount)} a month) after ${row.finance_month.slice(0, 7)}? This month's line stays. Later months get no new line, and Draft lines already made for later open months are removed.`))) return;
+    await run(() => onSave("STOP_RECURRING", { id: row.id, finance_month: row.finance_month }), () => {});
   };
 
   return (
@@ -524,6 +591,7 @@ export function OtherIncomePanel({
             <tr key={row.id}>
               <td>
                 <strong>{row.income_type}</strong>
+                {row.series_id && <> <span className="finance-tag">Monthly recurring</span></>}
                 <br />
                 {row.reference ?? "—"}
               </td>
@@ -548,6 +616,16 @@ export function OtherIncomePanel({
                   >
                     Edit
                   </button>
+                  {row.series_id && (
+                    <button
+                      type="button"
+                      className="finance-secondary"
+                      disabled={disabled || pending}
+                      onClick={() => void stopRecurring(row)}
+                    >
+                      Stop recurring
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="finance-destructive"
@@ -723,6 +801,15 @@ export function OtherIncomePanel({
                   <option value="CONFIRMED">Confirmed</option>
                 </select>
               </Field>
+              {!editor.row && (
+                <RecurringFields
+                  frequency={editor.values.frequency}
+                  untilMonth={editor.values.until_month}
+                  month={month}
+                  disabled={pending}
+                  onChange={(change) => setEditor({ ...editor, values: { ...editor.values, ...change } })}
+                />
+              )}
               <Field label="Description">
                 <input
                   value={editor.values.description}
@@ -739,6 +826,9 @@ export function OtherIncomePanel({
                 />
               </Field>
             </div>
+            {editor.row?.series_id && (
+              <p className="finance-muted-action">Changes this month only; use Stop recurring to end it.</p>
+            )}
             {editor.values.plate_key && (
               <p className="finance-muted-action">
                 Business unit is derived from the selected vehicle:{" "}
@@ -798,6 +888,7 @@ export function OtherIncomePanel({
           </div>
         </Dialog>
       )}
+      {dialog}
     </section>
   );
 }

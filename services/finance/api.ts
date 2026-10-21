@@ -72,4 +72,4 @@ export const saveFixedCost = (action: 'ADD' | 'UPDATE_FUTURE' | 'STOP' | 'DELETE
 };
 export const saveWorkshopSummary = (action: 'ADD' | 'UPDATE' | 'CANCEL', record: object, revision: number) => rpc<FinanceInput>('finance_save_workshop_summary', { p_action: action, p_record: recordPayload('expense', record), p_revision: revision });
 export const linkWorkshopAllocation = (summaryId: string, expenseId: string, revision: number) => rpc<FinanceInput>('finance_link_workshop_allocation', { p_summary_id: summaryId, p_expense_id: expenseId, p_revision: revision });
-export const saveOtherIncome = (action: 'ADD' | 'UPDATE' | 'CANCEL', record: object, revision: number) => rpc<FinanceInput>('finance_save_other_income', { p_action: action, p_record: recordPayload('expense', record), p_revision: revision });
+export const saveOtherIncome = (action: 'ADD' | 'UPDATE' | 'CANCEL' | 'STOP_RECURRING', record: object, revision: number) => rpc<FinanceInput>('finance_save_other_income', { p_action: action, p_record: recordPayload('expense', record), p_revision: revision });

@@ -34,7 +34,7 @@ import {
   saveOtherIncome,
 } from "../../services/finance/api";
 import { addDeposit, depositKindFor, depositKindLabel } from "../../services/depositsApi";
-import { buildFinanceReport, fixedCostsMissing } from "../../services/finance/calculations";
+import { buildFinanceReport, fixedCostsMissing, recurringOtherIncomeMissing } from "../../services/finance/calculations";
 import {
   previewSmartDrive,
   readFinanceWorkbook,
@@ -285,8 +285,8 @@ export default function FinanceView(props: MoneyProps = {}) {
           loadMonth(selectedMonth),
           loadWorkspaceMeta(selectedMonth),
         ]);
-        // A Draft month opened for the first time gets its Operation Fix Cost lines from Records.
-        if (fixedCostsMissing(loaded)) {
+        // A Draft month opened for the first time gets its Operation Fix Cost lines and monthly recurring Other Income lines from Records.
+        if (fixedCostsMissing(loaded) || recurringOtherIncomeMissing(loaded)) {
           try {
             loaded = await generateFixedCosts(selectedMonth, loaded.month.revision);
             meta = await loadWorkspaceMeta(selectedMonth);
@@ -799,7 +799,7 @@ export default function FinanceView(props: MoneyProps = {}) {
               key={`${month}:${expenseSource}`}
               initialSource={expenseSource}
               drivers={props.drivers ?? []}
-              onSaveOtherIncome={(action: "ADD" | "UPDATE" | "CANCEL", record: object) => invoke(() => saveOtherIncome(action, record, revise), "Other Income saved.")}
+              onSaveOtherIncome={(action: "ADD" | "UPDATE" | "CANCEL" | "STOP_RECURRING", record: object) => invoke(() => saveOtherIncome(action, record, revise), "Other Income saved.")}
               onExportOtherIncome={() => exportRecords("other_income", (input.other_income ?? []).filter((row) => !row.cancelled_at && row.finance_month.slice(0, 7) === month) as unknown as Record<string, unknown>[])}
               input={input}
               month={month}
