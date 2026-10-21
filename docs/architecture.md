@@ -67,6 +67,9 @@ Notes:
   change to it. Rules in `services/finance/loans.ts`; the page assumes every instalment is paid on time.
   Since 20261021150000 the loan also carries the bank letter's cost, rate type (flat or variable), commencement date and
   ownership (hirer); the list is grouped by hirer, and each loan opens its HP schedule (Rule of 78, year end 31 March).
+- **Recurring Other Income.** An Other Income line added as Monthly recurring is a series (`finance_private.other_income_series`,
+  since 20261021180000): each Draft month that opens gets its Draft line (with the Operation Fix Cost lines), Stop recurring
+  ends it from the next month, and the Cash projection counts the series at its amount instead of the 3-month average.
 - **Finance.** Monthly P&L, cash, collections, vehicles, records, month close and Reconcile (matching bank statements
   to payments). Bank statement files are read by the Edge Function `finance-extract-bank-statement` (Gemini); only
   the extracted lines are kept.
