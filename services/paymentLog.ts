@@ -103,6 +103,18 @@ export interface PossibleDuplicate {
 export const isBankReceipt = (amount: number, method?: string | null): boolean =>
   amount > 0 && ['BANK TRANSFER', 'CASH DEPOSIT'].includes((method || '').trim().toUpperCase() || 'BANK TRANSFER');
 
+/**
+ * The method a payment is saved with: a payment with no amount and a claim is a CLAIM whatever method was clicked
+ * (the form shows "Claim Only"), otherwise the clicked method (null when none was chosen yet). Money is never a CLAIM:
+ * a claim-only payment edited into a money payment reads as the Bank Transfer the Method select shows.
+ */
+export const savedPaymentMethod = <M extends string>(amount: number, serviceClaim: number, chosen: M | null): M | 'CLAIM' | 'BANK TRANSFER' | null =>
+  amount === 0 && serviceClaim > 0 ? 'CLAIM' : chosen === 'CLAIM' ? 'BANK TRANSFER' : chosen;
+
+/** The payment window's Claim box as it opens: a claim typed for the same driver is kept; any other driver starts at 0. */
+export const claimBoxOnOpen = (kept: { driverId: string; value: string } | null, driverId: string): string =>
+  kept && kept.driverId === driverId ? kept.value : '0';
+
 /** A reference as compared: capitals without spaces. */
 export const referenceKey = (reference?: string | null): string => (reference || '').toUpperCase().replace(/\s+/g, '');
 

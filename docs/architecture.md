@@ -69,7 +69,7 @@ Notes:
   ownership (hirer); the list is grouped by hirer, and each loan opens its HP schedule (Rule of 78, year end 31 March).
 - **Recurring Other Income.** An Other Income line added as Monthly recurring is a series (`finance_private.other_income_series`,
   since 20261021180000): each Draft month that opens gets its Draft line (with the Operation Fix Cost lines), Stop recurring
-  ends it from the next month, and the Cash projection counts the series at its amount instead of the 3-month average.
+  ends it from the next month, and the Cash projection counts the series at its amount instead of the 3-month average, until the month's line is Confirmed (then the money is in the balance, 20261021210000).
 - **Finance.** Monthly P&L, cash, collections, vehicles, records, month close and Reconcile (matching bank statements
   to payments). Bank statement files are read by the Edge Function `finance-extract-bank-statement` (Gemini); only
   the extracted lines are kept.

@@ -5,7 +5,7 @@ import { formatCurrency, formatDate, generateDriverInvoices, kualaLumpurNow, kua
 import Dialog from '../Dialog';
 import { InvoiceRow, PaymentAmount, PaymentMethodBadge } from '../RentDisplay';
 import { BankBadge, PaymentNoteLines, ReceivedIntoBadge, useBankStatus, usePaymentAccounts, usePaymentLog } from '../PaymentNotes';
-import { findPossibleDuplicates, isBankReceipt, type PossibleDuplicate } from '../../services/paymentLog';
+import { findPossibleDuplicates, isBankReceipt, savedPaymentMethod, type PossibleDuplicate } from '../../services/paymentLog';
 import { ENTITY_NAMES, needsReceivedInto, type PaymentAccount, type PaymentEntity } from '../../services/paymentAccounts';
 
 type PaymentMethod = NonNullable<PaymentTransaction['paymentMethod']>;
@@ -84,14 +84,9 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
     if (isNaN(amount) || amount < 0) { setPaymentError('Enter an amount of RM 0 or more.'); return; }
     if (!paymentDate) { setPaymentError('Choose the payment date.'); return; }
 
-    let finalMethod = paymentMethod;
-    if (!finalMethod) {
-        if (amount === 0 && serviceClaim > 0) {
-            finalMethod = 'CLAIM';
-        } else {
-            setPaymentError('Choose Bank Transfer or Cash Deposit.'); return;
-        }
-    }
+    // What the form shows is what is saved: no amount with a claim is a CLAIM even if a method was clicked earlier
+    const finalMethod = savedPaymentMethod(amount, serviceClaim, paymentMethod);
+    if (!finalMethod) { setPaymentError('Choose Bank Transfer or Cash Deposit.'); return; }
 
     const askAccount = activeAccounts.length > 0 && needsReceivedInto(amount, finalMethod);
     if (askAccount && !receivedInto) { setPaymentError('Choose which account the money went into.'); return; }
@@ -113,7 +108,8 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
     setEditAmount(tx.amount.toString());
     setEditServiceClaim((tx.serviceClaim || 0).toString());
     setEditDate(tx.date);
-    setEditPaymentMethod(tx.paymentMethod || 'BANK TRANSFER');
+    // A claim-only payment has no money method: the select starts on Bank Transfer, as it shows
+    setEditPaymentMethod(tx.paymentMethod && tx.paymentMethod !== 'CLAIM' ? tx.paymentMethod : 'BANK TRANSFER');
     setEditReference(tx.reference || '');
     setEditReceivedInto(tx.receivedInto || '');
   };
@@ -142,9 +138,9 @@ export default function PaymentDialog({ driver, drivers, serviceClaim, onService
     setEditTxError(null);
     if (onEditPayment) {
       // Only bank money keeps an account; switching to cash or a claim clears it. Untouched while the list is unavailable.
-      const method = amountNum === 0 && serviceClaimNum > 0 ? 'CLAIM' : editPaymentMethod || 'BANK TRANSFER';
+      const method = savedPaymentMethod(amountNum, serviceClaimNum, editPaymentMethod || 'BANK TRANSFER');
       const account = accounts.length ? (needsReceivedInto(amountNum, method) ? editReceivedInto || null : null) : undefined;
-      onEditPayment(txId, amountNum, serviceClaimNum, editDate, editPaymentMethod || 'BANK TRANSFER', editReference.trim(), account);
+      onEditPayment(txId, amountNum, serviceClaimNum, editDate, method, editReference.trim(), account);
     }
     setEditingTxId(null);
     setEditPaymentMethod(null);

@@ -149,3 +149,16 @@ test('Vehicle Master check flags plates that differ only by two swapped neighbou
   assert.deepEqual(flagged, ['XAA1011', 'XAA1101', 'XAB1001', 'XBA1001']);
   assert.ok(report.issues.filter((issue) => issue.code === 'SIMILAR_PLATE').every((issue) => issue.severity === 'warning'));
 });
+
+test('the Monthly Vehicle Costs total counts only the costs active in the month viewed, so an ended loan or one not yet started is left out', async () => {
+  const { activeMonthlyCostTotal } = await import('../services/finance/calculations.ts');
+  const costs = [
+    { plate_key: 'XAA1001', start_month: '2026-08-01', end_month: null, cost_type: 'Hire Purchase / Loan', monthly_amount: 500, payee: null, notes: null },
+    { plate_key: 'XAA1002', start_month: '2024-01-01', end_month: '2026-09-01', cost_type: 'Hire Purchase / Loan', monthly_amount: 700, payee: null, notes: null },
+    { plate_key: 'XAA1003', start_month: '2026-12-01', end_month: null, cost_type: 'Hire Purchase / Loan', monthly_amount: 900, payee: null, notes: null },
+    { plate_key: 'XAA1004', start_month: '2026-08-01', end_month: null, cost_type: 'GPS', monthly_amount: 5, payee: null, notes: null, cancelled_at: '2026-10-01T00:00:00Z' },
+  ];
+  assert.equal(activeMonthlyCostTotal(costs, '2026-10'), 500);
+  assert.equal(activeMonthlyCostTotal(costs, '2026-09-01'), 1200);
+  assert.equal(activeMonthlyCostTotal(costs, '2026-12'), 1400);
+});
