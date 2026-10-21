@@ -147,3 +147,51 @@ test('a loan row has a Schedule button; expanded, it shows the HP schedule with 
   assert.match(bodyRows[0], /<td class="num">575\.00<\/td>/, 'numbers right-aligned, plain figures');
   assert.equal((html.match(/>Download Excel</g) ?? []).length, 2);
 });
+
+test('the loans are grouped under one heading per hirer, biggest monthly total first, with the unset group', async () => {
+  const View = await loadView();
+  const html: string = renderToStaticMarkup(createElement(View, {
+    loans: [
+      loan({ plate_key: 'XAA1001', display_plate: 'XAA 1001', hirer: 'Fixture Owner', monthly_instalment: 500, commencement_date: '2022-04-05' }),
+      loan({ plate_key: 'XAA1002', display_plate: 'XAA 1002', hirer: 'Fixture Owner Sdn Bhd', first_payment_date: '2025-01-05', tenure_months: 48, monthly_instalment: 800 }),
+      loan({ plate_key: 'XAA1003', display_plate: 'XAA 1003', hirer: 'Fixture Owner Sdn Bhd', status: 'SETTLED', closed_on: '2026-06-10', monthly_instalment: 300 }),
+      loan({ plate_key: 'XAA1004', display_plate: 'XAA 1004', hirer: 'Fixture Owner', first_payment_date: '2026-01-05', monthly_instalment: 450 }),
+      loan({ plate_key: 'XAA1005', display_plate: 'XAA 1005', first_payment_date: '2026-02-05', monthly_instalment: 200, rate_type: 'VARIABLE', flat_rate_percent: 4.5 }),
+    ],
+    today: '2026-10-21', cars: new Map(),
+    whatIf: { finance_amount: '', flat_rate_percent: '', tenure_months: '', first_payment_month: '' },
+  }));
+  const page = text(html);
+  const headings = [...html.matchAll(/<h4 class="loans-group-heading">(.*?)<\/h4>/g)].map((m) => text(m[1]).trim());
+  assert.deepEqual(headings, [
+    text(`Fixture Owner · 2 active · ${money(950)} /mo`).trim(),
+    text(`Fixture Owner Sdn Bhd · 1 active · ${money(800)} /mo`).trim(),
+    text(`Ownership not set · 1 active · ${money(200)} /mo`).trim(),
+  ]);
+  // Inside each group the soonest to finish first; each loan sits under its own hirer.
+  const list = page.slice(page.indexOf('Loans, soonest to finish first'));
+  const at = (needle: string) => list.indexOf(needle);
+  assert.ok(at('Fixture Owner · 2') < at('XAA 1001 ') && at('XAA 1001 ') < at('XAA 1004 ') && at('XAA 1004 ') < at('Fixture Owner Sdn Bhd · 1'));
+  assert.ok(at('Fixture Owner Sdn Bhd · 1') < at('XAA 1002 ') && at('XAA 1002 ') < at('XAA 1003 ') && at('XAA 1003 ') < at('Ownership not set'));
+  assert.ok(at('Ownership not set') < at('XAA 1005 '));
+  // The small print: the commencement date when set, and the rate type.
+  assert.match(page, /3\.00% flat · 60 months from May 2022 · commenced 5 Apr 2022/);
+  assert.match(page, /4\.50% variable · 60 months from Feb 2026/);
+});
+
+test("a variable-rate loan's schedule shows a dash for the interest split, with the line saying the bank gives it", async () => {
+  const View = await loadView();
+  const variable = loan({ plate_key: 'XAA1006', display_plate: 'XAA 1006', rate_type: 'VARIABLE', finance_amount: 10000, tenure_months: 24, monthly_instalment: 450, first_payment_date: '2025-01-10' });
+  const html: string = renderToStaticMarkup(createElement(View, {
+    loans: [variable], today: '2026-10-21', cars: new Map(), expanded: new Set(['XAA1006']),
+    whatIf: { finance_amount: '', flat_rate_percent: '', tenure_months: '', first_payment_month: '' },
+    onToggleSchedule: () => {}, onDownloadSchedule: () => {},
+  }));
+  const page = text(html);
+  assert.match(page, /Variable rate: the bank's statement gives the interest split · 3\.00% variable · first payment 10 Jan 2025 · last instalment 10 Dec 2026/);
+  assert.doesNotMatch(page, /Rule of 78/);
+  const bodyRows = html.slice(html.indexOf('<tbody')).split('<tr').slice(1);
+  assert.equal(bodyRows.length, 24);
+  assert.match(bodyRows[0], /<td class="num">450\.00<\/td><td class="num">—<\/td><td class="num">—<\/td>/, 'no interest or principal on a row');
+  assert.match(bodyRows[2], /<td class="num">1,350\.00<\/td><td class="num">—<\/td><td class="num">—<\/td><td class="num">8,650\.00<\/td>/, 'the year-end row: instalments and the balance only');
+});

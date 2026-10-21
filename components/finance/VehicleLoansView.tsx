@@ -5,12 +5,13 @@ import { money, monthShort, MONTH_SHORT } from "../../services/fmt";
 import {
   balanceLeft,
   commitmentSeries,
+  groupLoansByHirer,
   hpSchedule,
   LOAN_STATUS_LABELS,
   loanSummary,
   nearPayoff,
   progress,
-  sortLoans,
+  VARIABLE_NOTE,
   type CommitmentSeries,
   type VehicleLoan,
   type WhatIfLoan,
@@ -68,7 +69,7 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
   const summary = loanSummary(loans, today);
   const typed = whatIfLoan(whatIf);
   const series = commitmentSeries(loans, today, CHART_MONTHS, typed);
-  const sorted = sortLoans(loans, today);
+  const groups = groupLoansByHirer(loans, today);
   const set = (key: keyof WhatIfForm) => (event: React.ChangeEvent<HTMLInputElement>) => onWhatIfChange?.(key, event.target.value);
   return (
     <div className="finance-content">
@@ -107,20 +108,27 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
       <section className="finance-panel">
         <SectionHeading
           title="Loans, soonest to finish first"
-          detail="Saving a loan keeps its Hire Purchase / Loan monthly cost in Records up to date."
+          detail="Grouped by ownership (the hirer), the biggest monthly total first. Saving a loan keeps its Hire Purchase / Loan monthly cost in Records up to date."
           action={onAdd && <button type="button" className="finance-primary" disabled={busy} onClick={onAdd}>Add loan</button>}
         />
-        {sorted.length === 0 ? (
+        {groups.length === 0 ? (
           <Empty text="No loans yet. Add each own-fleet car's hire-purchase loan from its loan provider's letter." />
         ) : (
-          <ul className="loans-list">
-            {sorted.map((loan) => (
-              <LoanRow
-                key={scheduleKey(loan)} loan={loan} today={today} car={cars.get(loan.plate_key)} busy={busy} onEdit={onEdit} onDelete={onDelete}
-                open={expanded?.has(scheduleKey(loan)) ?? false} onToggleSchedule={onToggleSchedule} onDownloadSchedule={onDownloadSchedule}
-              />
-            ))}
-          </ul>
+          groups.map((group) => (
+            <section key={group.hirer ?? ""} className="loans-group" aria-label={group.label}>
+              <h4 className="loans-group-heading">
+                {group.label} · {group.activeCount} active · {money(group.monthlyTotal)} /mo
+              </h4>
+              <ul className="loans-list">
+                {group.loans.map((loan) => (
+                  <LoanRow
+                    key={scheduleKey(loan)} loan={loan} today={today} car={cars.get(loan.plate_key)} busy={busy} onEdit={onEdit} onDelete={onDelete}
+                    open={expanded?.has(scheduleKey(loan)) ?? false} onToggleSchedule={onToggleSchedule} onDownloadSchedule={onDownloadSchedule}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
       </section>
     </div>
@@ -146,7 +154,7 @@ function LoanRow({ loan, today, car, busy, onEdit, onDelete, open, onToggleSched
         {near && <span className="loan-pill is-near">Near payoff</span>}
         {!active && <span className="loan-pill is-closed">{LOAN_STATUS_LABELS[loan.status]}</span>}
         <small>
-          {[car, loan.bank, `${Number(loan.flat_rate_percent).toFixed(2)}% flat`, `${loan.tenure_months} months from ${monthShort(loan.first_payment_date)}`].filter(Boolean).join(" · ")}
+          {[car, loan.bank, rateText(loan), `${loan.tenure_months} months from ${monthShort(loan.first_payment_date)}`, loan.commencement_date && `commenced ${dayLong(loan.commencement_date)}`].filter(Boolean).join(" · ")}
         </small>
       </div>
       <div className="loan-progress">
@@ -171,8 +179,10 @@ function LoanRow({ loan, today, car, busy, onEdit, onDelete, open, onToggleSched
 
 /** "15 Jan 2024" from YYYY-MM-DD. */
 const dayLong = (date: string) => (date ? `${Number(date.slice(8, 10))} ${MONTH_SHORT[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : "");
-/** A schedule figure as the bank prints it: 1,234.56, no currency. */
-const figure = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** A schedule figure as the bank prints it: 1,234.56, no currency; a dash where the bank's statement gives it. */
+const figure = (value: number | null) => (value === null ? "—" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+/** "3.00% flat" or "4.50% variable". */
+const rateText = (loan: VehicleLoan) => `${Number(loan.flat_rate_percent).toFixed(2)}% ${loan.rate_type === "VARIABLE" ? "variable" : "flat"}`;
 
 export const SCHEDULE_HEADERS = ["Year", "Ins. No", "Sum of Digit", "Instalment", "Interest", "Principal", "Total Instalment", "Total Interest", "Total Principal", "Bal Due"] as const;
 
@@ -185,7 +195,10 @@ function LoanSchedule({ id, loan, today, onDownload }: { id: string; loan: Vehic
     <div className="loan-schedule" id={id}>
       <div className="loan-schedule-head">
         <p>
-          Total payable {money(schedule.totalPayable)} · interest {money(schedule.totalInterest)} at {Number(loan.flat_rate_percent).toFixed(2)}% flat · Rule of 78 split · first payment {dayLong(first)} · last instalment {dayLong(last)}
+          {schedule.totalPayable === null || schedule.totalInterest === null
+            ? `${VARIABLE_NOTE} · ${rateText(loan)}`
+            : `Total payable ${money(schedule.totalPayable)} · interest ${money(schedule.totalInterest)} at ${rateText(loan)} · Rule of 78 split`}
+          {` · first payment ${dayLong(first)} · last instalment ${dayLong(last)}`}
         </p>
         <button type="button" className="finance-secondary" disabled={!onDownload} onClick={() => onDownload?.(loan)}>Download Excel</button>
       </div>

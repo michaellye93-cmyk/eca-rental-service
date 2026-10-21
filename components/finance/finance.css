@@ -1430,6 +1430,19 @@
   color: #506372;
   font-size: 12px;
 }
+.loans-group + .loans-group {
+  margin-top: 18px;
+}
+
+.loans-group-heading {
+  margin: 0;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--f-line);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .loans-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
