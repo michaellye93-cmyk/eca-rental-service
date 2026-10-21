@@ -66,8 +66,13 @@ test('the Vehicle loans page shows the headline, the chart and the loans most pa
   assert.ok(page.includes(text(`3 cars still owned · downpayment paid ${money(9000)}`)), 'downpayment of the three cars, under the cost');
   assert.match(page, /today · 5% of cost a year, straight line /);
   assert.doesNotMatch(page, /from commencement/);
-  assert.match(page, /Depreciation, % a year/);
-  assert.match(page, /Assumes every instalment is paid on time; the bank statement is the record\./);
+  // Under the chart, folded away: the assumption, the depreciation rate, then What if; closed while nothing is typed.
+  const assumptions = html.slice(html.indexOf('<details class="loans-assumptions">'), html.indexOf('</details>'));
+  assert.ok(html.indexOf('<svg') < html.indexOf('<details class="loans-assumptions">'), 'the folded box sits under the chart');
+  assert.match(assumptions, /^<details class="loans-assumptions"><summary>Assumptions and what-if<\/summary>/, 'closed by default');
+  const inside = ['Assumes every instalment is paid on time; the bank statement is the record.', 'Depreciation, % a year', '<legend>What if</legend>'].map((part) => assumptions.indexOf(part));
+  assert.ok(inside.every((at, i) => at > 0 && (i === 0 || inside[i - 1] < at)), `inside the box, in order ${inside}`);
+  assert.equal((page.match(/Assumes every instalment is paid on time/g) ?? []).length, 1, 'the assumption is no longer at the top');
   // The chart is drawn from the series, each running loan's end labelled by plate.
   assert.match(html, /<svg[^>]*role="img"/);
   assert.match(page, /XAA 1001 ends/);
@@ -94,6 +99,7 @@ test('a what-if loan adds a dotted line to the chart; no loans shows an empty st
     whatIf: { finance_amount: '60000', flat_rate_percent: '2.7', tenure_months: '84', first_payment_month: '2027-01' },
   }));
   assert.match(withWhatIf, /stroke-dasharray/, 'the what-if line is dotted');
+  assert.match(withWhatIf, /<details class="loans-assumptions" open="">/, 'a typed what-if keeps its box open');
   // 60,000 + 60,000 × 2.7% × 7 = 71,340 / 84 = 849.28… → 850 a month.
   assert.ok(text(withWhatIf).includes(text(`What if adds ${money(850)} a month`)));
   const empty: string = renderToStaticMarkup(createElement(View, {

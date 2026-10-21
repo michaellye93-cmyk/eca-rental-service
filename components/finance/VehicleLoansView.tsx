@@ -75,10 +75,11 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
   const typed = whatIfLoan(whatIf);
   const series = commitmentSeries(loans, today, CHART_MONTHS, typed);
   const groups = groupLoansByHirer(loans, today);
+  // Opened or closed by hand (browser state only).
+  const [assumptionsOpen, setAssumptionsOpen] = React.useState(false);
   const set = (key: keyof WhatIfForm) => (event: React.ChangeEvent<HTMLInputElement>) => onWhatIfChange?.(key, event.target.value);
   return (
     <div className="finance-content">
-      <p className="finance-dialog-copy">{ASSUMPTION}</p>
       <section className="finance-summary-grid is-four loans-tiles" aria-label="Vehicle loan figures">
         <StatTile
           emphasis
@@ -98,29 +99,33 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
           hint={`worth about ${money(assets.valueToday)} today · ${assets.ratePercent}% of cost a year, straight line`}
         />
       </section>
-      <label className="loans-depreciation">
-        Depreciation, % a year
-        <input type="number" min="0" max="99" step="0.5" inputMode="decimal" value={depreciation} disabled={!onDepreciationChange} onChange={(event) => onDepreciationChange?.(event.target.value)} />
-      </label>
-
       <section className="finance-panel">
         <SectionHeading
           title={`Monthly instalment commitment, next ${CHART_MONTHS} months`}
           detail="Each step down is a loan ending. The dotted line adds the loan typed under What if."
         />
         <CommitmentChart series={series} />
-        <fieldset className="loans-what-if" disabled={!onWhatIfChange}>
-          <legend>What if</legend>
-          <label className="finance-field"><span>Finance amount (RM)</span><input type="number" min="0" step="0.01" inputMode="decimal" value={whatIf.finance_amount} onChange={set("finance_amount")} /></label>
-          <label className="finance-field"><span>Flat rate, % a year</span><input type="number" min="0" step="0.001" inputMode="decimal" value={whatIf.flat_rate_percent} onChange={set("flat_rate_percent")} /></label>
-          <label className="finance-field"><span>Tenure (months)</span><input type="number" min="1" step="1" inputMode="numeric" value={whatIf.tenure_months} onChange={set("tenure_months")} /></label>
-          <label className="finance-field"><span>First payment month</span><input type="month" value={whatIf.first_payment_month} onChange={set("first_payment_month")} /></label>
-        </fieldset>
-        {typed && (
-          <p className="finance-muted-action">
-            What if adds {money(series.whatIfInstalment)} a month from {monthShort(typed.first_payment_month)} for {typed.tenure_months} months. Not saved.
-          </p>
-        )}
+        {/* Folded away under the chart; open while a what-if loan is typed, so its figures are not hidden. */}
+        <details className="loans-assumptions" open={assumptionsOpen || typed !== null} onToggle={(event) => setAssumptionsOpen(event.currentTarget.open)}>
+          <summary>Assumptions and what-if</summary>
+          <p className="finance-dialog-copy">{ASSUMPTION}</p>
+          <label className="loans-depreciation">
+            Depreciation, % a year
+            <input type="number" min="0" max="99" step="0.5" inputMode="decimal" value={depreciation} disabled={!onDepreciationChange} onChange={(event) => onDepreciationChange?.(event.target.value)} />
+          </label>
+          <fieldset className="loans-what-if" disabled={!onWhatIfChange}>
+            <legend>What if</legend>
+            <label className="finance-field"><span>Finance amount (RM)</span><input type="number" min="0" step="0.01" inputMode="decimal" value={whatIf.finance_amount} onChange={set("finance_amount")} /></label>
+            <label className="finance-field"><span>Flat rate, % a year</span><input type="number" min="0" step="0.001" inputMode="decimal" value={whatIf.flat_rate_percent} onChange={set("flat_rate_percent")} /></label>
+            <label className="finance-field"><span>Tenure (months)</span><input type="number" min="1" step="1" inputMode="numeric" value={whatIf.tenure_months} onChange={set("tenure_months")} /></label>
+            <label className="finance-field"><span>First payment month</span><input type="month" value={whatIf.first_payment_month} onChange={set("first_payment_month")} /></label>
+          </fieldset>
+          {typed && (
+            <p className="finance-muted-action">
+              What if adds {money(series.whatIfInstalment)} a month from {monthShort(typed.first_payment_month)} for {typed.tenure_months} months. Not saved.
+            </p>
+          )}
+        </details>
       </section>
 
       <section className="finance-panel">

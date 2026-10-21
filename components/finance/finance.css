@@ -1416,6 +1416,23 @@
   font-size: 12px;
   font-weight: 600;
 }
+/* The assumption, depreciation rate and What if, folded away under the chart. */
+.loans-assumptions {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--f-line);
+}
+.loans-assumptions > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.loans-assumptions > .finance-dialog-copy {
+  margin-top: 10px;
+}
+.loans-assumptions > .loans-depreciation {
+  margin-top: 10px;
+}
 .loans-what-if {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
