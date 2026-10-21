@@ -4,14 +4,19 @@ import { cashOf } from './moneyDefinitions.ts';
 import { addDays, MONTH_SHORT, monthStart, percent, round2 } from './fmt.ts';
 import { sameBankAccount } from './finance/statementBalances.ts';
 
-// What finance_cash_outlook(today) returns (see supabase/migrations/20260927090000_cash_position_and_outlook.sql).
+// What finance_cash_outlook(today) returns (see supabase/migrations/20260927090000_cash_position_and_outlook.sql and,
+// for recurring Other Income, 20261021180000_other_income_recurring.sql).
 export interface CashBalanceEntry { id: string; account_label: string; balance: number; as_of: string; note: string | null; entered_at: string }
 export interface OutlookMonth { month: string; recurring: number; fixed: number }
 export interface InsuranceDue { plate_key: string; display_plate: string; due_date: string; amount: number; kind: 'PAYMENT' | 'RENEWAL' }
 export interface OutlookHistoryMonth {
   month: string; has_data: boolean;
   workshop: number; vehicle_costs: number; one_off_opex: number; smart_drive_net: number; other_income: number;
+  /** Of other_income, the confirmed lines made from a monthly recurring series. Absent from servers before 20261021180000. */
+  recurring_other_income?: number;
 }
+/** The active monthly recurring Other Income series added up for one month. */
+export interface RecurringIncomeMonth { month: string; amount: number }
 export interface CashOutlookData {
   today: string;
   balances: CashBalanceEntry[];
@@ -19,6 +24,8 @@ export interface CashOutlookData {
   insurance: InsuranceDue[];
   history: OutlookHistoryMonth[];
   duplicate_recurring: { vehicles: number; monthly_amount: number };
+  /** Monthly recurring Other Income for this month and the next five. Absent from servers before 20261021180000. */
+  recurring_ahead?: RecurringIncomeMonth[];
   /**
    * Deposits held per driver id, read from the deposit ledger (public.driver_deposits) when the outlook is loaded; not
    * part of finance_cash_outlook. Absent when the ledger could not be read: no deposit figures are shown then.
@@ -132,6 +139,8 @@ function averages(outlook: CashOutlookData) {
     oneOffOpex: average('one_off_opex'),
     smartDriveNet: average('smart_drive_net'),
     otherIncome: average('other_income'),
+    /** Other income less the part made from monthly recurring series (counted at its amount instead). */
+    oneOffOtherIncome: Math.max(0, average('other_income') - average('recurring_other_income')),
   };
 }
 
@@ -213,11 +222,19 @@ export function windowBills(outlook: CashOutlookData, from: string, to: string, 
   return { ...bills, total: round2(Object.values(bills).reduce((sum, value) => sum + value, 0)) };
 }
 
-/** Money expected in besides rent: Smart Drive (net of commission) and other income, as 3-month averages. */
+/**
+ * Money expected in besides rent: Smart Drive (net of commission) and one-off other income as 3-month averages, plus
+ * monthly recurring other income at its amount for each month the window covers (weighted by the days covered, like
+ * the monthly bills). Without recurring_ahead (an older server) all other income is averaged, as before.
+ */
 export function windowOtherIncome(outlook: CashOutlookData, from: string, to: string): number {
   const avg = averages(outlook);
-  const months = monthShares(from, to).reduce((sum, m) => sum + m.share, 0);
-  return round2((avg.smartDriveNet + avg.otherIncome) * months);
+  const shares = monthShares(from, to);
+  const months = shares.reduce((sum, m) => sum + m.share, 0);
+  if (!outlook.recurring_ahead) return round2((avg.smartDriveNet + avg.otherIncome) * months);
+  const ahead = new Map(outlook.recurring_ahead.map(r => [r.month.slice(0, 10), num(r.amount)] as [string, number]));
+  const recurring = shares.reduce((sum, { month, share }) => sum + (ahead.get(month) ?? 0) * share, 0);
+  return round2((avg.smartDriveNet + avg.oneOffOtherIncome) * months + recurring);
 }
 
 export type CashStatus = 'SHORT' | 'TIGHT' | 'WATCH' | 'COVERED';

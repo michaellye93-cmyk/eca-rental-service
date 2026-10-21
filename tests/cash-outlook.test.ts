@@ -83,6 +83,27 @@ test('bills for a window weight each month by the days it covers and add insuran
   assert.equal(windowOtherIncome(outlook(), '2026-11-01', '2026-11-30'), 1300);
 });
 
+test('recurring Other Income counts at its amount for the window\'s months; only the one-off rest is averaged', () => {
+  // Sep and Oct each had RM500 confirmed other income, RM400 of it from a monthly recurring series; a new series makes it RM600 from November.
+  const history = outlook().history.map(h => h.has_data ? { ...h, other_income: 500, recurring_other_income: 400 } : { ...h, recurring_other_income: 0 });
+  const recurring_ahead = [
+    { month: '2026-11-01', amount: 600 }, { month: '2026-12-01', amount: 600 }, { month: '2027-01-01', amount: 200 },
+    { month: '2027-02-01', amount: 200 }, { month: '2027-03-01', amount: 200 }, { month: '2027-04-01', amount: 200 },
+  ];
+  const withRecurring = outlook({ history, recurring_ahead });
+  // November: Smart Drive average 1,200 + one-off average (500 - 400) 100 + recurring 600.
+  assert.equal(windowOtherIncome(withRecurring, '2026-11-01', '2026-11-30'), 1900);
+  // A part window takes each month's share of the recurring amount, like the monthly bills.
+  assert.equal(windowOtherIncome(withRecurring, '2026-11-16', '2026-12-15'), round((1200 + 100) * (15 / 30 + 15 / 31) + 600 * (15 / 30) + 600 * (15 / 31)));
+  // January's series amount drops to 200; a month past the list counts no recurring income.
+  assert.equal(windowOtherIncome(withRecurring, '2027-01-01', '2027-01-31'), 1500);
+  assert.equal(windowOtherIncome(withRecurring, '2027-05-01', '2027-05-31'), 1300);
+  // An older server sends no recurring_ahead: the 3-month average of all other income, exactly as before.
+  assert.equal(windowOtherIncome(outlook({ history }), '2026-11-01', '2026-11-30'), 1700);
+  // The month-by-month outlook uses the same split.
+  assert.equal(monthlyOutlook({ today: TODAY, outlook: withRecurring, drivers: [] })[0].otherIncome, 1900);
+});
+
 test('Tight: the line says how few days of bills would be left and what better collection is worth', () => {
   const line = cashLine({
     today: TODAY, outlook: outlook({ balances: [balance('1', 'Maybank operating', 2000, '2026-10-30'), balance('2', 'CIMB current', 500, '2026-10-25')] }),
