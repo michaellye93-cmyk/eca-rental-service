@@ -40,7 +40,7 @@ const LOANS = [
 ];
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
-test('the Vehicle loans page shows the headline, the chart and the loans soonest to finish first', async () => {
+test('the Vehicle loans page shows the headline, the chart and the loans most paid off first', async () => {
   const View = await loadView();
   const html: string = renderToStaticMarkup(createElement(View, {
     loans: LOANS, today: '2026-10-21', cars: new Map([['XAA1001', 'Fixture Bezza 1.3']]),
@@ -59,8 +59,8 @@ test('the Vehicle loans page shows the headline, the chart and the loans soonest
   assert.match(html, /<svg[^>]*role="img"/);
   assert.match(page, /XAA 1001 ends/);
   assert.match(page, /XAA 1002 ends/);
-  // The list: soonest to finish first, the settled loan last.
-  const order = ['XAA 1001', 'XAA 1002', 'XAA 1003'].map((plate) => page.indexOf(`${plate} `, page.indexOf('Loans, soonest to finish first')));
+  // The list: most paid off first, the settled loan last.
+  const order = ['XAA 1001', 'XAA 1002', 'XAA 1003'].map((plate) => page.indexOf(`${plate} `, page.indexOf('Loans, most paid off first')));
   assert.ok(order[0] < order[1] && order[1] < order[2], `list order ${order}`);
   assert.match(page, /paid 54 of 60 · 6 left · finishes Apr 2027/);
   assert.match(page, /paid 22 of 48 · 26 left · finishes Dec 2028/);
@@ -168,8 +168,8 @@ test('the loans are grouped under one heading per hirer, biggest monthly total f
     text(`Fixture Owner Sdn Bhd · 1 active · ${money(800)} /mo`).trim(),
     text(`Ownership not set · 1 active · ${money(200)} /mo`).trim(),
   ]);
-  // Inside each group the soonest to finish first; each loan sits under its own hirer.
-  const list = page.slice(page.indexOf('Loans, soonest to finish first'));
+  // Inside each group the most paid off first; each loan sits under its own hirer.
+  const list = page.slice(page.indexOf('Loans, most paid off first'));
   const at = (needle: string) => list.indexOf(needle);
   assert.ok(at('Fixture Owner · 2') < at('XAA 1001 ') && at('XAA 1001 ') < at('XAA 1004 ') && at('XAA 1004 ') < at('Fixture Owner Sdn Bhd · 1'));
   assert.ok(at('Fixture Owner Sdn Bhd · 1') < at('XAA 1002 ') && at('XAA 1002 ') < at('XAA 1003 ') && at('XAA 1003 ') < at('Ownership not set'));

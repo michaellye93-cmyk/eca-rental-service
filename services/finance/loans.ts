@@ -218,18 +218,25 @@ export function commitmentSeries(loans: VehicleLoan[], today: string, months = 3
   return { months: indexes.map(monthOf), committed, withWhatIf, whatIfInstalment: withWhatIf ? whatIfInstalment : 0, ends };
 }
 
-/** Loans soonest to finish first (fewest instalments left), settled and sold loans last. */
+/**
+ * Loans most paid off first (the share of instalments paid, the owner's choice: a long loan that has run far sits above
+ * a short one that finishes sooner), ties by fewest instalments left, then plate; settled and sold loans last.
+ */
 export function sortLoans(loans: VehicleLoan[], today: string): VehicleLoan[] {
   return loans
-    .map((loan) => ({ loan, left: progress(loan, today).left, active: isActive(loan) }))
-    .sort((a, b) => Number(b.active) - Number(a.active) || a.left - b.left || a.loan.plate_key.localeCompare(b.loan.plate_key))
+    .map((loan) => { const run = progress(loan, today); return { loan, share: run.paid / Math.max(1, loan.tenure_months), left: run.left, active: isActive(loan) }; })
+    .sort((a, b) => Number(b.active) - Number(a.active) || b.share - a.share || a.left - b.left || a.loan.plate_key.localeCompare(b.loan.plate_key))
     .map(({ loan }) => loan);
 }
+
+/** The running loan with the fewest instalments left (the one that finishes next). */
+const soonestToFinish = (running: VehicleLoan[], today: string): VehicleLoan | undefined =>
+  running.map((loan) => ({ loan, left: progress(loan, today).left })).sort((a, b) => a.left - b.left || a.loan.plate_key.localeCompare(b.loan.plate_key))[0]?.loan;
 
 /** The page's three tiles. */
 export function loanSummary(loans: VehicleLoan[], today: string): LoanSummary {
   const running = loans.filter((loan) => isRunning(loan, today));
-  const soonest = sortLoans(running, today)[0];
+  const soonest = soonestToFinish(running, today);
   return {
     thisMonth: commitmentSeries(loans, today, 1).committed[0],
     activeCount: running.length,
@@ -244,7 +251,7 @@ export interface HirerGroup {
   hirer: string | null;
   /** The heading: the hirer, or "Ownership not set". */
   label: string;
-  /** Soonest to finish first, settled and sold last (sortLoans). */
+  /** Most paid off first, settled and sold last (sortLoans). */
   loans: VehicleLoan[];
   /** Loans still running this month (as the page's tile counts them). */
   activeCount: number;

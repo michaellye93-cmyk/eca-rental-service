@@ -107,7 +107,7 @@ export default function VehicleLoansView({ loans, today, cars, whatIf, onWhatIfC
 
       <section className="finance-panel">
         <SectionHeading
-          title="Loans, soonest to finish first"
+          title="Loans, most paid off first"
           detail="Grouped by ownership (the hirer), the biggest monthly total first. Saving a loan keeps its Hire Purchase / Loan monthly cost in Records up to date."
           action={onAdd && <button type="button" className="finance-primary" disabled={busy} onClick={onAdd}>Add loan</button>}
         />

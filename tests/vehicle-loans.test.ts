@@ -128,13 +128,17 @@ test('the summary gives this month\'s instalments, the next loan to finish, the 
   assert.equal(loanSummary([loan({ first_payment_date: '2025-10-05', tenure_months: 12 })], '2026-10-21').activeCount, 0);
 });
 
-test('loans are listed soonest to finish first, with settled and sold loans last', () => {
+test('loans are listed most paid off first (percentage of instalments paid), settled and sold loans last', () => {
   const loans = [
     loan({ plate_key: 'XAA1003', status: 'SETTLED', closed_on: '2026-06-01' }),
-    loan({ plate_key: 'XAA1002', first_payment_date: '2026-01-05' }),
-    loan({ plate_key: 'XAA1001', first_payment_date: '2022-05-05' }),
+    loan({ plate_key: 'XAA1002', first_payment_date: '2026-01-05' }), // 10 of 60 paid: 17%, 50 left
+    loan({ plate_key: 'XAA1006', first_payment_date: '2024-01-05', tenure_months: 108 }), // 34 of 108: 31%, 74 left
+    loan({ plate_key: 'XAA1001', first_payment_date: '2022-05-05' }), // 54 of 60: 90%
   ];
-  assert.deepEqual(sortLoans(loans, '2026-10-21').map((row) => row.plate_key), ['XAA1001', 'XAA1002', 'XAA1003']);
+  // XAA1006 finishes after XAA1002 but has run further along its term, so it comes first.
+  assert.deepEqual(sortLoans(loans, '2026-10-21').map((row) => row.plate_key), ['XAA1001', 'XAA1006', 'XAA1002', 'XAA1003']);
+  // The "next finishes" tile still names the loan with the fewest instalments left.
+  assert.deepEqual(loanSummary(loans, '2026-10-21').nextFinish, { plate: 'XAA 1001', month: '2027-04-01' });
 });
 
 test('the first instalment date is the commencement date plus one month, the same day capped at the month end', () => {
