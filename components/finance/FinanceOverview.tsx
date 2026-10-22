@@ -192,7 +192,7 @@ export default function Overview({
           <figure className="m-0">
             <div className="h-64" role="img" aria-label={`Operating margin by month: ${chart.map((point) => `${point.label} ${point.margin === null ? "no revenue" : `${point.margin.toFixed(1)}%`}`).join(", ")}. Target 20%.`}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chart} barSize={32} margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
+                <ComposedChart data={chart} maxBarSize={32} barCategoryGap="30%" margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false} />
                   {/* Profit sits on its own hidden copy of the month axis so it draws inside the revenue bar, not beside it. */}
                   <XAxis xAxisId="inside" dataKey="label" hide />
@@ -209,7 +209,7 @@ export default function Overview({
                     {chart.map((point) => <Cell key={point.month} fill={point.profit < 0 ? COLORS.loss : COLORS.profit} fillOpacity={point.draft ? 0.45 : 1} />)}
                   </Bar>
                   <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.margin }} isAnimationActive={false}>
-                    {chart.length <= 6 && <LabelList dataKey="margin" position="top" formatter={(value: unknown) => (typeof value === "number" ? `${value.toFixed(1)}%` : "")} style={{ fontSize: 11, fill: "#374151" }} />}
+                    <LabelList dataKey="margin" position="top" formatter={(value: unknown) => (typeof value === "number" ? `${value.toFixed(chart.length > 6 ? 0 : 1)}%` : "")} style={{ fontSize: chart.length > 6 ? 10 : 11, fill: "#374151" }} />
                   </Line>
                 </ComposedChart>
               </ResponsiveContainer>
