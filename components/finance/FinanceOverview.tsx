@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Bar, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, Cell, ComposedChart, LabelList, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronRightIcon } from "@radix-ui/react-icons";
 import { kualaLumpurNow, overdueRent } from "../../utils";
 import { klDateTime, money, monthLong, percent, percent1 } from "../../services/fmt";
@@ -193,7 +193,6 @@ export default function Overview({
             <div className="h-64" role="img" aria-label={`Operating margin by month: ${chart.map((point) => `${point.label} ${point.margin === null ? "no revenue" : `${point.margin.toFixed(1)}%`}`).join(", ")}. Target 20%.`}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chart} barSize={32} margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
-                  <CartesianGrid vertical={false} stroke="#eef0f3" />
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={{ stroke: "#d1d5db" }} />
                   {/* Profit sits on its own hidden copy of the month axis so it draws inside the revenue bar, not beside it. */}
                   <XAxis xAxisId="inside" dataKey="label" hide />
