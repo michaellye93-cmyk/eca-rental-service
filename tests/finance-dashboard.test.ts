@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Driver, PaymentTransaction } from '../types.ts';
 import type { FinanceInput } from '../types/finance.ts';
 import { calculateFinance } from '../services/finance/calculations.ts';
-import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedRevisionMap, storedTotals, TREND_RULES_VERSION, trendChartData, trendMonths, trendRow } from '../services/finance/dashboard.ts';
+import { marginTarget, monthCashFlow, needsStoredTotals, planTrend, storedRevisionMap, storedTotals, TREND_RULES_VERSION, trendChartAxes, trendChartData, trendMonths, trendRow } from '../services/finance/dashboard.ts';
 import { arrearsAgeing, driverMonthlyLedger, monthCollection } from '../services/driverLedger.ts';
 
 const month = { finance_month: '2026-08', status: 'DRAFT' as const, revision: 1, refreshed_at: '2026-09-01', frozen_at: null,
@@ -184,4 +184,24 @@ test('the Month by month chart: revenue and operating profit as bars, operating 
   ]);
   assert.equal(trendChartData([{ ...rows[0], margin: 0.12345 }])[0].margin, 12.3, 'margin to one decimal, as the table shows it');
   assert.deepEqual(trendChartData([]), []);
+});
+
+test('the Month by month axes: ringgit left, whole percent right, gridlines shared and zero on the same line', () => {
+  const point = (revenue: number, profit: number, margin: number | null) => ({ month: '2026-08', label: 'Aug 26', revenue, profit, margin, target: 20, draft: false });
+  // Revenue about RM120k at 8-10% margin: four steps of RM40k on the left, 0-40% in steps of 10 on the right.
+  assert.deepEqual(trendChartAxes([point(118000, 9400, 8), point(121000, 12100, 10)]), {
+    rm: { domain: [0, 160000], ticks: [0, 40000, 80000, 120000, 160000] },
+    pct: { domain: [0, 40], ticks: [0, 10, 20, 30, 40] },
+  });
+  // A loss adds one step below zero on both sides, so zero stays on one gridline.
+  const loss = trendChartAxes([point(100000, 8000, 8), point(104000, -4000, -3.8)]);
+  assert.deepEqual(loss.rm.ticks, [-40000, 0, 40000, 80000, 120000]);
+  assert.deepEqual(loss.pct.ticks, [-10, 0, 10, 20, 30]);
+  assert.equal(loss.rm.ticks.length, loss.pct.ticks.length, 'same number of gridlines on both sides');
+  // A margin above 40% widens the right axis; percent ticks stay whole numbers.
+  const high = trendChartAxes([point(50000, 30000, 60)]);
+  assert.ok(high.pct.ticks.every((tick) => Number.isInteger(tick)) && high.pct.ticks.at(-1)! >= 60);
+  assert.equal(high.rm.ticks.length, high.pct.ticks.length);
+  // No months yet: still a sensible empty frame.
+  assert.deepEqual(trendChartAxes([]).pct.ticks, [0, 10, 20, 30]);
 });
