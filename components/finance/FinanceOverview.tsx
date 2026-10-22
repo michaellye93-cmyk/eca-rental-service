@@ -186,14 +186,16 @@ export default function Overview({
         </section>
       </div>
       <section className="finance-panel">
-        <SectionHeading title="Month by month" detail="Each month since August 2026: revenue and operating profit as bars, operating margin as the line against the dashed 20% target. Lighter bars are Draft months, which can still change; closed months are final." />
+        <SectionHeading title="Month by month" detail="Each month since August 2026: revenue as the bar with operating profit shown inside it as its share, operating margin as the line against the dashed 20% target. Lighter bars are Draft months, which can still change; closed months are final." />
         {!trend ? <Skeleton lines={3} /> : (
           <figure className="m-0">
             <div className="h-64" role="img" aria-label={`Operating margin by month: ${chart.map((point) => `${point.label} ${point.margin === null ? "no revenue" : `${point.margin.toFixed(1)}%`}`).join(", ")}. Target 20%.`}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chart} barSize={28} barGap={4} margin={{ top: 8, right: 0, bottom: 0, left: -8 }}>
+                <ComposedChart data={chart} barSize={28} margin={{ top: 8, right: 0, bottom: 0, left: -8 }}>
                   <CartesianGrid vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={{ stroke: "#d1d5db" }} />
+                  {/* Profit sits on its own hidden copy of the month axis so it draws inside the revenue bar, not beside it. */}
+                  <XAxis xAxisId="inside" dataKey="label" hide />
                   <YAxis yAxisId="rm" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false}
                     tickFormatter={(value: number) => (Math.abs(value) >= 1000 ? `${Number((value / 1000).toFixed(1))}k` : String(value))} />
                   <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false} width={40}
@@ -206,7 +208,7 @@ export default function Overview({
                   <Bar yAxisId="rm" dataKey="revenue" name="Revenue" fill={COLORS.revenue} isAnimationActive={false}>
                     {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.4 : 1} />)}
                   </Bar>
-                  <Bar yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} isAnimationActive={false}>
+                  <Bar xAxisId="inside" yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} isAnimationActive={false}>
                     {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.4 : 1} />)}
                   </Bar>
                   <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
