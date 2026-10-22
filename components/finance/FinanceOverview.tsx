@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, Cell, ComposedChart, LabelList, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronRightIcon } from "@radix-ui/react-icons";
 import { kualaLumpurNow, overdueRent } from "../../utils";
 import { klDateTime, money, monthLong, percent, percent1 } from "../../services/fmt";
@@ -7,7 +7,7 @@ import StatTile from "../StatTile";
 import type { FinanceInput, FinanceReport } from "../../types/finance";
 import type { DriverWithMetrics } from "../../types";
 import type { Page } from "../../services/finance/pages";
-import { marginTarget, monthCashFlow, trendChartData, type TrendChartPoint, type TrendRow } from "../../services/finance/dashboard";
+import { marginTarget, monthCashFlow, trendChartAxes, trendChartData, type TrendChartPoint, type TrendRow } from "../../services/finance/dashboard";
 import { directCostBreakdown } from "../../services/finance/directCost";
 import { collectionSplit, monthCollection, monthPeriod } from "../../services/driverLedger";
 import { DataTable, SectionHeading, Skeleton } from "./FinancePrimitives";
@@ -20,8 +20,8 @@ const eHailingAsOf = (refreshedAt: string | null) => {
 
 const statusLabel = (status: string) => (status === "READY FOR REVIEW" ? "Ready" : status === "CLOSED" ? "Closed" : "Draft");
 
-// Revenue in neutral grey, operating profit in the Finance accent, the margin line in amber, the 20% target dashed.
-const COLORS = { revenue: "#94a3b8", profit: "#167c70", margin: "#d97706", target: "#4b5563" } as const;
+// Revenue in light grey, operating profit in the Finance accent (red for a loss), the margin line in amber. No gridlines or reference lines: Michael wants a plain chart.
+const COLORS = { revenue: "#cbd5e1", profit: "#167c70", loss: "#dc2626", margin: "#d97706" } as const;
 const LEGEND_ORDER = ["Revenue", "Operating profit", "Operating margin"];
 
 function MonthTooltip({ active, payload, rows }: { active?: boolean; payload?: Array<{ payload: TrendChartPoint }>; rows: TrendRow[] }) {
@@ -71,6 +71,7 @@ export default function Overview({
     };
   }, [drivers, month]);
   const chart = useMemo(() => trendChartData(trend ?? []), [trend]);
+  const axes = useMemo(() => trendChartAxes(chart), [chart]);
   if (!report)
     return (
       <section className="finance-panel">
@@ -186,30 +187,30 @@ export default function Overview({
         </section>
       </div>
       <section className="finance-panel">
-        <SectionHeading title="Month by month" detail="Each month since August 2026: revenue and operating profit as bars, operating margin as the line against the dashed 20% target. Lighter bars are Draft months, which can still change; closed months are final." />
+        <SectionHeading title="Month by month" detail="Each month since August 2026: revenue as the bar with operating profit inside it as its share (red is a loss), in ringgit on the left; operating margin as the line, in percent on the right (target 20%). Lighter bars are Draft months, which can still change; closed months are final." />
         {!trend ? <Skeleton lines={3} /> : (
           <figure className="m-0">
             <div className="h-64" role="img" aria-label={`Operating margin by month: ${chart.map((point) => `${point.label} ${point.margin === null ? "no revenue" : `${point.margin.toFixed(1)}%`}`).join(", ")}. Target 20%.`}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chart} margin={{ top: 8, right: 0, bottom: 0, left: -8 }}>
-                  <CartesianGrid vertical={false} stroke="#e5e7eb" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={{ stroke: "#d1d5db" }} />
-                  <YAxis yAxisId="rm" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false}
+                <ComposedChart data={chart} maxBarSize={32} barCategoryGap="30%" margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false} />
+                  {/* Profit sits on its own hidden copy of the month axis so it draws inside the revenue bar, not beside it. */}
+                  <XAxis xAxisId="inside" dataKey="label" hide />
+                  <YAxis yAxisId="rm" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false} domain={axes.rm.domain} ticks={axes.rm.ticks}
                     tickFormatter={(value: number) => (Math.abs(value) >= 1000 ? `${Number((value / 1000).toFixed(1))}k` : String(value))} />
-                  <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false} width={40}
-                    domain={[(min: number) => Math.min(0, Math.floor(min / 10) * 10), (max: number) => Math.max(30, Math.ceil(max / 10) * 10)]}
+                  <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 12, fill: "#4b5563" }} tickLine={false} axisLine={false} width={44} domain={axes.pct.domain} ticks={axes.pct.ticks}
                     tickFormatter={(value: number) => `${value}%`} />
                   <Tooltip content={<MonthTooltip rows={trend} />} />
-                  <Legend verticalAlign="top" itemSorter={(item) => LEGEND_ORDER.indexOf(String(item.value))} formatter={(value) => <span className="text-xs text-gray-700">{value}</span>} />
-                  <ReferenceLine yAxisId="pct" y={20} stroke={COLORS.target} strokeDasharray="6 4"
-                    label={{ value: "20% target", position: "insideTopLeft", fontSize: 11, fill: COLORS.target }} />
-                  <Bar yAxisId="rm" dataKey="revenue" name="Revenue" fill={COLORS.revenue} maxBarSize={28} isAnimationActive={false}>
-                    {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.4 : 1} />)}
+                  <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 8 }} itemSorter={(item) => LEGEND_ORDER.indexOf(String(item.value))} formatter={(value) => <span className="text-xs text-gray-700">{value}</span>} />
+                  <Bar yAxisId="rm" dataKey="revenue" name="Revenue" fill={COLORS.revenue} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                    {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.45 : 1} />)}
                   </Bar>
-                  <Bar yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} maxBarSize={28} isAnimationActive={false}>
-                    {chart.map((point) => <Cell key={point.month} fillOpacity={point.draft ? 0.4 : 1} />)}
+                  <Bar xAxisId="inside" yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} isAnimationActive={false}>
+                    {chart.map((point) => <Cell key={point.month} fill={point.profit < 0 ? COLORS.loss : COLORS.profit} fillOpacity={point.draft ? 0.45 : 1} />)}
                   </Bar>
-                  <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                  <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2.5} dot={false} legendType="plainline" isAnimationActive={false}>
+                    <LabelList dataKey="margin" position="top" formatter={(value: unknown) => (typeof value === "number" ? `${value.toFixed(chart.length > 6 ? 0 : 1)}%` : "")} style={{ fontSize: chart.length > 6 ? 10 : 11, fill: "#374151" }} />
+                  </Line>
                 </ComposedChart>
               </ResponsiveContainer>
             </div>

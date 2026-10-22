@@ -142,6 +142,35 @@ export const trendChartData = (rows: TrendRow[], target = 0.2): TrendChartPoint[
   draft: row.status === 'DRAFT',
 }));
 
+/** A round step at or above `raw`: 1, 2, 2.5, 4 or 5 times a power of ten. */
+const niceStep = (raw: number) => {
+  const power = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 4, 5, 10].map((factor) => factor * power).find((step) => step >= raw) ?? 10 * power;
+};
+
+export interface ChartAxis { domain: [number, number]; ticks: number[] }
+
+/**
+ * The Month by month chart's two scales: ringgit on the left, whole percent on the right.
+ * Both get the same number of steps above and below zero, so every gridline is a tick on
+ * both sides and zero sits on one line. The right side always shows the 20% target with room above it.
+ */
+export const trendChartAxes = (points: TrendChartPoint[]): { rm: ChartAxis; pct: ChartAxis } => {
+  const money = points.flatMap((point) => [point.revenue, point.profit]);
+  const margins = points.flatMap((point) => (point.margin === null ? [] : [point.margin]));
+  const rmMax = Math.max(0, ...money), rmMin = Math.min(0, ...money);
+  const pctMax = Math.max(25, ...margins), pctMin = Math.min(0, ...margins);
+  const rmStep = niceStep(Math.max(rmMax / 4, 250));
+  const pctStep = Math.max(5, niceStep(pctMax / 4));
+  const up = Math.max(Math.ceil(rmMax / rmStep), Math.ceil(pctMax / pctStep));
+  const down = Math.max(Math.ceil(-rmMin / rmStep), Math.ceil(-pctMin / pctStep));
+  const axis = (step: number): ChartAxis => {
+    const ticks = Array.from({ length: up + down + 1 }, (_, index) => (index - down) * step);
+    return { domain: [ticks[0], ticks[ticks.length - 1]], ticks };
+  };
+  return { rm: axis(rmStep), pct: axis(pctStep) };
+};
+
 /** A closed month's trend figures as stored by finance_save_month_totals (supabase/migrations/20261012200000_money_review.sql). */
 export interface StoredMonthTotals {
   month: string; revision: number;
