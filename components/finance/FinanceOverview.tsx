@@ -208,7 +208,7 @@ export default function Overview({
                   <Bar xAxisId="inside" yAxisId="rm" dataKey="profit" name="Operating profit" fill={COLORS.profit} isAnimationActive={false}>
                     {chart.map((point) => <Cell key={point.month} fill={point.profit < 0 ? COLORS.loss : COLORS.profit} fillOpacity={point.draft ? 0.45 : 1} />)}
                   </Bar>
-                  <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2.5} dot={{ r: 3.5, fill: COLORS.margin }} isAnimationActive={false}>
+                  <Line yAxisId="pct" type="linear" dataKey="margin" name="Operating margin" stroke={COLORS.margin} strokeWidth={2.5} dot={false} legendType="plainline" isAnimationActive={false}>
                     <LabelList dataKey="margin" position="top" formatter={(value: unknown) => (typeof value === "number" ? `${value.toFixed(chart.length > 6 ? 0 : 1)}%` : "")} style={{ fontSize: chart.length > 6 ? 10 : 11, fill: "#374151" }} />
                   </Line>
                 </ComposedChart>
