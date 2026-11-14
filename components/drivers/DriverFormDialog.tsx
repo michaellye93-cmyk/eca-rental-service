@@ -87,6 +87,9 @@ export default function DriverFormDialog({ driver, drivers, onCreateDriver, onUp
   const [formData, setFormData] = useState<DriverForm>(() => (driver ? editDriverForm(driver) : newDriverForm()));
   // A message shown inside the form when an entry needs fixing
   const [driverFormError, setDriverFormError] = useState<string | null>(null);
+  // One save at a time: a second click while saving would send the same driver twice
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
   // A delisted driver with the NRIC being typed: a returning driver, whose old record and balance stay where they are
   const returningFrom = useMemo(() => (driverWithNric(drivers.filter(d => !d.isDelisted), formData.nric) ? undefined
     : driverWithNric(drivers.filter(d => d.isDelisted), formData.nric)), [drivers, formData.nric]);
@@ -144,6 +147,7 @@ export default function DriverFormDialog({ driver, drivers, onCreateDriver, onUp
 
   const handleDriverFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current) return;
     if (!formData.name || !formData.nric || !formData.carPlate) { setDriverFormError('Fill in the full name, NRIC and plate number.'); return; }
     
     // Phone numbers are stored as 60 followed by the number, for WhatsApp; clearing one removes it
@@ -172,6 +176,8 @@ export default function DriverFormDialog({ driver, drivers, onCreateDriver, onUp
       collectionNote: keepOrClear(formData.collectionNote, original?.collectionNote),
     };
 
+    savingRef.current = true;
+    setSaving(true);
     try {
       if (editingId) {
         const originalDriver = drivers.find(d => d.id === editingId);
@@ -197,6 +203,9 @@ export default function DriverFormDialog({ driver, drivers, onCreateDriver, onUp
       onClose();
     } catch (e) {
       // Error handled by parent, keep modal open
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -398,7 +407,7 @@ export default function DriverFormDialog({ driver, drivers, onCreateDriver, onUp
         {driverFormError && <p role="alert" className="text-sm font-medium text-rose-600">{driverFormError}</p>}
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
           <button type="button" onClick={onClose} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Cancel</button>
-          <button type="submit" className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">{editingId ? "Save Changes" : "Create Driver"}</button>
+          <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-wait">{saving ? 'Saving…' : editingId ? "Save Changes" : "Create Driver"}</button>
         </div>
       </form>
     </Dialog>

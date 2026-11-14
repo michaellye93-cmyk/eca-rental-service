@@ -5,7 +5,7 @@ import AdminDashboard from './components/AdminDashboard';
 import CollectionsDataPage from './components/CollectionsDataPage';
 import WorklistPage from './components/WorklistPage';
 import type { Driver, PaymentTransaction } from './types';
-import { kualaLumpurNow, kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments } from './utils';
+import { kualaLumpurNow, kualaLumpurToday, fromDriverRow, toDriverRow, paymentFromRow, withPayments, driverNotCreatedText } from './utils';
 import { driverPortalSession, type PortalSignIn } from './services/driverPortalSession';
 import { loadPortalLang, savePortalLang, type PortalLang } from './services/portalText';
 import { supabase } from './supabaseClient';
@@ -490,7 +490,7 @@ const App: React.FC = () => {
       if (error) throw error;
       driverId = (data as { id: string }).id;
     } catch (err: any) {
-      setNotice({ type: 'error', text: `Driver not created: ${err.message}` });
+      setNotice({ type: 'error', text: driverNotCreatedText(err) });
       throw err; // keeps the form open with the details still filled in
     }
     // The money received at signing is recorded with the driver; the driver stays created even if this fails
