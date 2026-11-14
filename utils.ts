@@ -511,6 +511,13 @@ export const driverWithNric = <T extends { nric: string }>(drivers: T[], nric: s
   return digits ? drivers.find(d => (d.nric || '').replace(/\D/g, '') === digits) : undefined;
 };
 
+/** Why Add Driver failed, in plain words. The database allows one active driver per 12-digit IC, so this error
+ * usually means the same driver was just saved (a second click), or someone else saved them a moment ago. */
+export const driverNotCreatedText = (err: { code?: string; message?: string }): string =>
+  /drivers_one_active_per_nric/.test(err?.message ?? '')
+    ? 'Driver not created: an active driver with this IC number is already saved. Close this form and check the Drivers list (it may have been saved by an earlier click). For a returning driver, delist the old contract first.'
+    : `Driver not created: ${err?.message ?? 'unknown error'}`;
+
 /** A row of the payments table (only the columns the app reads). */
 export interface PaymentRow {
   id: string;
