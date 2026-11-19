@@ -24,6 +24,8 @@ export interface AgreementTemplate {
   /** The opening paragraph(s) under the title, naming the parties ("THIS AGREEMENT is made on ..."). */
   preamble?: string;
   sections: AgreementSection[];
+  /** Saved from the editor since the service choice existed: its service wording is the admin's and is never added to. */
+  serviceMarks?: boolean;
 }
 
 export const KIND_LABELS: Record<AgreementKind, string> = { SEWA_BIASA: 'Sewa Biasa', SEWABELI: 'Sewa Beli' };
@@ -272,7 +274,8 @@ export const soundTemplate = (stored: unknown): AgreementTemplate | null => {
     !!s && typeof s.id === 'string' && typeof s.title === 'string' && typeof s.body === 'string' && isLayout(s.layout)
     && (s.keepWithPrevious === undefined || typeof s.keepWithPrevious === 'boolean'));
   if (sections.length !== value.sections.length) return null;
-  return typeof value.preamble === 'string' ? { title: value.title, preamble: value.preamble, sections } : { title: value.title, sections };
+  const template: AgreementTemplate = typeof value.preamble === 'string' ? { title: value.title, preamble: value.preamble, sections } : { title: value.title, sections };
+  return (value as { serviceMarks?: unknown }).serviceMarks === true ? { ...template, serviceMarks: true } : template;
 };
 
 /** Who is responsible for service and maintenance on one agreement: the Company (the Lessor) or the Lessee. */
@@ -284,40 +287,56 @@ export const isServiceBy = (value: unknown): value is ServiceBy => value === 'LE
 const units = (section: AgreementSection) =>
   section.layout === 'clauses' ? parseParagraphs(section.body) : section.body.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 const joinUnits = (section: AgreementSection, list: string[]) => list.join(section.layout === 'clauses' ? '\n\n' : '\n');
-const markOf = (unit: string): ServiceBy | null =>
-  unit.startsWith(SERVICE_MARK.LESSOR) ? 'LESSOR' : unit.startsWith(SERVICE_MARK.LESSEE) ? 'LESSEE' : null;
-const unmarked = (unit: string) => {
-  const by = markOf(unit);
-  return by ? unit.slice(SERVICE_MARK[by].length).trimStart() : unit;
+// A mark leads a line, in any letter case: "[Company service] 5.2 ..." or "[Lessee service] 5.2 ..."
+const MARK = /^\s*\[(company|lessee) service\]\s*/i;
+const markOf = (line: string): ServiceBy | null => {
+  const found = MARK.exec(line);
+  return found ? (found[1].toLowerCase() === 'company' ? 'LESSOR' : 'LESSEE') : null;
 };
-const hasMarks = (template: AgreementTemplate) => template.sections.some(section => units(section).some(unit => markOf(unit)));
+const unmarked = (line: string) => line.replace(MARK, '');
+const linesOf = (template: AgreementTemplate) => template.sections.flatMap(section => section.body.split(/\r?\n/));
+const hasMarks = (template: AgreementTemplate) => linesOf(template).some(line => markOf(line));
 
 /** Whether the template carries Lessee wording for service and maintenance, so the choice can be offered. */
-export const hasServiceChoice = (template: AgreementTemplate): boolean =>
-  template.sections.some(section => units(section).some(unit => markOf(unit) === 'LESSEE'));
+export const hasServiceChoice = (template: AgreementTemplate): boolean => linesOf(template).some(line => markOf(line) === 'LESSEE');
 
-/** The template as it prints for this choice: the other side's paragraphs and rows dropped, the marks removed. */
+/**
+ * The lines of a paragraph kept for this choice: a marked line starts a part that runs to the next marked line (so an
+ * English line keeps the Malay line after it), and only the chosen side's parts are kept, without their marks.
+ */
+const keepLines = (lines: string[], by: ServiceBy) => {
+  const kept: string[] = [];
+  let side: ServiceBy | null = null;
+  for (const line of lines) {
+    side = markOf(line) ?? side;
+    if (side === null || side === by) kept.push(unmarked(line));
+  }
+  return kept;
+};
+
+/** The template as it prints for this choice: the other side's paragraphs, lines and rows dropped, the marks removed. */
 export const forServiceBy = (template: AgreementTemplate, by: ServiceBy): AgreementTemplate => ({
   ...template,
   sections: template.sections.map(section => {
-    const list = units(section);
-    if (!list.some(unit => markOf(unit))) return section;
-    return { ...section, body: joinUnits(section, list.filter(unit => (markOf(unit) ?? by) === by).map(unmarked)) };
+    if (!section.body.split(/\r?\n/).some(line => markOf(line))) return section;
+    const list = section.layout === 'clauses'
+      ? units(section).map(paragraph => keepLines(paragraph.split(/\r?\n/), by).join('\n')).filter(paragraph => paragraph.trim())
+      : units(section).filter(line => (markOf(line) ?? by) === by).map(unmarked);
+    return { ...section, body: joinUnits(section, list) };
   }),
 });
 
-// A clause's number ("5.2") or a row's label ("Service and maintenance"): what says two wordings are the same item
-const itemKey = (section: AgreementSection, unit: string) =>
-  section.layout === 'clauses' ? (/^(\S+)\s/.exec(unit)?.[1] ?? unit) : unit.split('|')[0].trim();
+// A row's label ("Service and maintenance"): what says two rows are the same item
+const itemKey = (unit: string) => unit.split('|')[0].trim();
 
 /**
  * A template saved before the service choice existed, given both wordings: each Company paragraph or row of the
  * built-in draft that is still word for word in it gains its marks and the Lessee wording next to it, and a row the
  * draft added since is put after the row it follows. If any service clause was reworded, the template is left as it is
- * and offers no choice (Edit templates can add the wording by hand).
+ * and offers no choice (Edit templates can add the wording by hand). A template saved since (serviceMarks) is never changed.
  */
 const withServiceWordings = (kind: AgreementKind, saved: AgreementTemplate): AgreementTemplate => {
-  if (hasMarks(saved)) return saved;
+  if (saved.serviceMarks || hasMarks(saved)) return saved;
   const sections = saved.sections.map(section => ({ ...section }));
   for (const draft of DEFAULT_SECTIONS[kind].sections) {
     const draftUnits = units(draft);
@@ -335,9 +354,10 @@ const withServiceWordings = (kind: AgreementKind, saved: AgreementTemplate): Agr
       if (at >= 0) {
         result.splice(at, 1, ...group);
       } else {
-        const key = itemKey(draft, company);
+        const key = itemKey(company);
         const anchor = result.indexOf(draftUnits[i - 1] ?? '');
-        if (result.some(unit => itemKey(draft, unit) === key) || anchor < 0) return saved;
+        // Only a Schedule row can be new; a missing Company clause was deleted or reworded on purpose
+        if (draft.layout === 'clauses' || result.some(unit => itemKey(unit) === key) || anchor < 0) return saved;
         result.splice(anchor + 1, 0, ...group);
       }
       i = end - 1;

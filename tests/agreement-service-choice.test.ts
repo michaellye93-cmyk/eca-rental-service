@@ -110,3 +110,32 @@ test("the driver's saved copy keeps the choice so the page shows it again", () =
     signing: { agreementDate: '2026-11-19', extra: {}, serviceBy: 'SOMEONE' }, created_at: '2026-11-19T00:00:00Z' });
   assert.equal(odd?.signing?.serviceBy, undefined);
 });
+
+test('review 1: a saved template with a Company service clause deleted is left as it is, not given the clause back', () => {
+  for (const [kind, gone] of [['SEWABELI', '5.4 Repairs need approval'], ['SEWA_BIASA', '4.2 Costs']] as const) {
+    const old = forServiceBy(defaultTemplate(kind), 'LESSOR');
+    old.sections = old.sections.map(s => (s.id === 'terms' ? { ...s, body: s.body.split('\n\n').filter(p => !p.startsWith(gone)).join('\n\n') } : s));
+    const loaded = templateFromStored(kind, old);
+    assert.equal(hasServiceChoice(loaded), false, kind);
+    assert.ok(!terms(forServiceBy(loaded, 'LESSOR')).includes(gone), `${kind}: deleted clause came back`);
+  }
+});
+
+test('review 2: a mark at the start of a line inside a paragraph governs that line, and marks match in any letter case', () => {
+  const template: AgreementTemplate = { title: 'T', sections: [{ id: 'terms', title: 'Terms', layout: 'clauses',
+    body: '1. Intro.\n\n[Company service] 2. Company does it.\n[lessee SERVICE] 2. Lessee does it.\n\n3. End.' }] };
+  assert.equal(hasServiceChoice(template), true);
+  assert.equal(forServiceBy(template, 'LESSOR').sections[0].body, '1. Intro.\n\n2. Company does it.\n\n3. End.');
+  assert.equal(forServiceBy(template, 'LESSEE').sections[0].body, '1. Intro.\n\n2. Lessee does it.\n\n3. End.');
+  // A marked paragraph keeps its following unmarked lines (an English line then its Malay line)
+  const two: AgreementTemplate = { title: 'T', sections: [{ id: 'terms', title: 'Terms', layout: 'clauses',
+    body: '[Lessee service] 2. Lessee does it.\nPenyewa melakukannya.\n\n[Company service] 2. Company does it.\nSyarikat melakukannya.' }] };
+  assert.equal(forServiceBy(two, 'LESSEE').sections[0].body, '2. Lessee does it.\nPenyewa melakukannya.');
+});
+
+test('review 3: a template saved from the editor is never given the service wordings again', () => {
+  const edited = forServiceBy(defaultTemplate('SEWA_BIASA'), 'LESSOR');
+  const loaded = templateFromStored('SEWA_BIASA', { ...edited, serviceMarks: true });
+  assert.equal(hasServiceChoice(loaded), false);
+  assert.equal(loaded.serviceMarks, true, 'the flag survives a reload');
+});

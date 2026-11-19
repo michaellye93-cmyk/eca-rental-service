@@ -74,7 +74,7 @@ export function agreementApi(client: AgreementClient) {
         letterBuiltIn: Object.fromEntries(LETTER_KINDS.map(kind => [kind, !stored.has(letterKey(kind))])) as Record<LetterKind, boolean>,
       };
     },
-    saveTemplate: (kind: AgreementKind, template: AgreementTemplate) => save(templateKey(kind), template),
+    saveTemplate: (kind: AgreementKind, template: AgreementTemplate) => save(templateKey(kind), { ...template, serviceMarks: true }),
     saveCompany: (company: CompanyDetails) => save('company', company),
     saveLetter: (kind: LetterKind, letter: LetterTemplate) => save(letterKey(kind), letter),
     /** Goes back to the letter's built-in draft by removing the saved one. */
