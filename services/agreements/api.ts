@@ -1,5 +1,5 @@
 import { LETTER_KINDS, letterFromStored, type LetterKind, type LetterTemplate } from './letters.ts';
-import { companyFromStored, soundTemplate, templateFromStored, type AgreementKind, type AgreementTemplate, type CompanyDetails } from './template.ts';
+import { companyFromStored, isServiceBy, soundTemplate, templateFromStored, type AgreementKind, type AgreementTemplate, type CompanyDetails, type ServiceBy } from './template.ts';
 
 /** The part of the Supabase client the Agreements page uses. */
 export interface AgreementClient {
@@ -23,7 +23,7 @@ export interface AgreementCopy {
   template: AgreementTemplate;
   values: Record<string, string>;
   /** What staff typed on signing day (date as YYYY-MM-DD), so the page can show it again. */
-  signing?: { agreementDate: string; extra: Record<string, string> };
+  signing?: { agreementDate: string; extra: Record<string, string>; serviceBy?: ServiceBy };
 }
 
 /** A saved copy as the driver's sign-in returns it (with when it was made), or null when there is none or it is broken. */
@@ -34,8 +34,10 @@ export const copyFromStored = (stored: unknown): (AgreementCopy & { createdAt: s
   if (!template) return null;
   const strings = (from: unknown) => Object.fromEntries(Object.entries((from ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
   const values = strings(value.values);
-  const signed = (value as { signing?: { agreementDate?: unknown; extra?: unknown } }).signing;
-  const signing = signed && typeof signed.agreementDate === 'string' ? { agreementDate: signed.agreementDate, extra: strings(signed.extra) } : undefined;
+  const signed = (value as { signing?: { agreementDate?: unknown; extra?: unknown; serviceBy?: unknown } }).signing;
+  const signing = signed && typeof signed.agreementDate === 'string'
+    ? { agreementDate: signed.agreementDate, extra: strings(signed.extra), ...(isServiceBy(signed.serviceBy) ? { serviceBy: signed.serviceBy } : {}) }
+    : undefined;
   return { kind: value.kind, template, values, ...(signing ? { signing } : {}), createdAt: typeof value.created_at === 'string' ? value.created_at : '' };
 };
 

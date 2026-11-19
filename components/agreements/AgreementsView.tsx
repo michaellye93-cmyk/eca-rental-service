@@ -12,7 +12,8 @@ import { agreementFileName, downloadAgreementPdf, downloadLetterPdf } from '../.
 import { LETTER_KINDS, LETTER_LABELS, letterFileName, letterValues, type LetterKind } from '../../services/agreements/letters';
 import { downloadGrabLetterPdf, grabLetterFileName, grabLetterValues, otherLetterFileName } from '../../services/agreements/grabLetter';
 import {
-  KIND_LABELS, agreementValues, extraPlaceholders, fieldLabel, longDate, missingFields, type AgreementInput,
+  KIND_LABELS, SERVICE_BY_LABELS, agreementValues, extraPlaceholders, fieldLabel, forServiceBy, hasServiceChoice, longDate, missingFields,
+  type AgreementInput, type ServiceBy,
 } from '../../services/agreements/template';
 import { formatCurrency } from '../../utils';
 import AgreementPreview from './AgreementPreview';
@@ -84,6 +85,8 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   const [driverId, setDriverId] = useState(initialDriverId);
   const [agreementDate, setAgreementDate] = useState(today);
   const [extra, setExtra] = useState<Record<string, string>>({});
+  // Who services and maintains the car under this agreement; the Company unless chosen otherwise
+  const [serviceBy, setServiceBy] = useState<ServiceBy>('LESSOR');
   const [deposits, setDeposits] = useState<{ driverId: string; received: { DEPOSIT: number; DOWNPAYMENT: number } | null; problem?: string } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -128,6 +131,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
   }, [driverId, chosenNric]);
   useEffect(() => {
     setExtra({});
+    setServiceBy('LESSOR');
     setAgreementDate(today);
     setLastSaved('');
     if (!driverId) return;
@@ -137,6 +141,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
       const extraKeys = (keys: Record<string, string>) => Object.fromEntries(Object.entries(keys).filter(([key]) => SIGNING_FIELDS.includes(key)));
       setExtra(copy.signing?.extra ?? extraKeys(copy.values));
       if (copy.signing?.agreementDate) setAgreementDate(copy.signing.agreementDate);
+      if (copy.signing?.serviceBy) setServiceBy(copy.signing.serviceBy);
       setLastSaved(copy.createdAt);
     }).catch(() => { /* no copy readable: start blank */ });
     return () => { live = false; };
@@ -220,7 +225,10 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     extra,
     company: settings.company,
   };
-  const template = settings.templates[input.kind];
+  // The template prints one service wording: the choice, or the Company's when the template has no Lessee wording
+  const serviceChoice = hasServiceChoice(settings.templates[input.kind]);
+  const serviceFor: ServiceBy = serviceChoice ? serviceBy : 'LESSOR';
+  const template = forServiceBy(settings.templates[input.kind], serviceFor);
   const values = agreementValues(input);
   const missing = driver ? missingFields(template, input) : [];
   const signingFields = extraPlaceholders(template);
@@ -273,7 +281,7 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
     let saveProblem = '';
     try {
       // The copy for the driver's page first; the PDF downloads even if the copy can't be kept
-      await api.saveCopy(driver.id, { kind: input.kind, template, values, signing: { agreementDate, extra } });
+      await api.saveCopy(driver.id, { kind: input.kind, template, values, signing: { agreementDate, extra, serviceBy: serviceFor } });
       setLastSaved(new Date().toISOString());
     } catch (err) {
       saveProblem = reason(err);
@@ -445,6 +453,14 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
                   <label htmlFor="agreement-date" className={labelLook}>Agreement date</label>
                   <input id="agreement-date" type="date" className={inputLook} value={agreementDate} onChange={event => setAgreementDate(event.target.value)} />
                 </div>
+                {serviceChoice && (
+                  <div>
+                    <label htmlFor="agreement-service-by" className={labelLook}>Service &amp; maintenance by</label>
+                    <select id="agreement-service-by" className={inputLook} value={serviceBy} onChange={event => setServiceBy(event.target.value as ServiceBy)}>
+                      {(['LESSOR', 'LESSEE'] as const).map(by => <option key={by} value={by}>{SERVICE_BY_LABELS[by]}</option>)}
+                    </select>
+                  </div>
+                )}
                 {[...SIGNING_FIELDS.filter(key => signingFields.includes(key)), ...signingFields.filter(key => !SIGNING_FIELDS.includes(key))].map(key => (
                   <div key={key}>
                     <label htmlFor={`agreement-extra-${key}`} className={labelLook}>{fieldLabel(key)}</label>
@@ -453,6 +469,9 @@ export default function AgreementsView({ drivers, isAdmin, today, initialDriverI
                   </div>
                 ))}
               </div>
+              {!serviceChoice && isAdmin && (
+                <p className="text-xs text-gray-500">This {typeLabel} template has no Lessee wording for service and maintenance, so it always says the Company does it. Add it under Edit templates.</p>
+              )}
             </Step>
           )}
         </div>

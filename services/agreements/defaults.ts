@@ -1,5 +1,10 @@
 import type { AgreementKind, AgreementSection } from './template.ts';
 
+// Marks a paragraph or row that prints only when the Company (Lessor) or the Lessee is responsible for service and
+// maintenance. Kept here so template.ts can import the drafts without a loop; template.ts re-exports it.
+export const SERVICE_MARK = { LESSOR: '[Company service]', LESSEE: '[Lessee service]' } as const;
+const [CO, LE] = [`${SERVICE_MARK.LESSOR} `, `${SERVICE_MARK.LESSEE} `];
+
 /**
  * The built-in agreement drafts (2026-10-09, for the owner to review), used until an admin saves their own version on
  * the Agreements page. Placeholders in {{double braces}} are filled from the form; see PLACEHOLDERS in template.ts.
@@ -62,9 +67,12 @@ const useOfVehicle = (n: number, recoveryClause: number) => para(
 const services = (n: number) => para(
   `${n}. ROAD TAX, INSURANCE AND MAINTENANCE`,
   `${n}.1 Road tax and insurance. The Lessor renews the Vehicle's road tax and insurance and gives the Lessee the documents needed to drive lawfully.`,
-  `${n}.2 Servicing. The Lessee brings the Vehicle for scheduled servicing and inspection when asked. Routine servicing and approved repairs are arranged by the Lessor.`,
-  `${n}.3 Not covered. Unless the Lessor agrees in writing, the Lessee pays for bulbs, wipers, remote batteries, punctures and tyres, for cosmetic or body damage not recovered from insurance, and for any damage caused by the Lessee's negligence, misuse, unapproved repair or late reporting.`,
-  `${n}.4 Repairs need approval. Except in a genuine emergency, get the Lessor's written approval before any repair. The Lessor does not pay for work it did not approve.`,
+  `${CO}${n}.2 Servicing. The Lessee brings the Vehicle for scheduled servicing and inspection when asked. Routine servicing and approved repairs are arranged by the Lessor.`,
+  `${LE}${n}.2 Servicing and maintenance. The Lessee arranges and pays for all servicing, maintenance and repairs of the Vehicle, on time at the intervals in its service book and at a workshop the Lessor accepts, and keeps every receipt to show the Lessor when asked. The Lessee still brings the Vehicle for inspection when asked.`,
+  `${CO}${n}.3 Not covered. Unless the Lessor agrees in writing, the Lessee pays for bulbs, wipers, remote batteries, punctures and tyres, for cosmetic or body damage not recovered from insurance, and for any damage caused by the Lessee's negligence, misuse, unapproved repair or late reporting.`,
+  `${LE}${n}.3 Parts and damage. The Lessee also pays for tyres, batteries, brake pads, bulbs, wipers and other wear parts, for cosmetic or body damage not recovered from insurance, and for any damage caused by the Lessee's negligence, misuse, poor repair or late reporting. Parts must be genuine or of equal quality.`,
+  `${CO}${n}.4 Repairs need approval. Except in a genuine emergency, get the Lessor's written approval before any repair. The Lessor does not pay for work it did not approve.`,
+  `${LE}${n}.4 Major repairs need approval. Except in a genuine emergency, get the Lessor's written approval before any major repair, such as engine, gearbox, suspension or body work.`,
 );
 
 const accidents = (n: number) => para(
@@ -167,7 +175,8 @@ const BIASA_TERMS = para(
   '3.1 Refund or forfeit. The deposit is not Rent. Within 14 days after the Vehicle is returned and checked, the Lessor refunds it less anything owed (unpaid Rent and charges, summonses, damage, cleaning and recovery costs). The whole deposit is forfeited if the Vehicle is returned without the notice in clause 5.1, abandoned, or recovered for non-payment or another default.',
   '4. USE AND CARE',
   '4.1 Lawful use. Use the Vehicle only for lawful e-hailing work and personal use, keep all licences and platform approvals valid, and let no one else drive it without the Lessor\'s written approval. No sub-letting ("sewa atas sewa"), modifying the Vehicle or tampering with the odometer or GPS tracker; the Lessee consents to GPS tracking, including for recovery.',
-  '4.2 Costs. The Lessee pays tolls, fuel, parking, summonses and fines during the rental and brings the Vehicle in for servicing when asked; the Lessor renews road tax and insurance and arranges servicing.',
+  `${CO}4.2 Costs. The Lessee pays tolls, fuel, parking, summonses and fines during the rental and brings the Vehicle in for servicing when asked; the Lessor renews road tax and insurance and arranges servicing.`,
+  `${LE}4.2 Costs. The Lessee pays tolls, fuel, parking, summonses and fines during the rental, and arranges and pays for all servicing, maintenance, repairs and wear parts; the Lessor renews road tax and insurance.`,
   '4.3 Accidents. Tell the Lessor at once, report to the police within 24 hours, and do not admit fault or arrange repairs without approval. The Lessee pays the insurance excess and towing, and any uninsured loss or damage caused by the Lessee\'s negligence, misuse or breach; Rent continues meanwhile.',
   '5. ENDING, RECOVERY AND GENERAL',
   '5.1 Ending. Either party may end the rental with one week\'s written notice. The Vehicle, keys and documents must be returned in the handover condition, apart from fair wear and tear.',
@@ -197,6 +206,8 @@ const schedule = (kind: AgreementKind): AgreementSection => ({
         "Early-termination fee | One month's Rent, four weeks' if weekly (Section B, clause 9.6)"]
       : ['Deposit (refundable) | {{deposit_amount}}']),
     'Permitted use | E-hailing and the Lessee\'s personal use',
+    `${CO}Service and maintenance | By the Lessor (Section B, clause ${kind === 'SEWABELI' ? '5' : '4.2'})`,
+    `${LE}Service and maintenance | By the Lessee, at the Lessee's own cost (Section B, clause ${kind === 'SEWABELI' ? '5' : '4.2'})`,
     'Payment account | {{company_bank_account}}',
   ),
 });
