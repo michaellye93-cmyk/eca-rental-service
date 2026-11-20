@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { jsPDF } from 'jspdf';
 import { agreementFileName, drawAgreement } from '../services/agreements/pdf.ts';
-import { defaultTemplate } from '../services/agreements/template.ts';
+import { defaultTemplate, forServiceBy } from '../services/agreements/template.ts';
+
+// The drafts carry both service wordings; an agreement prints one of them (see agreement-service-choice.test.ts)
+const printed = (kind: 'SEWA_BIASA' | 'SEWABELI') => forServiceBy(defaultTemplate(kind), 'LESSOR');
 
 test('each built-in template draws into an A4 PDF with every section heading and filled values', () => {
   for (const kind of ['SEWA_BIASA', 'SEWABELI'] as const) {
@@ -57,7 +60,7 @@ test('the agreement reads like a formal agreement: parties paragraph, letterhead
 
 test('the short Sewa Biasa fits its terms on one page: four pages in all', () => {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  drawAgreement(doc, defaultTemplate('SEWA_BIASA'), {});
+  drawAgreement(doc, printed('SEWA_BIASA'), {});
   assert.equal(doc.getNumberOfPages(), 4);
 });
 
@@ -85,7 +88,7 @@ test('the company logo image heads every page when given; without it the drawn m
 
 test('the title, opening paragraphs and whole Schedule fit on the first page, even with a long address', () => {
   for (const kind of ['SEWA_BIASA', 'SEWABELI'] as const) {
-    const template = defaultTemplate(kind);
+    const template = printed(kind);
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     drawAgreement(doc, { ...template, sections: [template.sections[0]] }, {
       customer_address: 'No. 12, Jalan Fixture Panjang 3/45, Taman Fixture Indah, 43200 Fixture Town, Selangor Darul Ehsan',

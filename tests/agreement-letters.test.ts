@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { jsPDF } from 'jspdf';
 import type { Driver } from '../types.ts';
 import { drawAgreement, drawLetter } from '../services/agreements/pdf.ts';
-import { defaultTemplate, fillText, placeholdersIn } from '../services/agreements/template.ts';
+import { defaultTemplate, fillText, forServiceBy, placeholdersIn } from '../services/agreements/template.ts';
 import {
   LETTER_KINDS, LETTER_LABELS, LETTER_PLACEHOLDERS, defaultLetter, deadlineDate, letterFileName, letterFromStored, letterValues, longDateBM,
 } from '../services/agreements/letters.ts';
@@ -143,7 +143,7 @@ test('a letter prints on the agreement letterhead and footer, without the agreem
   assert.ok(!text.includes("Lessee's initials"));
   // The agreement keeps its initials line and the same letterhead
   const agreement = new jsPDF({ unit: 'mm', format: 'a4' });
-  drawAgreement(agreement, defaultTemplate('SEWA_BIASA'), COMPANY);
+  drawAgreement(agreement, forServiceBy(defaultTemplate('SEWA_BIASA'), 'LESSOR'), COMPANY);
   const agreementText = agreement.output();
   for (const words of ["Lessee's initials", 'Private & Confidential', 'Company No. 000000-X', 'Page 1 of 4']) assert.ok(agreementText.includes(words), words);
 });

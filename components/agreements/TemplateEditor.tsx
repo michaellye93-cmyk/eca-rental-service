@@ -29,6 +29,10 @@ const HINTS: Record<SectionLayout, string> = {
   signature: 'One signature box per line: Party | Name | ID | Date. Leave the date out to write it by hand. A line with no bar is printed as wording.',
 };
 
+// Shown only on a section that uses the service and maintenance marks
+const SERVICE_MARKED = /\[(Company|Lessee) service\]/;
+const SERVICE_HINT = 'A clause or row starting [Company service] or [Lessee service] prints only when that side is chosen for service and maintenance.';
+
 const LETTER_HINT = 'Paragraphs are separated by an empty line. Start with a number (1.) to hang the text after it; "> " prints in italics; "# " is another boxed title; lines of "Label | value" print as a bold list, three or more cells as a ruled table (a first line with no bar heads it); "---" alone starts a new page.';
 const isLetter = (id: AgreementKind | LetterKind): id is LetterKind => (LETTER_KINDS as string[]).includes(id);
 const nameOf = (id: AgreementKind | LetterKind) => (isLetter(id) ? LETTER_LABELS[id] : KIND_LABELS[id]);
@@ -222,7 +226,7 @@ export default function TemplateEditor({ templates, letters, company, onSaveTemp
               )}
               <textarea aria-label={`${section.title} text`} rows={Math.min(24, Math.max(5, section.body.split('\n').length + 1))} className={`${inputLook} font-mono text-[13px]`}
                 value={section.body} onChange={event => setSection(index, { body: event.target.value })} />
-              <p className="text-xs text-gray-500">{HINTS[section.layout]}</p>
+              <p className="text-xs text-gray-500">{HINTS[section.layout]}{SERVICE_MARKED.test(section.body) ? ` ${SERVICE_HINT}` : ''}</p>
             </div>
           ))}
           <button type="button" onClick={add} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-semibold text-gray-600 hover:border-blue-400 hover:text-blue-700 flex items-center justify-center gap-2">
